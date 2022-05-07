@@ -92,16 +92,43 @@ Offset    | Size (bytes)  |  Field Name         |    Content    |
 
 *Total size: 16 bytes*
 
+Notes:
+- `Flags`: are set according to the Hubris ABI.
+  | 7 | 6 | 5 | 4 | 3 | 2 | 1 |       0       |
+  |---|---|---|---|---|---|---|---------------|
+  | R | R | R | R | R | R | R | START_AT_BOOT |
+  
+  where:
+  - `START_AT_BOOT` bit set: the component will be executed upon a restart of the system
+
+- `Data Section Size` could indicate more bytes than the one stored in the HBF, if the `.bss` is used. To understand how much data needs to be copied, take the `Data Section Offset` and go till the end of the HBF. This choice is done to minimize the number of fields used.
+
 ### HBF Header Region
-This structure contains data regarding each memory region the component requires in order to work
+This structure contains data regarding each memory region the component requires in order to work. These regions are optional and in addition to the two automatically assigned to the component:
+- the flash region, from where the component is executed
+- the ram region, where the execution stack is located
 
 Offset    | Size (bytes)  |  Field Name         |    Content    |
 ----------|---------------|---------------------|---------------|
-0x00      |       4       | Region Base Address | Address of start of region
-0x04      |       4       | Region Size         | Size of region, in bytes (on ARMv7-M, it must be a power of two greater than 16)
+0x00      |       4       | Region Base Address | Address of start of region. Must be a multiple of the `Region Size` due to limitations of the MPU (*natural alignment*).
+0x04      |       4       | Region Size         | Size of region, in bytes (on ARMv7-M, it must be a power of two greater than 16: 2^5, 2^6, ...)
 0x08      |       4       | Region Attributes   | Flags describing what can be done with this region (see next)
 
 *Total size: 12 bytes* (**must be multiple of 4 to avoid alignment problems**)
+
+Notes:
+- `Region Attributes` are set according to the Hubris ABI.
+  |31 | .. | 5  |  4  |   3    |    2    |   1    |  0   |
+  |---|----|----|-----|--------|---------|--------|------|
+  | R | R  | R  | DMA | DEVICE | EXECUTE | WRITE  | READ |
+  
+  where:
+  - `READ` bit set: Region can be read by components that include it.
+  - `WRITE` bit set: Region can be written by components that include it.
+  - `EXECUTE` bit set: Region can contain executable code for components that include it.
+  - `DEVICE` bit set: Region contains memory mapped registers. This affects cache behavior on devices that include it, and discourages the kernel from using `memcpy` in the region.
+  - `DMA` bit set: Region can be used for DMA or communication with other processors. This heavily restricts how this memory can be cached and will hurt performance if overused. This is ignored for `DEVICE` memory, which is already not cached.
+  - `R`: Reserved for future usage. Ignored.
 
 ### HBF Header Interrupt
 This structure contains data regarding each interrupt that this component manages, and the corresponding behaviour
@@ -109,9 +136,13 @@ This structure contains data regarding each interrupt that this component manage
 Offset    | Size (bytes)  |  Field Name        |    Content    |
 ----------|---------------|--------------------|---------------|
 0x00      |       4       | IRQ Number         | Interrupt number
-0x04      |       4       | Notification Mask  | This value will be OR-ed with the notification bit mask of the component upon interrupt reception
+0x04      |       4       | Notification Mask  | Interrupt notification to the component
 
 *Total size: 8 bytes* (**must be multiple of 4 to avoid alignment problems**)
+
+Notes:
+- `Notification Mask`: specifies a single bit that will be OR-ed with the notification bit mask of the component upon interrupt reception. **Currently, only a single bit can be set in this mask**
+
 
 ### HBF Header Relocation
 This structure contains relocation offsets for the component, pointing to 4 byte fields that need to be fixed before the application is moved in/around flash.  
@@ -124,7 +155,7 @@ Offset    | Size (bytes)  |  Field Name        |    Content    |
 *Total size: 4 bytes* (**must be multiple of 4 to avoid alignment problems**)
 
 ## HBF Compiled Component Binary
-This section contains `.data`, (`.bss`,) `.text`, `.rodata`  sections.
+This section of HBF contains `.data`, `.text`, `.rodata`  sections.
 In particular, the last two sections `.text` and `.rodata` are consecutive and cannot be separated.
 
 ```
