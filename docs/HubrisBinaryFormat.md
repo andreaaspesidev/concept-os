@@ -8,8 +8,7 @@ Start of HBF  ->    +-------------------+
                     | HBF Header        |
                     +-------------------+
                     |                   |
-                    | Compiled comp.    |
-                    | binary            |
+                    | HBF Payload       |
                     |                   |
   End of HBF  ->    +-------------------+
 ```
@@ -154,7 +153,7 @@ Offset    | Size (bytes)  |  Field Name        |    Content    |
 
 *Total size: 4 bytes* (**must be multiple of 4 to avoid alignment problems**)
 
-## HBF Compiled Component Binary
+## HBF Payload
 This section of HBF contains `.data`, `.text`, `.rodata`  sections.
 In particular, the last two sections `.text` and `.rodata` are consecutive and cannot be separated.
 
