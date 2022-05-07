@@ -83,8 +83,8 @@ This structure encodes all the information needed to start and schedule the comp
 Offset    | Size (bytes)  |  Field Name         |    Content    |
 ----------|---------------|---------------------|---------------|
 0x00      |       1       | Component Priority  | Component scheduled priority 0-255
-0x01      |       1       | Flags               | Flags associated to the component. Currently bit 0 set indicates load at startup 
-0x02      |       2       | Component RAM       | Minumum SRAM needed by the component (stack)
+0x01      |       1       | Component Flags     | Flags associated to the component. Currently bit 0 set indicates load at startup 
+0x02      |       2       | Component Min RAM   | Minumum SRAM needed by the component (stack)
 0x04      |       4       | Entry Point Offset  | Offset of the main entry point from the start of the HBF
 0x08      |       4       | Data Section Offset | Offset of the data section (`.data`) to be moved into RAM at startup
 0x0C      |       4       | Data Section Size   | Size in bytes of the data section (`.data` + `.bss`)
@@ -92,7 +92,7 @@ Offset    | Size (bytes)  |  Field Name         |    Content    |
 *Total size: 16 bytes*
 
 Notes:
-- `Flags`: are set according to the Hubris ABI.
+- `Component Flags`: are set according to the Hubris ABI.
   | 7 | 6 | 5 | 4 | 3 | 2 | 1 |       0       |
   |---|---|---|---|---|---|---|---------------|
   | R | R | R | R | R | R | R | START_AT_BOOT |
