@@ -1,0 +1,6 @@
+[component]
+id = 1
+version = 1
+priority = 1
+flags = ['START_AT_BOOT']
+min_ram = 1024

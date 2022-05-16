@@ -1,0 +1,27 @@
+[component]
+id = 2
+version = 3
+priority = 4
+flags = []
+min_ram = 2048
+
+[[regions]]
+base_address = '0x08000000'
+size = '0x1000'
+attributes = [
+    'READ',
+    'WRITE',
+]
+
+[[regions]]
+base_address = '0x08001000'
+size = '0x2000'
+attributes = ['DMA']
+
+[[interrupts]]
+irq = 1
+notification_mask = '0x00000001'
+
+[[interrupts]]
+irq = 2
+notification_mask = '0x00000002'
