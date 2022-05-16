@@ -37,24 +37,28 @@ For each interrupt, the following values must be specified:
 id = 1
 version = 1
 priority = 1
-flags = ["START_AT_BOOT"]
+flags = []
 min_ram = 1024
 
-[region.region1]
-base_address = 0x0800_1000
-size = 0x1000
-attributes = ["READ"]
+[[regions]]
+base_address = '0x08000000'
+size = '0x1000'
+attributes = [
+    'READ',
+    'WRITE',
+]
 
-[region.region2]
-base_address = 0x0800_2000
-size = 0x1000
-attributes = ["READ", "WRITE"]
+[[regions]]
+base_address = '0x08001000'
+size = '0x2000'
+attributes = ['DMA']
 
-[interrupt.interrupt1]
+[[interrupts]]
 irq = 1
-notification_mask = 0b00000000_00000000_00000000_00000001
+notification_mask = '0x00000001'
 
-[interrupt.interrupt2]
+[[interrupts]]
 irq = 2
-notification_mask = 0b00000000_00000000_00000000_00000010
+notification_mask = '0x00000002'
+
 ```
