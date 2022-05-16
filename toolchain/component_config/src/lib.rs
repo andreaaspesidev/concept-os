@@ -1,4 +1,4 @@
-mod structures;
+pub mod structures;
 
 use crate::structures::ComponentConfig;
 use std::fs;
