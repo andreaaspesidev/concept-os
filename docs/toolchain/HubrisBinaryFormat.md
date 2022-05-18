@@ -53,7 +53,7 @@ start of HBF ->  +---------------------+ 0x00
                  |  Header Reloc. #R   |
 end of header -> +---------------------+ 
 ```
-*Total size: 38 (base) + 18 (main) + 12*N (region) + 8*I (interrupts) + 4*R (relocs) = 56 + 12*N + 8*I + 4*R [bytes]*
+*Total size: 34 (base) + 18 (main) + 12*N (region) + 8*I (interrupts) + 4*R (relocs) = 52 + 12*N + 8*I + 4*R [bytes]*
 **(must be multiple of 4 for alignment problems)**
 
 ### HBF Header Base
@@ -70,12 +70,11 @@ Offset    | Size (bytes)  |  Field Name        |    Content    |
 0x12      |       2       | Region Count       | Number of entries of the prev. structure
 0x14      |       2       | Interrupt Offset   | Offset in bytes (from the start of the HBF) of the first Header Interrupt structure
 0x16      |       2       | Interrupt Count    | Number of entries of the prev. structure
-0x18      |       4       | Relocation Base    | Last Flash Address of when the relocation was performed
-0x1C      |       2       | Relocation Offset  | Offset in bytes (from the start of the HBF) of the first Header Relocation structure
-0x1E      |       4       | Relocation Count   | Number of entries of the prev. structure
-0x22      |       4       | Checksum           | CRC-32b of the whole HBF (except this field)
+0x18      |       2       | Relocation Offset  | Offset in bytes (from the start of the HBF) of the first Header Relocation structure
+0x1A      |       4       | Relocation Count   | Number of entries of the prev. structure
+0x1E      |       4       | Checksum           | CRC-32b of the whole HBF (except this field)
 
-*Total size: 38 bytes*
+*Total size: 34 bytes*
 
 ### HBF Header Main
 This structure encodes all the information needed to start and schedule the component
