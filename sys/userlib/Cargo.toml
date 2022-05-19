@@ -1,10 +1,9 @@
 [package]
 name = "userlib"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 
 [features]
-panic-messages = []
 log-itm = []
 log-semihosting = []
 log-null = []
@@ -17,9 +16,9 @@ serde = { version = "1.0.114", default-features = false }
 ssmarshal = { version = "1.0.0", default-features = false }
 zerocopy = "0.6.1"
 num-traits = { version = "0.2.12", default-features = false }
-unwrap-lite = { path = "../../lib/unwrap-lite" }
+unwrap-lite = { path = "../../libs/unwrap-lite" }
 cfg-if = "0.1.10"
-armv6m-atomic-hack = {path = "../../lib/armv6m-atomic-hack"}
+no-panics-whatsoever = "0.1.0"
 
 #
 # In order to use macros as discriminants in enums that make use of derive
@@ -28,9 +27,6 @@ armv6m-atomic-hack = {path = "../../lib/armv6m-atomic-hack"}
 # which passes "full" through to syn.
 #
 num-derive = { version = "0.3.0", features = [ "full-syntax" ] }
-
-[build-dependencies]
-build-util = {path = "../../build/util"}
 
 [lib]
 test = false
