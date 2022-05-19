@@ -47,7 +47,7 @@ pub struct Region {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Interrupt {
-    pub irq: u16,
+    pub irq: u32,
     #[serde(with = "SerHex::<StrictPfx>")]
     pub notification_mask: u32
 }
