@@ -53,7 +53,7 @@ start of HBF ->  +---------------------+ 0x00
                  |  Header Reloc. #R   |
 end of header -> +---------------------+ 
 ```
-*Total size: 34 (base) + 18 (main) + 12*N (region) + 8*I (interrupts) + 4*R (relocs) = 52 + 12*N + 8*I + 4*R [bytes]*
+*Total size: 36 (base) + 20 (main) + 12*N (region) + 8*I (interrupts) + 4*R (relocs) = 56 + 12*N + 8*I + 4*R [bytes]*
 **(must be multiple of 4 for alignment problems)**
 
 ### HBF Header Base
@@ -64,37 +64,37 @@ Offset    | Size (bytes)  |  Field Name        |    Content    |
 0x04      |       2       | HBF Version        | Integer 1-65535 indicating the version of the HBF
 0x06      |       4       | Total size         | Total size of the HBF in bytes
 0x0A      |       2       | Component ID       | Integer 1-65535 indicating the ID of the component. 0 is reserved to the kernel
-0x0C      |       2       | Component Version  | Integer 0-65535 indicating the component major version, for compatibility checks
-0x0E      |       2       | Main Offset        | Offset in bytes (from the start of the HBF) of the Header Main structure
-0x10      |       2       | Region Offset      | Offset in bytes (from the start of the HBF) of the first Header Region structure
-0x12      |       2       | Region Count       | Number of entries of the prev. structure
-0x14      |       2       | Interrupt Offset   | Offset in bytes (from the start of the HBF) of the first Header Interrupt structure
-0x16      |       2       | Interrupt Count    | Number of entries of the prev. structure
-0x18      |       2       | Relocation Offset  | Offset in bytes (from the start of the HBF) of the first Header Relocation structure
-0x1A      |       4       | Relocation Count   | Number of entries of the prev. structure
-0x1E      |       4       | Checksum           | CRC-32b of the whole HBF (except this field)
+0x0C      |       4       | Component Version  | Integer 0-65535 indicating the component major version, for compatibility checks
+0x10      |       2       | Main Offset        | Offset in bytes (from the start of the HBF) of the Header Main structure
+0x12      |       2       | Region Offset      | Offset in bytes (from the start of the HBF) of the first Header Region structure
+0x14      |       2       | Region Count       | Number of entries of the prev. structure
+0x16      |       2       | Interrupt Offset   | Offset in bytes (from the start of the HBF) of the first Header Interrupt structure
+0x18      |       2       | Interrupt Count    | Number of entries of the prev. structure
+0x1A      |       2       | Relocation Offset  | Offset in bytes (from the start of the HBF) of the first Header Relocation structure
+0x1C      |       4       | Relocation Count   | Number of entries of the prev. structure
+0x20      |       4       | Checksum           | CRC-32b of the whole HBF (except this field)
 
-*Total size: 34 bytes*
+*Total size: 36 bytes*
 
 ### HBF Header Main
 This structure encodes all the information needed to start and schedule the component
 
 Offset    | Size (bytes)  |  Field Name         |    Content    |
 ----------|---------------|---------------------|---------------|
-0x00      |       1       | Component Priority  | Component scheduled priority 0-255
-0x01      |       1       | Component Flags     | Flags associated to the component. Currently bit 0 set indicates load at startup 
-0x02      |       4       | Component Min RAM   | Minumum SRAM needed by the component (stack)
-0x06      |       4       | Entry Point Offset  | Offset of the main entry point from the start of the HBF
-0x0A      |       4       | Data Section Offset | Offset of the data section (`.data`) to be moved into RAM at startup
-0x0E      |       4       | Data Section Size   | Size in bytes of the data section (`.data` + `.bss`)
+0x00      |       2       | Component Priority  | Component scheduled priority 0-255
+0x02      |       2       | Component Flags     | Flags associated to the component. Currently bit 0 set indicates load at startup 
+0x04      |       4       | Component Min RAM   | Minumum SRAM needed by the component (stack)
+0x08      |       4       | Entry Point Offset  | Offset of the main entry point from the start of the HBF
+0x0C      |       4       | Data Section Offset | Offset of the data section (`.data`) to be moved into RAM at startup
+0x10      |       4       | Data Section Size   | Size in bytes of the data section (`.data` + `.bss`)
 
-*Total size: 18 bytes*
+*Total size: 20 bytes*
 
 Notes:
 - `Component Flags`: are set according to the Hubris ABI.
-  | 7 | 6 | 5 | 4 | 3 | 2 | 1 |       0       |
-  |---|---|---|---|---|---|---|---------------|
-  | R | R | R | R | R | R | R | START_AT_BOOT |
+  |15 |...| 7 | 6 | 5 | 4 | 3 | 2 | 1 |       0       |
+  |---|---|---|---|---|---|---|---|---|---------------|
+  | R | R | R | R | R | R | R | R | R | START_AT_BOOT |
   
   where:
   - `START_AT_BOOT` bit set: the component will be executed upon a restart of the system
