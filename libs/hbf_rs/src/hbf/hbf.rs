@@ -91,19 +91,7 @@ impl <'a> HbfGen<'a> {
             })
         };
     }
-
-    fn hbf_payload_bss_gen(&self) -> Option<HbfPayloadSectionGen> {
-        let size = self.bss_size();
-        return match size {
-            0 => None,
-            _ => Some(HbfPayloadSectionGen {
-                offset: 0,
-                size: size
-            })
-        };
-    }
     
-
     /*
         Size calcs
     */
@@ -236,13 +224,8 @@ impl <'a> HbfFile for HbfGen<'a> {
         }
     }
 
-    fn bss_section(&self) -> Option<HbfPayloadSectionWrapper> {
-        let section = self.hbf_payload_bss_gen();
-        if section.is_some() {
-            return Some(HbfPayloadSectionWrapper::new(self, section.unwrap()));
-        } else {
-            return None;
-        }
+    fn bss_size(&self) -> u32 {
+        self.bss_size()
     }
 
     fn validate(&self) -> bool {

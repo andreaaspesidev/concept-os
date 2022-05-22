@@ -35,7 +35,7 @@ fn main () -> Result<(), ()> {
     // .data
     println!(".data: {:?}", hbf.data_section());
     // .bss
-    println!(".bss: {:?}", hbf.bss_section());
+    println!(".bss size: {:?}", hbf.bss_size());
 
     Ok(())
 }

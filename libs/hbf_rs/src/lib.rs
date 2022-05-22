@@ -6,6 +6,8 @@ mod section;
 pub mod utils;
 
 pub use hbf::HbfFile;
+pub use header::ComponentFlags;
+pub use header::RegionAttributes;
 use hbf::hbf::HbfGen;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
