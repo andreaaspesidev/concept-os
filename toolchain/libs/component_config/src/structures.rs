@@ -30,8 +30,8 @@ pub struct ComponentConfig {
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Component {
     pub id: u16,
-    pub version: u16,
-    pub priority: u8,
+    pub version: u32,
+    pub priority: u16,
     pub flags: Vec<ComponentFlag>,
     pub min_ram: u32
 }
