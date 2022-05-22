@@ -1,0 +1,14 @@
+[component]
+id = 3
+version = 1
+priority = 20
+flags = ['START_AT_BOOT']
+min_ram = 4096
+
+[[interrupts]]
+irq = 1
+notification_mask = '0x00000001'
+
+[[interrupts]]
+irq = 2
+notification_mask = '0x00000002'

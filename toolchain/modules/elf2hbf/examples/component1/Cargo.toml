@@ -1,0 +1,17 @@
+[package]
+name = "component1"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# The idle task cannot panic, so we deliberately don't request panic-messages
+# to keep the binary tiny.
+userlib = {path = "../../../../../sys/userlib"}
+cortex-m = { version = "0.7", features = ["inline-asm"] }
+
+# This section is here to discourage RLS/rust-analyzer from doing test builds,
+# since test builds don't work for cross compilation.
+[[bin]]
+name = "component1"
+test = false
+bench = false

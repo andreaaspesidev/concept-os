@@ -1,0 +1,25 @@
+[target.thumbv7em-none-eabihf]
+rustflags = [
+  # This is needed if your flash or ram addresses are not aligned to 0x10000 in memory.x
+  # See https://github.com/rust-embedded/cortex-m-quickstart/pull/95
+  "-C", "link-arg=--nmagic",
+
+  # LLD (shipped with the Rust toolchain) is used as the default linker
+  "-C", "link-arg=-Tlink.ld",
+  "-C", "link-arg=-Map=output/out.map",
+
+  # No unwinder.
+  "-C", "panic=abort",
+  
+  # Turn on ropi-rwpi relocation model.
+  "-C", "relocation-model=ropi-rwpi",
+
+  # Overflow checks
+  #"-C", "overflow-checks=y",
+
+  # Emit also object before linking
+  "--emit=obj"
+]
+
+[build]
+target = "thumbv7em-none-eabihf"       # Cortex-M4 and Cortex-M7 (FPU)
