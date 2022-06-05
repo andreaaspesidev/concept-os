@@ -1,0 +1,7 @@
+[package]
+name = "buddy_allocator"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+heapless = "0.7.13"
