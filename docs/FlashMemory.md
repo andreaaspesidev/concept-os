@@ -121,6 +121,65 @@ This process is executed lazily at the first time the memory allocation fails. I
 **Notes:**
 When performing a swap operation, the component contained (or overlapping with) the sector under process must be put on hold. Actually the flash write operation itself should stall the CPU, but alone is not enough: **swap itself must be managed by the kernel, to enable swapping the block of this component**.
 
+#### Swapping
+As anticipated, swapping must be supported at kernel level, in order to be able to swap the block of the Flash component itself during the process of recollection.
+The system must also have the ability to recover from this operation if a fault (and reboot) occurs.
+
+##### System Call
+Three informations must be provided to this system call:
+- A 16bit number indicating the flash page to be processed. The maximum number of supported pages is *2^16 -2* = 65534 (0xFFFE)
+- An additional 8bit number indicating:
+    - `0` whether this page starts with a valid header
+    - `1` whether this page starts with data that must be preserved (in this case, its length must be indicated in the next integer)
+    - `2` whether this page start with data that must not be preserved (in this case, its length is interpreted as how many bytes to skip to get the next valid header, if any. If none, the page length)
+- A 32bit integer indicating the length as specified for option `1` and `2`. For option `0` it's a don't care (put 0x0000_0000)
+
+##### Algorithm
+The procedure involves the following steps:
+1. the kernel ensures the swap page is erased (should always be, or enters recover procedure).
+2. *if context switches are allowed during this procedure, the kernel scans the list of active components, determining for each if their code actually intersect with this page (by using the address of their HBF + their size). Any component with an intesection is temporarly put on hold (will not be scheduled in a context switch).*
+3. writes the flash page number of the target page being swapped in the beginning of the swap page (`PAGE_NUM`).
+4. begin scanning the page, copying only `allocated_blocks` (`ALLOCATED=1 DISMISSED=0`). To this purpose, it uses the information provided to the system call to detect correctly where to start reading headers. 
+Before start copying each block (or part of a block), called `fragments`, the kernel writes in the flash the target address for the copy back (`TA`). Then the actual data copy begins (in `Data`).
+When the copy of a fragment is completed, it writes its size into `FS`.
+5. when the copy of all fragments is completed, the kernel sets `COPY_COMPLETED` into `SWAP_FLAGS`, erases the original page, and copy back data from the swap page (following target addresses and sizes)
+6. at the end of the process (when all fragments have been copied back), the swap page is erased.
+
+The swap layout is the following:
+```
+    | 2 bytes  |  2 bytes   | 4 bytes | 4 bytes | ...  | ... | 4 bytes | 4 bytes | ...  |
+    | PAGE_NUM | SWAP_FLAGS |   TA    |   FS    | Data | ... |    TA   |    FS   | Data |
+    |                       |                          |     |
+    |                       |                          |     \-> fragment N start
+    \-> swap page start     \-> fragment 1 start       \-> fragment 2 start
+```
+where:
+- `PAGE_NUM` contains the page number of the page under swapping.
+- `SWAP_FLAGS` has the following structure (flags are active low):
+    | 15|...| 7 | 6 | 5 | 4 | 3 | 2 | 1 |       0        |
+    |---|---|---|---|---|---|---|---|---|----------------|
+    | R | R | R | R | R | R | R | R | R | COPY_COMPLETED |
+    where:
+    -  `COPY_COMPLETED` means the swap page is filled with all the data of the target page, copy back can start or is in progress.
+- `TA` is the target address of the following fragment (= where to copy).
+- `FS` is the size of the following fragment (= how much to be copied). **It's written after the data has been copied to the fragment, so if it's present, then it means the fragment is valid**
+- `Data` contains the actual fragment data.
+
+*Note: the swap procedure must be called on a page with at least a `freed_block` or `free_block`, as should always be the case. The correspoding data is not copied to swap, and this space can be used for the headers of the swap. Otherwise there is not enough space in swap, and the whole operation will fail: the kernel can be as careful as it wants during the process, actually managing this corner case.*
+
+##### Recovery Procedure
+At system start-up, the kernel:
+1. checks the first word of the swap (`PAGE_NUM` and `SWAP_FLAGS`).
+   If the first 16bits are:
+    - 0xFFFF this means the swap was erased correcly, and no recovery procedure is necessary: exit procedure. *No page with this number is supported by the system*
+    - different from 0xFFFF, a swap operation was interrupted. Go to point 2
+2. checks the other 16bits (`SWAP_FLAGS`). If `COPY_COMPLETED` is:
+    - not set, then the copy of the page in swap was still not completed: the original page is still intact, erase swap page and exit procedure.
+    - set, then the original page may or may not have been erased, but all data is present in the swap. Go to point 3.
+3. erases the destination page, then reads each fragment, and copy it back. At the end of the process, erase the swap page.
+
+*Note: the process can be more conservative if at the beginning of point 3 we avoid erasing the destination page, and simply start to copy data back by compaing first each byte of the source (swap) and destination. This could actually perform no copy at all if the page was not yet erased, or behave exactly like point 3 with more overhead. The only problem is a reboot that happened during a page erase operation, that could have brought the page into an unsafe state: better erase everything at the beginning to be sure.*
+
 #### A simpler solution
 If the Flash memory has erase sectors of constant size (possibly small), this becomes easier. For example, considering `STM32F303E` (that can be found on the `NUCLEO-F303RE`), these blocks are 2Kb in size (see [here](https://www.st.com/resource/en/reference_manual/dm00043574-stm32f303xb-c-d-e-stm32f303x6-8-stm32f328x8-stm32f358xc-stm32f398xe-advanced-arm-based-mcus-stmicroelectronics.pdf)):
 
