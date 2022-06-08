@@ -10,7 +10,7 @@ Flash memory is divided into erase sectors, which can be in some cases also of d
 
 - An erase sector is the minimum granularity for an erase operation. *Erasing a sector sets all bits in the sector to 1*.
 
-- Writes must be performed with the granularity of the specific Flash memory (in some cases can be modified using an apposite register for parallelism). Usually goes from half-byte (*16 bits*) to a full word (*32 bits*).
+- Writes must be performed with the granularity of the specific Flash memory (in some cases can be modified using an apposite register for parallelism). Usually goes from a byte (*8 bits*) to a full word (*32 bits*).
 
 - When setting bits from 1 to 0 no erase is required, if the hardware supports it. But it's not possible to perform the opposite operation without erasing the whole sector first.
 
@@ -99,7 +99,7 @@ In particular:
 
 Total size: 12 bytes
 
-**Note: values with * must be set to the minimum granularity of flash write, in case of special devices that requires writing more than 2bytes (half-word) at a time**
+**Note: values with * must be set to a multiple of the minimum granularity of flash write, in case of special devices that requires writing more than 2bytes (half-word) at a time**
 
 ### Reconstructing State from Metadata
 It's always possible to retrieve the `free_list` from the flash memory upon start-up, using the following procedure:
@@ -162,7 +162,7 @@ When the copy of a fragment is completed, it writes its size into `FS`.
 
 The swap layout is the following:
 ```
-    | 2 bytes  |    2 bytes*    | 4 bytes | 4 bytes | ...  | ... | 4 bytes | 4 bytes | ...  |
+    | 2 bytes*  |    2 bytes*    | 4 bytes* | 4 bytes* | ...  | ... | 4 bytes | 4 bytes | ...  |
     | PAGE_NUM | COPY_COMPLETED |   TA    |   FS    | Data | ... |    TA   |    FS   | Data |
     |                           |                          |     |
     |                           |                          |     \-> fragment N start
@@ -177,15 +177,15 @@ where:
 
 *Note: the swap procedure must be called on a page with at least a `freed_block` or `free_block`, as should always be the case. The corresponding data is not copied to swap, and this space can be used for the headers of the swap. Otherwise there is not enough space in swap, and the whole operation will fail: the kernel can be as careful as it wants during the process, actually managing this corner case.*
 
-**Note: values with * must be set to the minimum granularity of flash write, in case of special devices that requires writing more than 2bytes (half-word) at a time**
+**Note: values with * must be set to a multiple of the minimum granularity of flash write, in case of special devices that requires writing more than 2bytes (half-word) at a time**
 
 ##### Recovery Procedure
 At system start-up, the kernel:
 1. checks the first word of the swap (`PAGE_NUM` and `SWAP_FLAGS`).
-   If the first 16bits are:
+   If the first *16bits* (or the corr. length) are:
     - 0xFFFF this means the swap was erased correctly, and no recovery procedure is necessary: exit procedure. *No page with this number is supported by the system*
     - different from 0xFFFF, a swap operation was interrupted. Go to point 2
-2. checks the other 16bits (`SWAP_FLAGS`). If `COPY_COMPLETED` is:
+2. checks the other *16bits* (or the corr. length) (`SWAP_FLAGS`). If `COPY_COMPLETED` is:
     - not set, then the copy of the page in swap was still not completed: the original page is still intact, erase swap page and exit procedure.
     - set, then the original page may or may not have been erased, but all data is present in the swap. Go to point 3.
 3. erases the destination page, then reads each fragment, and copy it back. At the end of the process, erase the swap page.
