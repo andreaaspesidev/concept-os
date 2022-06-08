@@ -193,7 +193,7 @@ At system start-up, the kernel:
 *Note: the process can be more conservative if at the beginning of point 3 we avoid erasing the destination page, and simply start to copy data back by comparing first each byte of the source (swap) and destination. This could actually perform no copy at all if the page was not yet erased, or behave exactly like point 3 with more overhead. The only problem is a reboot that happened during a page erase operation, that could have brought the page into an unsafe state: better erase everything at the beginning to be sure.*
 
 #### A simpler solution
-If the Flash memory has erase sectors of constant size (possibly small), this becomes easier. For example, considering `STM32F303E` (that can be found on the `NUCLEO-F303RE`), these blocks are 2Kb in size (see [here](https://www.st.com/resource/en/reference_manual/dm00043574-stm32f303xb-c-d-e-stm32f303x6-8-stm32f328x8-stm32f358xc-stm32f398xe-advanced-arm-based-mcus-stmicroelectronics.pdf)):
+If the Flash memory has erase sectors of constant size (possibly small), this becomes easier. For example, considering `STM32F303RE` (that can be found on the `NUCLEO-F303RE`), these blocks are 2Kb in size (see [here](https://www.st.com/resource/en/reference_manual/dm00043574-stm32f303xb-c-d-e-stm32f303x6-8-stm32f328x8-stm32f358xc-stm32f398xe-advanced-arm-based-mcus-stmicroelectronics.pdf)):
 
 | Address Range             | Size (bytes)  |  Name     |
 |---------------------------|---------------|-----------|
