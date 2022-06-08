@@ -62,7 +62,7 @@ The working principle is quite intuitive:
 The standard buddy implementations relies on a memory structure made of a list of lists:
 
 - A `block` is a contiguous block of memory. It is identified by its level in the buddy allocator and its index in that level. It can be split into two blocks of half the size (1 level below) or be united with its buddy block to make a block of double the size (1 level above).
-- A `buddy_block` is relative to another block, and it’s the block the other blck could be united with. The buddy of block i is the block i xor 1, so the blocks 0 and 1 in a level are buddies, and so are 10 and 11 (but not 9 and 10!).
+- A `buddy_block` is relative to another block, and it’s the block the other block could be united with. The buddy of block i is the block i xor 1, so the blocks 0 and 1 in a level are buddies, and so are 10 and 11 (but not 9 and 10!).
 - A `level` is a list of blocks of the same size. A buddy allocator starts off with a single level 0 block which can then be split into two level 1 blocks, and so on. On each level, the first block has index 0, so the blocks 0 and 1 at level 4 if united would generate the block level 0 at level 3 (and vice-versa if split).
 - `num_levels` is the number of non-leaf levels for a buddy allocator. If we support levels 0, 1 and 2 (ie. our L0 block can be split into 2 L1 blocks or 4 L2 blocks), our level number would be 2.
 - The `block_size` shall be the size of each block on the leaf level, so the minimum size of a memory block that we can return. One level above that, the blocks will be of size block_size * 2 and so on.
