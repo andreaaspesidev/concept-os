@@ -4,7 +4,7 @@ On STM32 boards, programs are stored in Flash Memory. They can be also directly 
 ## Flash Programming
 Flash memory differs from standard memory for what concerns writes. 
 
-In order to reprogram flash memory, an `in-application programming (IAP)` is needed: IAP allows the user to re-program the Flash memory while the application is running.
+In order to reprogram flash memory, an `in-application programming (IAP)` is needed: IAP allows the user to re-program the Flash memory while the application is running (*the CPU will likely stall during the operation*).
 
 Flash memory is divided into erase sectors, which can be in some cases also of different sizes and rather large (es. STMF4, STMF7, ...).
 
@@ -25,7 +25,7 @@ The only hard constraint for the positioning of the code in flash (for Cortex-M4
 <img src="images/cortex-m4-vectors.png">
 
 
-For simplicity, we can start placing all the Kernel code at the beginning of the Flash, along with all entrypoints needed by the hardware (*HardFault, DefaultHandler, ...*)
+For simplicity, we can start placing all the Kernel code at the beginning of the Flash, along with all entry-points needed by the hardware (*HardFault, DefaultHandler, ...*)
 
 ```
 +--------------+------+------....
@@ -35,7 +35,7 @@ For simplicity, we can start placing all the Kernel code at the beginning of the
 +--------------+------+------....
 ```
 
-The Kenel can now start, but in order to have a functioning systems also Components must be loaded. Components are also placed in Flash as `HBF` files (see `toolchain/HubrisBinaryFormat.md`).
+The Kernel can now start, but in order to have a functioning systems also Components must be loaded. Components are also placed in Flash as `HBF` files (see `toolchain/HubrisBinaryFormat.md`).
 
 From a design perspective:
 - the kernel must be able to find these HBF binaries in flash. As the system can be updated, this information is not known a priori, and must be stored itself in flash.
@@ -126,7 +126,7 @@ As anticipated, swapping must be supported at kernel level, in order to be able 
 The system must also have the ability to recover from this operation if a fault (and reboot) occurs.
 
 ##### System Call
-Three informations must be provided to this system call:
+Three fields must be provided to this system call:
 - A 16bit number indicating the flash page to be processed. The maximum number of supported pages is *2^16 -2* = 65534 (0xFFFE)
 - An additional 8bit number indicating:
     - `0` whether this page starts with a valid header
@@ -137,7 +137,7 @@ Three informations must be provided to this system call:
 ##### Algorithm
 The procedure involves the following steps:
 1. the kernel ensures the swap page is erased (should always be, or enters recover procedure).
-2. *if context switches are allowed during this procedure, the kernel scans the list of active components, determining for each if their code actually intersect with this page (by using the address of their HBF + their size). Any component with an intesection is temporarly put on hold (will not be scheduled in a context switch).*
+2. *if context switches are allowed during this procedure, the kernel scans the list of active components, determining for each if their code actually intersect with this page (by using the address of their HBF + their size). Any involved component is temporarily put on hold (will not be scheduled in a context switch).*
 3. writes the flash page number of the target page being swapped in the beginning of the swap page (`PAGE_NUM`).
 4. begin scanning the page, copying only `allocated_blocks` (`ALLOCATED=1 DISMISSED=0`). To this purpose, it uses the information provided to the system call to detect correctly where to start reading headers. 
 Before start copying each block (or part of a block), called `fragments`, the kernel writes in the flash the target address for the copy back (`TA`). Then the actual data copy begins (in `Data`).
@@ -165,20 +165,20 @@ where:
 - `FS` is the size of the following fragment (= how much to be copied). **It's written after the data has been copied to the fragment, so if it's present, then it means the fragment is valid**
 - `Data` contains the actual fragment data.
 
-*Note: the swap procedure must be called on a page with at least a `freed_block` or `free_block`, as should always be the case. The correspoding data is not copied to swap, and this space can be used for the headers of the swap. Otherwise there is not enough space in swap, and the whole operation will fail: the kernel can be as careful as it wants during the process, actually managing this corner case.*
+*Note: the swap procedure must be called on a page with at least a `freed_block` or `free_block`, as should always be the case. The corresponding data is not copied to swap, and this space can be used for the headers of the swap. Otherwise there is not enough space in swap, and the whole operation will fail: the kernel can be as careful as it wants during the process, actually managing this corner case.*
 
 ##### Recovery Procedure
 At system start-up, the kernel:
 1. checks the first word of the swap (`PAGE_NUM` and `SWAP_FLAGS`).
    If the first 16bits are:
-    - 0xFFFF this means the swap was erased correcly, and no recovery procedure is necessary: exit procedure. *No page with this number is supported by the system*
+    - 0xFFFF this means the swap was erased correctly, and no recovery procedure is necessary: exit procedure. *No page with this number is supported by the system*
     - different from 0xFFFF, a swap operation was interrupted. Go to point 2
 2. checks the other 16bits (`SWAP_FLAGS`). If `COPY_COMPLETED` is:
     - not set, then the copy of the page in swap was still not completed: the original page is still intact, erase swap page and exit procedure.
     - set, then the original page may or may not have been erased, but all data is present in the swap. Go to point 3.
 3. erases the destination page, then reads each fragment, and copy it back. At the end of the process, erase the swap page.
 
-*Note: the process can be more conservative if at the beginning of point 3 we avoid erasing the destination page, and simply start to copy data back by compaing first each byte of the source (swap) and destination. This could actually perform no copy at all if the page was not yet erased, or behave exactly like point 3 with more overhead. The only problem is a reboot that happened during a page erase operation, that could have brought the page into an unsafe state: better erase everything at the beginning to be sure.*
+*Note: the process can be more conservative if at the beginning of point 3 we avoid erasing the destination page, and simply start to copy data back by comparing first each byte of the source (swap) and destination. This could actually perform no copy at all if the page was not yet erased, or behave exactly like point 3 with more overhead. The only problem is a reboot that happened during a page erase operation, that could have brought the page into an unsafe state: better erase everything at the beginning to be sure.*
 
 #### A simpler solution
 If the Flash memory has erase sectors of constant size (possibly small), this becomes easier. For example, considering `STM32F303E` (that can be found on the `NUCLEO-F303RE`), these blocks are 2Kb in size (see [here](https://www.st.com/resource/en/reference_manual/dm00043574-stm32f303xb-c-d-e-stm32f303x6-8-stm32f328x8-stm32f358xc-stm32f398xe-advanced-arm-based-mcus-stmicroelectronics.pdf)):
