@@ -162,7 +162,7 @@ When the copy of a fragment is completed, it writes its size into `FS`.
 
 The swap layout is the following:
 ```
-    | 2 bytes* |    2 bytes*    | 4 bytes* | 4 bytes* | ...  | ... | 4 bytes | 4 bytes | ...  |
+    | 2 bytes* |    2 bytes*    | 4 bytes*| 4 bytes*| ...  | ... | 4 bytes | 4 bytes | ...  |
     | PAGE_NUM | COPY_COMPLETED |   TA    |   FS    | Data | ... |    TA   |    FS   | Data |
     |                           |                          |     |
     |                           |                          |     \-> fragment N start
