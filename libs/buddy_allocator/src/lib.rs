@@ -24,6 +24,7 @@ pub trait BuddyAllocator {
 /// NUM_SLOTS: number of levels +1. Given the number of blocks, NUM_SLOTS = ceil(log2(NUM_BLOCKS)) + 1
 /// 
 /// TODO: replace level 0 with a flag (save up to NUM_BLOCKS bytes)
+/// TODO: automatically infer NUM_SLOTS when the compiler will support operations on constants
 pub struct BuddyAllocatorImpl
     <
         const START_ADDR: u32,
@@ -140,7 +141,7 @@ impl <const START_ADDR: u32,
             // remove current block (in last place)
             self.free_lists[level].pop();
             // remove buddy block
-            self.free_lists[level].swap_remove(buddy_idx);
+            self.free_lists[level].swap_remove(buddy_idx);  //TODO: check that an unordered list is not a problem for allocations
             // add free block to free list 1 level above
             self.free_lists[level - 1].push(block_num / 2).unwrap();
             // repeat the process!
