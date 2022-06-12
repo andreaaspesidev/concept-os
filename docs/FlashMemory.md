@@ -137,7 +137,7 @@ This simplifies a lot the algorithm, that is almost the original one:
 
 >*Note: in this version, memory recollection is done actively at any deallocation. As a consequence, we have an unbalanced wearing of the flash in the left side of the space of the allocator, but at the same time the impact on the system for any allocation/deallocation is almost constant (if blocks are small): this approach is advisable for real-time constrained systems.*
 
-**Recovery**
+**Recovery**  
 If we find one `freed_block` during the initial scan, then this means something interrupted a deallocation. Recover the process by launching the deallocation request on this block (as for point 2 above).
 Then scan again, populate `free_list`, and the system is ready!
 
@@ -163,12 +163,12 @@ The algorithm must ensure de-allocations are done keeping the system consistent,
 
 >**Assumption: the first block managed by the allocator starts at the beginning of a flash page.** If the allocator covers also the area of the kernel (more at the end), then the first managed block will start at the next free page.
 
-**Challenges**
+**Challenges**  
 There are two main problems:
 - an `allocated_block` next to be deallocated can share the same flash page of other `allocated_blocks`, `free_blocks` and `freed_blocks`. It's not feasible anymore to simply erase the page to recover the free space. It's necessary to copy the data to be retained of that page in the swap, erase the page, then copy back data: consistency must be ensured!
 - in order to transform a `freed_block` into a `free_block`, the whole block must be erased. The header of the block must be erased only when the remaining part of the block is erased as well, otherwise we would experience unexpected system behaviors.
 
-**Changes**
+**Changes**  
 The algorithm works as the previous case, the only difference now is the deallocation section: 
 - when deallocating a block, we must erase this block immediately to avoid having a complex write-ahead logging mechanism.
 - erasing a block is not that simple in this case, as it could be sharing the flash page with other `allocated_blocks`. *It's not possible to have more than one `freed_block` in the system, and this simplifies the procedure.* We must use the swap section in order to correctly erase the involved pages without data losses.
@@ -205,7 +205,7 @@ The system must also have the ability to recover from this operation if a fault 
 
 **The kernel at start-up ensures the swap page is erased. If not enters recover procedure explained below.**
 
-**System Call**
+**System Call**  
 Three fields must be provided to this system call:
 - A 16bit number (`SC.NUM`) indicating the flash page to be processed. The maximum number of supported pages is *2^16 -2* = 65534 (0xFFFE) 
 - An additional 8bit number (`SC.START_TYPE`) indicating:
@@ -214,7 +214,7 @@ Three fields must be provided to this system call:
     - `2` whether this page start with data that must not be preserved (in this case, its length is interpreted as how many bytes to skip to get the next valid header, if any.
 - A 32bit integer (`SC.START_SIZE`) indicating the length as specified for option `1` and `2`. For option `0` it's a don't care. *Should be less than the page size, as a simple erase can be performed in that case*.
 
-**Algorithm**
+**Algorithm**  
 The procedure involves the following steps:
 1. *If context switches are allowed during this procedure, the kernel scans the list of active components, determining for each if their code actually intersect with this page (by using the address of their HBF + their size). Any involved component is temporarily put on hold (will not be scheduled in a context switch).*
 2. Writes the flash page number of the target page being swapped in the beginning of the swap page (`PAGE_NUM`).
@@ -256,7 +256,7 @@ The swap layout is the following:
 
 >Note: values with * must be set to a multiple of the minimum granularity of flash write, in case of special devices that requires writing more than 2bytes (half-word) at a time
 
-**Recovery Procedure**
+**Recovery Procedure**  
 At system start-up, the kernel:
 1. Reads the first field `PAGE_NUM`:
     1. If `0xFFFF`, then considers the swap erased. Exits the procedure
