@@ -70,6 +70,8 @@ Problems of internal fragmentation are inevitable.
 
 See `RAMMemory.md` for details.
 
+<img src="images/buddy_allocator.svg">
+
 ### Storing metadata
 One of the critical aspects of the allocator is the ability to reconstruct flash state after an hard reboot. Two different strategies can be used:
 - store the metadata about flash layout in a dedicated flash area.
@@ -101,6 +103,8 @@ Total size: 12 bytes
 
 >Note: values with * must be set to a multiple of the minimum granularity of flash write, in case of special devices that requires writing more than 2bytes (half-word) at a time
 
+<img src="images/allocator_metadata.svg">
+
 ### Terminology
 Let's define:
 - A `free_block` is a block that was erased, and that can be written in any location. It's not assigned yet. (`ALLOCATED = 0`, `DISMISSED = 0`)
@@ -110,7 +114,13 @@ Let's define:
 ### Reconstructing State from Metadata
 It's always possible to retrieve the `free_list` from the flash memory upon start-up, using the following procedure:
 
-<img src="images/allocator_reconstruction.png">
+1. Start scanning from a fixed position (usually the first address available to the allocator).
+2. Read the header at the corresponding position. If the block has:
+    - `ALLOCATED = 0`, then surely this is a single `free_block`. Add it to the free list (`#BLOCK = ADDR[BH] / BLOCK_SIZE`), **run buddy merger**, then move ahead of 1 `BLOCK_SIZE`.
+    - `ALLOCATED = 1`, then this space is not free (could be `allocated_block` or `freed_block`). Skip this block, moving ahead of `ALLOCATOR_SIZE >> BH.level`.
+3. For each block, repeat step 2. When the end of the available space is reached, then terminate.
+
+<img src="images/allocator_reconstruction.svg">
 
 ### Constant Flash Page Size
 Most devices and flash controllers offers small constant-size pages. For example, considering `STM32F303RE` (that can be found on the `NUCLEO-F303RE`), these blocks are 2Kb in size (see [here](https://www.st.com/resource/en/reference_manual/dm00043574-stm32f303xb-c-d-e-stm32f303x6-8-stm32f328x8-stm32f358xc-stm32f398xe-advanced-arm-based-mcus-stmicroelectronics.pdf)):
@@ -130,16 +140,22 @@ This simplifies a lot the algorithm, that is almost the original one:
 >**We assume that the memory was initially completely erased.**
 
 1. At the start of the Flash component, we scan the whole flash, as specified in `Reconstructing State from Metadata`. In a normal case we should find only `allocated_blocks` or `free_blocks`. If we find one `freed_block`, go to **recovery** below.
+    <img src="images/cfp_recovery_entry.svg">
 2. upon any block deallocation, we mark the block `DEALLOCATED = 1`. We have two possible behaviors:
     - the block was on the last level (`HB.SIZE = BLOCK_SIZE`), so covers a single flash page. Just erase that page, and add the block to the `free_list`.
     - the block covers more than one flash page. **It's critical to start erasing the pages of the block from the last one up to the one containing the header**: *this ensures consistency in case of system reboot*. Then the whole block is added back to the `free_list`.
+    <img src="images/cfp_deallocation.svg">
 3. upon any block allocation, we search for a candidate `free_block` in the `free_list`. If no block of the requested size is found, try to split another block from an upper `level` of the `free_list`. It's the same behavior of the standard case. If no such block is found, we have no more memory: **the allocation is rejected**.
 
 >*Note: in this version, memory recollection is done actively at any deallocation. As a consequence, we have an unbalanced wearing of the flash in the left side of the space of the allocator, but at the same time the impact on the system for any allocation/deallocation is almost constant (if blocks are small): this approach is advisable for real-time constrained systems.*
 
+>**Note: if a reboot occurs during the erase operation, then the block enters in an undefined state. Depending on the hardware, this could be solved by  checking all `free_blocks` at start-up and erase again if some written data is found: this would solve the situation where the block is marked `free_block`, as only the first two bytes were erased, but then still contains the old data.**
+
 **Recovery**  
 If we find one `freed_block` during the initial scan, then this means something interrupted a deallocation. Recover the process by launching the deallocation request on this block (as for point 2 above).
 Then scan again, populate `free_list`, and the system is ready!
+
+<img src="images/cfp_recovery.svg">
 
 >*Note: Marking the block as deallocated is needed, otherwise if a reboot occurs while erasing the last pages of the block (but not yet the page containing the block header), then the block apparently is valid, but in practice is missing data.*
 
@@ -161,12 +177,14 @@ With the following variations to the algorithm, it's possible to use also these 
 
 The algorithm must ensure de-allocations are done keeping the system consistent, or in any case have the ability to recovery from an unexpected system reboot in any point of the procedure.
 
->**Assumption: the first block managed by the allocator starts at the beginning of a flash page.** If the allocator covers also the area of the kernel (more at the end), then the first managed block will start at the next free page.
+>**Assumption: the first block managed by the allocator starts at the beginning of a flash page, and the last block ends at the end of a flash page.** If the allocator covers also the area of the kernel (more at the end), then the first managed block will start at the next free page.
 
 **Challenges**  
 There are two main problems:
 - an `allocated_block` next to be deallocated can share the same flash page of other `allocated_blocks`, `free_blocks` and `freed_blocks`. It's not feasible anymore to simply erase the page to recover the free space. It's necessary to copy the data to be retained of that page in the swap, erase the page, then copy back data: consistency must be ensured!
 - in order to transform a `freed_block` into a `free_block`, the whole block must be erased. The header of the block must be erased only when the remaining part of the block is erased as well, otherwise we would experience unexpected system behaviors.
+
+<img src="images/vfp_layout.svg">
 
 **Changes**  
 The algorithm works as the previous case, the only difference now is the deallocation section: 
@@ -176,28 +194,40 @@ The algorithm works as the previous case, the only difference now is the dealloc
 The deallocation procedure works as follows:
 
 1. Upon deallocation request, we mark the block with `DEALLOCATED = 1`. *This marker will be used in a write-ahead logging fashion to recover in case a reboot occurs*.
-2. We start scanning the pages involved in the block (assuming the block extends from page `#PS` to `#PE`), starting from the last one.
-    - If this page contains no `allocated_blocks` (so only `free_blocks` and a fragment of this block), then we can simply erase this page.
-    - Otherwise, called `BLOCK_PORTION_SIZE` the portion of size of this block that we have in this page, we launch the swap procedure on this page, with arguments:
-        - `SC.NUM <= #PE`
-        - `SC.START_TYPE <= 2` *(do not preserve)*
-        - `SC.START_SIZE <= BLOCK_PORTION_SIZE`
-3. The swapping procedure will free the specified portion of the block, maintaining `allocated_blocks`. It also ensures consistency upon unexpected reboots. After the swap procedure completes, it's time to move to the `#PE - i` pages, assumed different from the `#PS` page. We know that the whole area of these pages is a fragment of our block, so we can simply erase them (*no swapping needed*).
-4. When we reach the `#PS` page, we know that this page will end with the starting part of our block, still can contain `allocated_blocks` in the starting part: swapping is needed. In order to correctly launch the swap, we must know the status of the first part of this page. To do so, read the flash from the first block, keeping two vars `PREV_HEADER`, `CURR_HEADER`. Each time read into `CURR_HEADER` the header. Upon page change, `PREV_HEADER <= CURR_HEADER`. When we reach `#PS`, we stop and read `PREV_HEADER`, to compile the syscall arguments:
-    - If `ADDR[PREV_HEADER] + BLOCK_SIZE = #PS.START_ADDR`: *(the block terminates here, then a valid header is present)*
+
+2. Called `#PS` the page containing the header of the block,start scanning the space from the first header location of the allocator, by keeping track of the last header of the page `#PS - 1` (called `PREV_HEADER`). If `#PS` is the first page of the allocator, then `PREV_HEADER` is undefined. A simple algorithm can be used: 
+    > Keeping two vars `PREV_HEADER`, `CURR_HEADER`, each time read into `CURR_HEADER` the header. Upon page change, `PREV_HEADER <= CURR_HEADER`. When we reach `#PS`, we stop.
+
+3. Now we get the flash pages that contains even partially this block. We have two different situations:
+    - The block is contained in a single page (`#PS`). Go to point *4*.
+
+    - The block overlaps with at least 2 pages. This means it will be at the end of the first (`#PS`), will cover entirely any intermediate page, and will end in the beginning portion of the last page (`#PE`).
+        1. We start from page `#PE`. Called `BLOCK_PORTION_SIZE` the portion of size of this block that we have in this page, we launch the swap procedure on this page, with arguments:
+                - `SC.NUM <= #PE`
+                - `SC.START_TYPE <= 2` *(do not preserve)*
+                - `SC.START_SIZE <= BLOCK_PORTION_SIZE`
+        2. For each intermediate page (between `#PE` and `#PS`), we know that the whole area of these pages is a fragment of our block, so we can simply **erase** them (*no swapping needed*).
+        3. When we reach page `#PS`, go to point *4*.
+
+4. We are now processing the page `#PS`, that contains the block header. We can scan the page by starting from `PREV_HEADER` (found at point *2*). We have two cases:
+    - `PREV_HEADER` is not defined: `#PS` is the first page. Just call swapping with:
         - `SC.NUM <= #PS`
-        - `SC.START_TYPE <= 0` (*automatic*)
-    - If `ADDR[PREV_HEADER] + BLOCK_SIZE > #PS.START_ADDR`:
-        - If `PREV_HEADER` states `free_block`, then:
+        - `SC.START_TYPE <= 0` *(automatic)*
+    - `PREV_HEADER` is defined: we could have a block overlapping with the start of this page.
+        - If `ADDR[PREV_HEADER] + BLOCK_SIZE = #PS.START_ADDR`: *(the block terminates here, then a valid header is present)*
             - `SC.NUM <= #PS`
-            - `SC.START_TYPE <= 2` *(do not preserve)*
-            - `SC.START_SIZE <= ADDR[PREV_HEADER] + BLOCK_SIZE - #PS.START_ADDR`
-        - If `PREV_HEADER` states `allocated_block`, then:
-            - `SC.NUM <= #PS`
-            - `SC.START_TYPE <= 1` *(preserve)*
-            - `SC.START_SIZE <= ADDR[PREV_HEADER] + BLOCK_SIZE - #PS.START_ADDR`
-        - *The other case is not possible, as will be resolved at reboot*
-    - *The other case is not possible by construction*
+            - `SC.START_TYPE <= 0` (*automatic*)
+        - If `ADDR[PREV_HEADER] + BLOCK_SIZE > #PS.START_ADDR`:
+            - If `PREV_HEADER` states `free_block`, then:
+                - `SC.NUM <= #PS`
+                - `SC.START_TYPE <= 2` *(do not preserve)*
+                - `SC.START_SIZE <= ADDR[PREV_HEADER] + BLOCK_SIZE - #PS.START_ADDR`
+            - If `PREV_HEADER` states `allocated_block`, then:
+                - `SC.NUM <= #PS`
+                - `SC.START_TYPE <= 1` *(preserve)*
+                - `SC.START_SIZE <= ADDR[PREV_HEADER] + BLOCK_SIZE - #PS.START_ADDR`
+            - *The other case is not possible, as will be resolved at reboot*
+        - *The other case is not possible by construction*
 
 #### Swapping
 Swapping must be supported at kernel level, in order to be able to swap the block of the Flash component itself during the operation.
@@ -215,25 +245,33 @@ Three fields must be provided to this system call:
 - A 32bit integer (`SC.START_SIZE`) indicating the length as specified for option `1` and `2`. For option `0` it's a don't care. *Should be less than the page size, as a simple erase can be performed in that case*.
 
 **Algorithm**  
+
+<img src="images/vfp_swap_cfg.svg">
+
 The procedure involves the following steps:
 1. *If context switches are allowed during this procedure, the kernel scans the list of active components, determining for each if their code actually intersect with this page (by using the address of their HBF + their size). Any involved component is temporarily put on hold (will not be scheduled in a context switch).*
-2. Writes the flash page number of the target page being swapped in the beginning of the swap page (`PAGE_NUM`).
-3. Begin scanning the page. The first fragment can be deduced from the arguments of the system call, the other fragments are detected by reading the block headers.
+2. Begin scanning the page. The first fragment can be deduced from the arguments of the system call, the other fragments are detected by reading the block headers.
     1.  Read the arguments of the system call, and perform the steps below. 
-        - If `SC.PG_START = 0`, then follow the normal procedure (go to point *3.2*). 
-        - If `SC.PG_START = 1`, add the first fragment composed as such (`FRGM_TARGET = 0`, `FRGM_SIZE = SC.START_SIZE`, `FRGM_DATA <= PG[0..SC.START_SIZE]`).
-        - If `SC.PG_START = 2`, execute point *3.2* after moving `SC.START_SIZE` bytes (`PG.POS += SC.START_SIZE`). (*End of page should be never reached, but eventually we could just move to point 4*).
-    2. At this point, we know the position of the next block header inside this page. Read and decode it, then execute the following steps. Repeat this point (*3.2*) for each header after this, until the end of page is reached and move to point *4*.
-        - If `allocated_block`, copy the whole block (header + data) as a fragment with (`FRGM_TARGET = PG.POS`, `FRGM_SIZE = MIN(BH.SIZE,PG.REMAINING_SIZE)`, `FRGM_DATA <= PG[PG.POS..FRGM_SIZE]`).
+        - If `SC.START_TYPE = 0`, then follow the normal procedure (go to point *2.2*) with `PG.POS <= 0`. 
+        - If `SC.START_TYPE = 1`, add the first fragment composed as such (`FRGM_TARGET = 0`, `FRGM_SIZE = SC.START_SIZE`, `FRGM_DATA <= PG[0..SC.START_SIZE]`). Then `PG.POS <= SC.START_SIZE`.
+        - If `SC.START_TYPE = 2`, execute point *2.2* after moving `SC.START_SIZE` bytes (`PG.POS <= SC.START_SIZE`). (*End of page should be never reached, but eventually we could just move to point 3*).
+    2. At this point, we know the position of the next block header inside this page (`START_HEADER`), as `ADDR[START_HEADER] = PG.POS + PG.START_ADDR`. If:
+        - `SC.START_TYPE = 1`, go to point *2.3*.
+        - Otherwise, scan for `allocated_blocks` inside this block, to check if swapping is actually required. 
+            - If none is found, then just **erase** the page and terminate the procedure.
+            - Otherwise, move to point *2.3*.
+    
+    3. Write the flash page number of the target page being swapped in the beginning of the swap page (`PAGE_NUM`). Return to `START_HEADER`. Read and decode it, then execute the following steps. Repeat this point (*2.3*) for each header after this, until the end of page is reached and move to point *3*.
+        - If `allocated_block`, copy the whole block (header + data) as a fragment with (`FRGM_TARGET <= PG.POS`, `FRGM_SIZE <= MIN(BH.SIZE,PG.REMAINING_SIZE)`, `FRGM_DATA <= PG[PG.POS..FRGM_SIZE]`).
         - If `free_block`, just skip this fragment: `PG.POS += PG.BLOCK_SIZE`.
         - If `freed_block`, skip the fragment (*it's the only block allowed on this type, and we are erasing it*)
 
-4. At this point, the swap page contains all the needed information: mark `COPY_COMPLETED = 1`, then launch the **erase** on `PAGE_NUM`. *From this point on, if something goes wrong we need to recover, or the system will not be able to restart properly.*
-5. As soon as the erase operation is completed, start copying back data: read each fragment header in the swap. If when performing the operation, we reach end of swap, consider the copy completed (and go to point *6*).
+3. At this point, the swap page contains all the needed information: mark `COPY_COMPLETED = 1`, then launch the **erase** on `PAGE_NUM`. *From this point on, if something goes wrong we need to recover, or the system will not be able to restart properly.*
+4. As soon as the erase operation is completed, start copying back data: read each fragment header in the swap. If when performing the operation, we reach end of swap, consider the copy completed (and go to point *5*).
     - If `FRGM_SIZE = 0xFFFF_FFFF`, then the copy-back is completed. Go to point *6*.
     - Otherwise copy back: `PG[FRGM_TARGET..FRGM_TARGET+FRGM_SIZE] <= SWAP[S:S+FRGM_SIZE]`. 
 
-6. The copy-back is completed. When this happens, **erase** the swap page and exit.
+5. The copy-back is completed. When this happens, **erase** the swap page and exit.
 
 The swap layout is the following:
 | Size (bytes) | Field Name      | Description
@@ -262,7 +300,7 @@ At system start-up, the kernel:
     1. If `0xFFFF`, then considers the swap erased. Exits the procedure
     2. Otherwise, a swap operation was interrupted. Checks the `COPY_COMPLETED` flag:
         - If `COPY_COMPLETED = 0`, then data was still being copied to the swap before the interruption. It's safe to **erase** the swap and exit the procedure.
-        - If `COPY_COMPLETED = 1`, then the kernel has to copy data back. To this purpose, in order to be sure, **erase** again the page `PAGE_NUM` (see notes). Then follows the steps from point *5* of the standard algorithm (steps *5*, *6*), that conclude with an erase of the swap page. Then exits the procedure.
+        - If `COPY_COMPLETED = 1`, then the kernel has to copy data back. To this purpose, in order to be sure, **erase** again the page `PAGE_NUM` (see notes). Then follows the steps from point *4* of the standard algorithm (steps *4*, *5*), that conclude with an erase of the swap page. Then exits the procedure.
 
 *Note: the process can be more erase-conservative if we avoid erasing the destination page a priori, and simply start to copy data back by comparing first each byte of the source (swap) and destination. This could actually perform no copy at all if the page was not yet erased, or behave exactly like now with more overhead. The only problem is a reboot that happened during a page erase operation, that could have brought the page into an unsafe state: it's better to erase everything to be sure.*
 
