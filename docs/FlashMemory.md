@@ -303,6 +303,21 @@ At system start-up, the kernel:
 
 *Note: the process can be more erase-conservative if we avoid erasing the destination page a priori, and simply start to copy data back by comparing first each byte of the source (swap) and destination. This could actually perform no copy at all if the page was not yet erased, or behave exactly like now with more overhead. The only problem is a reboot that happened during a page erase operation, that could have brought the page into an unsafe state: it's better to erase everything to be sure.*
 
+#### Examples
+In order to clarify the process, let's start from the following base layout. In each run, we will restart from the layout and deallocated a different block.
+
+**Layout**  
+<img src="images/vfp_example_0.svg">
+
+**First Block**  
+<img src="images/vfp_example_1.svg">
+
+**Second Block**  
+<img src="images/vfp_example_2.svg">
+
+**Third Block**  
+<img src="images/vfp_example_3.svg">
+
 
 ### Kernel Flash Conflicts
 Also the Kernel need space (at the beginning of the Flash).
