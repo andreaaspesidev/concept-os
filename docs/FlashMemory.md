@@ -202,30 +202,29 @@ The deallocation procedure works as follows:
     - The block is contained in a single page (`#PS`). Go to point *4*.
 
     - The block overlaps with at least 2 pages. This means it will be at the end of the first (`#PS`), will cover entirely any intermediate page, and will end in the beginning portion of the last page (`#PE`).
-        1. We start from page `#PE`. Called `BLOCK_PORTION_SIZE` the portion of size of this block that we have in this page, we launch the swap procedure on this page, with arguments:
+        1. We start from page `#PE`. We launch the swap procedure on this page, with arguments:
                 - `SC.NUM <= #PE`
                 - `SC.START_TYPE <= 2` *(do not preserve)*
-                - `SC.START_SIZE <= BLOCK_PORTION_SIZE`
-        2. For each intermediate page (between `#PE` and `#PS`), we know that the whole area of these pages is a fragment of our block, so we can simply **erase** them (*no swapping needed*).
-        3. When we reach page `#PS`, go to point *4*.
+                - `SC.START_SIZE <= ADDR[BH] + BH.SIZE - #PE.START_ADDR` *(where `BH.SIZE = ALLOCATOR.SIZE >> BH.LEVEL`)*
+        2. For each intermediate page (between `#PE` and `#PS`), we know that the whole area of these pages is a fragment of our block, so we can simply **erase** them (*no swapping needed*). When we reach page `#PS`, go to point *4*.
 
 4. We are now processing the page `#PS`, that contains the block header. We can scan the page by starting from `PREV_HEADER` (found at point *2*). We have two cases:
     - `PREV_HEADER` is not defined: `#PS` is the first page. Just call swapping with:
         - `SC.NUM <= #PS`
         - `SC.START_TYPE <= 0` *(automatic)*
     - `PREV_HEADER` is defined: we could have a block overlapping with the start of this page.
-        - If `ADDR[PREV_HEADER] + BLOCK_SIZE = #PS.START_ADDR`: *(the block terminates here, then a valid header is present)*
+        - If `ADDR[PREV_HEADER] + PREV_HEADER.SIZE = #PS.START_ADDR`: *(the block terminates here, then a valid header is present)*
             - `SC.NUM <= #PS`
             - `SC.START_TYPE <= 0` (*automatic*)
-        - If `ADDR[PREV_HEADER] + BLOCK_SIZE > #PS.START_ADDR`:
+        - If `ADDR[PREV_HEADER] + PREV_HEADER.SIZE > #PS.START_ADDR`:
             - If `PREV_HEADER` states `free_block`, then:
                 - `SC.NUM <= #PS`
                 - `SC.START_TYPE <= 2` *(do not preserve)*
-                - `SC.START_SIZE <= ADDR[PREV_HEADER] + BLOCK_SIZE - #PS.START_ADDR`
+                - `SC.START_SIZE <= ADDR[PREV_HEADER] + PREV_HEADER.SIZE - #PS.START_ADDR`
             - If `PREV_HEADER` states `allocated_block`, then:
                 - `SC.NUM <= #PS`
                 - `SC.START_TYPE <= 1` *(preserve)*
-                - `SC.START_SIZE <= ADDR[PREV_HEADER] + BLOCK_SIZE - #PS.START_ADDR`
+                - `SC.START_SIZE <= ADDR[PREV_HEADER] + PREV_HEADER.SIZE - #PS.START_ADDR`
             - *The other case is not possible, as will be resolved at reboot*
         - *The other case is not possible by construction*
 
@@ -279,14 +278,14 @@ The swap layout is the following:
 |      2*      |  PAGE_NUM       | The flash page currently under swapping/erasing
 |      2*      |  COPY_COMPLETED | Flag indicating whether the whole page content has been copied into the swap page (for swapping)
 |      4       |  FRGM_TARGET (1)   | Beginning of the first fragment (start-page relative)
-|      4       |  FRGM_SIZE   (1)   | Remaining size of the first fragment (can be more than the flash page)
+|      4       |  FRGM_SIZE   (1)   | Remaining size of the first fragment
 |      X       |  FRGM_DATA   (1)   | Contains the actual data of the fragment (optional header + block data)
 |      4       |  FRGM_TARGET (2)   | Beginning of the fragment (start-page relative)
-|      4       |  FRGM_SIZE   (2)   | Remaining size of the fragment (can be more than the flash page)
+|      4       |  FRGM_SIZE   (2)   | Remaining size of the fragment
 |      X       |  FRGM_DATA   (2)   | Contains the actual data of the fragment (optional header + block data)
 |     ...      |  ...               | ...
 |      4       |  FRGM_TARGET (N)   | Beginning of the last fragment (start-page relative)
-|      4       |  FRGM_SIZE   (N)   | Remaining size of the last fragment (can be more than the flash page)
+|      4       |  FRGM_SIZE   (N)   | Remaining size of the last fragment
 |      X       |  FRGM_DATA   (N)   | Contains the actual data of the fragment (optional header + block data)
 
 
