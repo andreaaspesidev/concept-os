@@ -134,16 +134,14 @@ Most devices and flash controllers offers small constant-size pages. For example
 |   .............           |  2K           | ......    |
 | 0x0807 F800 - 0x0807 FFFF |  2K           | Page 255  |
 
-In this case, the `BLOCK_SIZE` of the buddy allocator is chosen to be equal to the page size (`2Kb` in this case).
+In this case, the `BLOCK_SIZE` of the buddy allocator is chosen to be a multiple of the page size (`2Kb`, `4Kb`, ...).
 This simplifies a lot the algorithm, that is almost the original one:
 
 >**We assume that the memory was initially completely erased.**
 
 1. At the start of the Flash component, we scan the whole flash, as specified in `Reconstructing State from Metadata`. In a normal case we should find only `allocated_blocks` or `free_blocks`. If we find one `freed_block`, go to **recovery** below.
     <img src="images/cfp_recovery_entry.svg">
-2. upon any block deallocation, we mark the block `DEALLOCATED = 1`. We have two possible behaviors:
-    - the block was on the last level (`HB.SIZE = BLOCK_SIZE`), so covers a single flash page. Just erase that page, and add the block to the `free_list`.
-    - the block covers more than one flash page. **It's critical to start erasing the pages of the block from the last one up to the one containing the header**: *this ensures consistency in case of system reboot*. Then the whole block is added back to the `free_list`.
+2. upon any block deallocation, we mark the block `DEALLOCATED = 1`. The block covers one or more flash pages. **It's critical to start erasing the pages of the block from the last one up to the one containing the header**: *this ensures consistency in case of system reboot*. Then the whole block is added back to the `free_list`.
     <img src="images/cfp_deallocation.svg">
 3. upon any block allocation, we search for a candidate `free_block` in the `free_list`. If no block of the requested size is found, try to split another block from an upper `level` of the `free_list`. It's the same behavior of the standard case. If no such block is found, we have no more memory: **the allocation is rejected**.
 
@@ -252,7 +250,7 @@ The procedure involves the following steps:
 2. Begin scanning the page. The first fragment can be deduced from the arguments of the system call, the other fragments are detected by reading the block headers.
     1.  Read the arguments of the system call, and perform the steps below. 
         - If `SC.START_TYPE = 0`, then follow the normal procedure (go to point *2.2*) with `PG.POS <= 0`. 
-        - If `SC.START_TYPE = 1`, add the first fragment composed as such (`FRGM_TARGET = 0`, `FRGM_SIZE = SC.START_SIZE`, `FRGM_DATA <= PG[0..SC.START_SIZE]`). Then `PG.POS <= SC.START_SIZE`.
+        - If `SC.START_TYPE = 1`, write the flash page number of the target page being swapped in the beginning of the swap page (`PAGE_NUM`), then add the first fragment composed as such (`FRGM_TARGET = 0`, `FRGM_SIZE = SC.START_SIZE`, `FRGM_DATA <= PG[0..SC.START_SIZE]`). Then `PG.POS <= SC.START_SIZE`.
         - If `SC.START_TYPE = 2`, execute point *2.2* after moving `SC.START_SIZE` bytes (`PG.POS <= SC.START_SIZE`). (*End of page should be never reached, but eventually we could just move to point 3*).
     2. At this point, we know the position of the next block header inside this page (`START_HEADER`), as `ADDR[START_HEADER] = PG.POS + PG.START_ADDR`. If:
         - `SC.START_TYPE = 1`, go to point *2.3*.
@@ -260,7 +258,7 @@ The procedure involves the following steps:
             - If none is found, then just **erase** the page and terminate the procedure.
             - Otherwise, move to point *2.3*.
     
-    3. Write the flash page number of the target page being swapped in the beginning of the swap page (`PAGE_NUM`). Return to `START_HEADER`. Read and decode it, then execute the following steps. Repeat this point (*2.3*) for each header after this, until the end of page is reached and move to point *3*.
+    3. *If not already done, write the flash page number of the target page being swapped in the beginning of the swap page (`PAGE_NUM`)*. Return to `START_HEADER`. Read and decode it, then execute the following steps. Repeat this point (*2.3*) for each header after this, until the end of page is reached and move to point *3*.
         - If `allocated_block`, copy the whole block (header + data) as a fragment with (`FRGM_TARGET <= PG.POS`, `FRGM_SIZE <= MIN(BH.SIZE,PG.REMAINING_SIZE)`, `FRGM_DATA <= PG[PG.POS..FRGM_SIZE]`).
         - If `free_block`, just skip this fragment: `PG.POS += PG.BLOCK_SIZE`.
         - If `freed_block`, skip the fragment (*it's the only block allowed on this type, and we are erasing it*)
@@ -275,7 +273,7 @@ The procedure involves the following steps:
 The swap layout is the following:
 | Size (bytes) | Field Name      | Description
 |--------------|-----------------|--------------------------------------------------|
-|      2*      |  PAGE_NUM       | The flash page currently under swapping/erasing
+|      2       |  PAGE_NUM       | The flash page currently under swapping/erasing
 |      2*      |  COPY_COMPLETED | Flag indicating whether the whole page content has been copied into the swap page (for swapping)
 |      4       |  FRGM_TARGET (1)   | Beginning of the first fragment (start-page relative)
 |      4       |  FRGM_SIZE   (1)   | Remaining size of the first fragment
