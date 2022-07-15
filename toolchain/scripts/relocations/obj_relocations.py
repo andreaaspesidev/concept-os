@@ -33,7 +33,7 @@ OBJ_PATTERN_1 = r'[ \t]*([a-f0-9]+)\s+([a-f0-9]+)\s+([a-f0-9]+)\s+([0-9]+)\s+([A
 OBJ_PATTERN_2 = r'[ \t]*([a-f0-9]+)\s+([a-f0-9]+)\s+([a-f0-9]+)\s+([0-9]+)\s+([A-Za-z0-9\/\-\_\.]+\.rlib).+:\(([A-Za-z0-9\/\_\.]+)\)'
 OBJ_PATTERN_3 = r'[ \t]*([a-f0-9]+)\s+([a-f0-9]+)\s+([a-f0-9]+)\s+([0-9]+)\s+<internal>:\(([A-Za-z0-9\.\-\_]+)\)'
 ALIGN_PATTERN = r'[ \t]*([a-f0-9]+)\s+([a-f0-9]+)\s+([a-f0-9]+)\s+([0-9]+)\s+.\s+=\s+ALIGN'
-def read_map(map_file_path: str):
+def read_map(map_file_path: str, verbose: bool):
     # Open the txt file
     sections = {}
     object_files = set()
@@ -109,7 +109,8 @@ def read_map(map_file_path: str):
                     sec_name = obj_line_3.group(5)
                     obj_file = None     # Compiler internal repositioning, does not depend on rustc
                     obj_element = None
-                    print(f"\tFound compiler generated data inside section {sec_name}. Cannot check for relocations for this data")
+                    if verbose:
+                        print(f"\tFound compiler generated data inside section {sec_name}. Cannot check for relocations for this data")
                 align = re.search(ALIGN_PATTERN, line)
                 if align is not None: 
                     # Get only size and align. This must be appended to the section
@@ -182,9 +183,9 @@ def search_for_relocations(section_data):
         index += obj_elem['size']
     return result, index
 
-def scan_relocations(map_file:str, section: str, out_file: Optional[str] = None):
+def scan_relocations(map_file:str, section: str, verbose: bool, out_file: Optional[str] = None):
     # Scan linker map
-    _, sections = read_map(map_file)
+    _, sections = read_map(map_file, verbose)
     # Search for absolute relocations in each object
     if section not in sections:
         sys.exit(1)
@@ -192,9 +193,10 @@ def scan_relocations(map_file:str, section: str, out_file: Optional[str] = None)
     section_data = sections[section]
     relocations, tot_size = search_for_relocations(section_data)
     #tot_size = size_align(tot_size, section_data['align'])
-    print(f"\n\t---- .{section} -----")
-    print_mask(tot_size, relocations)
-    print(f"\t---------------------\n")
+    if verbose:
+        print(f"\n\t---- .{section} -----")
+        print_mask(tot_size, relocations)
+        print(f"\t---------------------\n")
     if out_file:
         save_json(out_file, {'size': tot_size, 'relocs': relocations})
     return tot_size, relocations
@@ -204,7 +206,7 @@ def scan_relocations(map_file:str, section: str, out_file: Optional[str] = None)
 if __name__ == "__main__":
     # parse the command-line arguments
     argparser = argparse.ArgumentParser(
-            usage='usage: %(prog)s <linker-map-file> <section> <out-json-file>',
+            usage='usage: %(prog)s <linker-map-file> <section> <out-json-file> <verbose>',
             description="Returns absolute relocations for the specified section",
             add_help=False,
             prog='obj_relocations.py')   
@@ -217,10 +219,13 @@ if __name__ == "__main__":
     argparser.add_argument('out_file',
             nargs='?', default=None,
             help='Output file (json array)')
+    argparser.add_argument('verbose',
+            nargs='?', default=False,
+            help='Verbose')
 
     args = argparser.parse_args()
     if not args.map_file or not args.section:
         argparser.print_help()
         sys.exit(0)
     
-    scan_relocations(args.map_file, args.section, args.out_file)
+    scan_relocations(args.map_file, args.section, args.verbose, args.out_file)

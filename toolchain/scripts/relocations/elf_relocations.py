@@ -24,14 +24,14 @@ def save_toml(file_name: str, content: Relocations):
     with open(file_name, 'w') as file:
         file.write(to_toml(content))
 
-def get_section_relocations(section, map_file: str):
-    tot_size, relocations = scan_relocations(map_file, section.name[1:])
+def get_section_relocations(section, map_file: str, verbose: bool):
+    tot_size, relocations = scan_relocations(map_file, section.name[1:], verbose)
     if tot_size != section.size:
         print("\ERROR: linked section size different from the supposed one.\nMost likely relocation will fail")
         exit(-1)
     return relocations
 
-def elf_scan_relocations(src_elf: str, dest_file: str, map_file: str):
+def elf_scan_relocations(src_elf: str, dest_file: str, map_file: str, verbose: bool):
     # Open the file
     binary = lief.parse(src_elf)
     # Find original linked app start
@@ -43,8 +43,8 @@ def elf_scan_relocations(src_elf: str, dest_file: str, map_file: str):
     # Prepare for result
     result = TomlConfig
     result.relocations = Relocations
-    result.relocations.rodata = get_section_relocations(section=app_rodata_section, map_file=map_file)
-    result.relocations.data = get_section_relocations(section=app_data_section, map_file=map_file)
+    result.relocations.rodata = get_section_relocations(section=app_rodata_section, map_file=map_file, verbose=verbose)
+    result.relocations.data = get_section_relocations(section=app_data_section, map_file=map_file, verbose=verbose)
     save_toml(dest_file, result)
 
 #elf_reloc('image.elf', 'out.json', 'out.map')
@@ -52,7 +52,7 @@ def elf_scan_relocations(src_elf: str, dest_file: str, map_file: str):
 if __name__ == "__main__":
     # parse the command-line arguments
     argparser = argparse.ArgumentParser(
-            usage='usage: %(prog)s <src-elf-file> <map-file> <dst-info-file>',
+            usage='usage: %(prog)s <src-elf-file> <map-file> <dst-info-file> <verbose>',
             description="Generate section-relative relocations for .data and .rodata sections",
             add_help=False,
             prog='elf_relocations.py')   
@@ -65,10 +65,13 @@ if __name__ == "__main__":
     argparser.add_argument('dst_file',
             nargs='?', default=None,
             help='Destination info file')
+    argparser.add_argument('verbose',
+            nargs='?', default=0,
+            help='Verbose mode')
 
     args = argparser.parse_args()
     if not args.src_file or not args.dst_file or not args.map_file:
         argparser.print_help()
         sys.exit(0)
     
-    elf_scan_relocations(args.src_file, args.dst_file, args.map_file)
+    elf_scan_relocations(args.src_file, args.dst_file, args.map_file, args.verbose)
