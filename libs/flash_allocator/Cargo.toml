@@ -1,0 +1,10 @@
+[package]
+name = "flash_allocator"
+version = "0.0.1"
+edition = "2021"
+
+[features]
+swap = []
+
+[dependencies]
+heapless = "0.7.13" # Stack data structures
