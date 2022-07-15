@@ -1,0 +1,12 @@
+[package]
+name = "component_builder"
+version = "0.0.1"
+edition = "2021"
+description = "A tool to generate HBF from component source and configuration file"
+
+[dependencies]
+clap = {version = "3.1.18", features = ["derive"]}
+hbf_rs = {path = "../../../libs/hbf_rs"}
+cargo_metadata = "0.15.0"
+toml = "0.5.9"
+serde = {version = "1.0.137", features=["derive"]}
