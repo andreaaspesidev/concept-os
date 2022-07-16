@@ -5,8 +5,6 @@
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicBool, Ordering};
 
-#[cfg(armv6m)]
-use armv6m_atomic_hack::AtomicBoolExt;
 
 /// A RefCell-style container that can be used in a static for cases where only
 /// a single borrow needs to happen at any given time.
