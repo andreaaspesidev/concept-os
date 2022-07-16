@@ -7,4 +7,5 @@ edition = "2021"
 swap = []
 
 [dependencies]
+abi = {path = "../../sys/abi"}
 heapless = "0.7.13" # Stack data structures

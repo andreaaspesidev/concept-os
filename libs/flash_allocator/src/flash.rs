@@ -1,7 +1,6 @@
-use crate::{
-    buddy::{BuddyAllocator, BuddyAllocatorImpl},
-    header::{self, BlockHeader, BlockHeaderGen},
-};
+use abi::flash::{BlockHeader, BlockHeaderGen};
+
+use crate::buddy::{BuddyAllocator, BuddyAllocatorImpl};
 use core::fmt::Formatter;
 
 #[cfg(feature = "swap")]
@@ -342,7 +341,7 @@ impl<
             false,
             false,
             level,
-            header::BlockType::UNKNOWN(0xFFFF),
+            abi::flash::BlockType::UNKNOWN(0xFFFF),
         );
         // Write header
         for i in 0..header.len() {

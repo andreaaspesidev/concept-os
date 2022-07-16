@@ -1,4 +1,10 @@
+/**
+ * Flash structures used between the kernel and the flash allocator,
+ * are considered part of the abi.
+ */
+
 use core::marker::PhantomData;
+
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]

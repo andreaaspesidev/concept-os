@@ -8,5 +8,5 @@ default = ['swap']
 swap = []
 
 [dependencies]
-# flash_allocator = {path="../../../flash_allocator"}
+abi = {path = "../../../../sys/abi"}
 heapless = "0.7.13" # Stack data structures

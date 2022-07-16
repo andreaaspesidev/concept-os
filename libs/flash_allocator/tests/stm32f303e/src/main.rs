@@ -1,13 +1,10 @@
-use std::fmt;
-
-use flash_allocator::flash::{FlashAllocator, FlashAllocatorImpl, FlashMethods, FlashPage};
-
-use crate::fake_flash::Flash;
-
 mod fake_flash;
 
 #[cfg(test)]
 mod tests {
+    use std::fmt;
+    use flash_allocator::flash::{FlashAllocator, FlashAllocatorImpl, FlashMethods, FlashPage};
+    use crate::fake_flash::Flash;
 
     /*
         Used to get a formatter instance

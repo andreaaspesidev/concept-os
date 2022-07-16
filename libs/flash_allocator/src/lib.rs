@@ -3,7 +3,6 @@
 
 mod buddy;
 pub mod flash;
-mod header;
 
 #[cfg(feature = "swap")]
 pub mod swap;
