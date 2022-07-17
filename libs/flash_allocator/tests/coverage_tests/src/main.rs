@@ -144,7 +144,9 @@ mod tests {
         let mut flash_allocator = init_allocator(&mut flash, false);
         // Allocation 1
         let alloc1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        println!("Allocated at: {:#010x}", alloc1);
+        let actual_size1 = flash_allocator.get_actual_size(BLOCK_SIZE as u32);
+        assert_eq!(actual_size1, BLOCK_SIZE as u32 - 12);
+        println!("Allocated at: {:#010x}, actual size: {}", alloc1, actual_size1);
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
         // Destroy allocator
         drop(flash_allocator);
@@ -152,21 +154,32 @@ mod tests {
         let mut flash_allocator_rec = init_allocator(&mut flash, true);
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Deallocate 1
-        flash_allocator_rec.deallocate(alloc1);
+        flash_allocator_rec.deallocate(alloc1).unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Allocate 2
         let alloc2 = flash_allocator_rec.allocate(3 * BLOCK_SIZE as u32).unwrap();
-        println!("Allocated at: {:#010x}", alloc2);
+        let actual_size2 = flash_allocator_rec.get_actual_size(3 * BLOCK_SIZE as u32);
+        assert_eq!(actual_size2, 3 * BLOCK_SIZE as u32 - 12);
+        println!("Allocated at: {:#010x}, actual size: {}", alloc2, actual_size2);
         // Allocate 3
         let alloc3 = flash_allocator_rec.allocate(4 * BLOCK_SIZE as u32).unwrap();
-        println!("Allocated at: {:#010x}", alloc3);
+        let actual_size3 = flash_allocator_rec.get_actual_size(4 * BLOCK_SIZE as u32);
+        assert_eq!(actual_size3, 4 * BLOCK_SIZE as u32 - 12);
+        println!("Allocated at: {:#010x}, actual size: {}", alloc3, actual_size3);
+        println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
+        // Try to deallocate a wrong address
+        flash_allocator_rec.deallocate(alloc3 + 33).unwrap_err(); 
+        // Deallocate 3
+        flash_allocator_rec.deallocate(alloc3).unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Deallocate 2
-        flash_allocator_rec.deallocate(alloc3);
+        flash_allocator_rec.deallocate(alloc2).unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
-        // Deallocate 3
-        flash_allocator_rec.deallocate(alloc2);
-        println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
+        // Try to deallocate a wrong address
+        flash_allocator_rec.deallocate(alloc2+ 33).unwrap_err();
+        // Try to deallocate a free block
+        flash_allocator_rec.deallocate(ALLOCATOR_START_ADDR).unwrap_err();
+        flash_allocator_rec.deallocate(alloc3).unwrap_err();
     }
 
     /// Deallocate block 1, keeping the other intact (see vfp_example_1.svg)
@@ -208,14 +221,14 @@ mod tests {
         fill_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
         check_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
 
-        flash_allocator.deallocate(alloc2);
+        flash_allocator.deallocate(alloc2).unwrap();
         check_block(&mut shadow_copy, block1 as usize, BLOCK_SIZE, 0x01);
         check_block(&mut shadow_copy, block2 as usize, BLOCK_SIZE, 0x03);
         check_block(&mut shadow_copy, alloc4 as usize, BLOCK_SIZE, 0x04);
         check_block(&mut shadow_copy, block3 as usize, 4 * BLOCK_SIZE, 0x05);
         check_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
 
-        flash_allocator.deallocate(alloc4);
+        flash_allocator.deallocate(alloc4).unwrap();
         check_block(&mut shadow_copy, block1 as usize, BLOCK_SIZE, 0x01);
         check_block(&mut shadow_copy, block2 as usize, BLOCK_SIZE, 0x03);
         check_block(&mut shadow_copy, block3 as usize, 4 * BLOCK_SIZE, 0x05);
@@ -223,7 +236,7 @@ mod tests {
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
 
         // Dismiss block 1
-        flash_allocator.deallocate(block1);
+        flash_allocator.deallocate(block1).unwrap();
         // Check the other blocks are still intact
         check_block(&mut shadow_copy, block2 as usize, BLOCK_SIZE, 0x03);
         check_block(&mut shadow_copy, block3 as usize, 4 * BLOCK_SIZE, 0x05);
@@ -272,14 +285,14 @@ mod tests {
         fill_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
         check_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
 
-        flash_allocator.deallocate(alloc2);
+        flash_allocator.deallocate(alloc2).unwrap();
         check_block(&mut shadow_copy, block1 as usize, BLOCK_SIZE, 0x01);
         check_block(&mut shadow_copy, block2 as usize, BLOCK_SIZE, 0x03);
         check_block(&mut shadow_copy, alloc4 as usize, BLOCK_SIZE, 0x04);
         check_block(&mut shadow_copy, block3 as usize, 4 * BLOCK_SIZE, 0x05);
         check_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
 
-        flash_allocator.deallocate(alloc4);
+        flash_allocator.deallocate(alloc4).unwrap();
         check_block(&mut shadow_copy, block1 as usize, BLOCK_SIZE, 0x01);
         check_block(&mut shadow_copy, block2 as usize, BLOCK_SIZE, 0x03);
         check_block(&mut shadow_copy, block3 as usize, 4 * BLOCK_SIZE, 0x05);
@@ -287,7 +300,7 @@ mod tests {
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
 
         // Dismiss block 2
-        flash_allocator.deallocate(block2);
+        flash_allocator.deallocate(block2).unwrap();
         // Check the other blocks are still intact
         check_block(&mut shadow_copy, block1 as usize, BLOCK_SIZE, 0x01);
         check_block(&mut shadow_copy, block3 as usize, 4 * BLOCK_SIZE, 0x05);
@@ -341,14 +354,14 @@ mod tests {
         fill_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
         check_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
 
-        flash_allocator.deallocate(alloc2);
+        flash_allocator.deallocate(alloc2).unwrap();
         check_block(&mut shadow_copy, block1 as usize, BLOCK_SIZE, 0x01);
         check_block(&mut shadow_copy, block2 as usize, BLOCK_SIZE, 0x03);
         check_block(&mut shadow_copy, alloc4 as usize, BLOCK_SIZE, 0x04);
         check_block(&mut shadow_copy, block3 as usize, 4 * BLOCK_SIZE, 0x05);
         check_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
 
-        flash_allocator.deallocate(alloc4);
+        flash_allocator.deallocate(alloc4).unwrap();
         check_block(&mut shadow_copy, block1 as usize, BLOCK_SIZE, 0x01);
         check_block(&mut shadow_copy, block2 as usize, BLOCK_SIZE, 0x03);
         check_block(&mut shadow_copy, block3 as usize, 4 * BLOCK_SIZE, 0x05);
@@ -356,7 +369,7 @@ mod tests {
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
 
         // Dismiss block 3
-        flash_allocator.deallocate(block3);
+        flash_allocator.deallocate(block3).unwrap();
         // Check the others are still intact
         check_block(&mut shadow_copy, block1 as usize, BLOCK_SIZE, 0x01);
         check_block(&mut shadow_copy, block2 as usize, BLOCK_SIZE, 0x03);
@@ -405,14 +418,14 @@ mod tests {
         fill_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
         check_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
 
-        flash_allocator.deallocate(alloc2);
+        flash_allocator.deallocate(alloc2).unwrap();
         check_block(&mut shadow_copy, block1 as usize, BLOCK_SIZE, 0x01);
         check_block(&mut shadow_copy, block2 as usize, BLOCK_SIZE, 0x03);
         check_block(&mut shadow_copy, alloc4 as usize, BLOCK_SIZE, 0x04);
         check_block(&mut shadow_copy, block3 as usize, 4 * BLOCK_SIZE, 0x05);
         check_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
 
-        flash_allocator.deallocate(alloc4);
+        flash_allocator.deallocate(alloc4).unwrap();
         check_block(&mut shadow_copy, block1 as usize, BLOCK_SIZE, 0x01);
         check_block(&mut shadow_copy, block2 as usize, BLOCK_SIZE, 0x03);
         check_block(&mut shadow_copy, block3 as usize, 4 * BLOCK_SIZE, 0x05);
@@ -420,7 +433,7 @@ mod tests {
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
 
         // Dismiss block 4
-        flash_allocator.deallocate(block4);
+        flash_allocator.deallocate(block4).unwrap();
         // Check the others are still intact
         check_block(&mut shadow_copy, block1 as usize, BLOCK_SIZE, 0x01);
         check_block(&mut shadow_copy, block2 as usize, BLOCK_SIZE, 0x03);
@@ -468,14 +481,14 @@ mod tests {
         fill_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
         check_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
 
-        flash_allocator.deallocate(alloc2);
+        flash_allocator.deallocate(alloc2).unwrap();
         check_block(&mut shadow_copy, block1 as usize, BLOCK_SIZE, 0x01);
         check_block(&mut shadow_copy, block2 as usize, BLOCK_SIZE, 0x03);
         check_block(&mut shadow_copy, alloc4 as usize, BLOCK_SIZE, 0x04);
         check_block(&mut shadow_copy, block3 as usize, 4 * BLOCK_SIZE, 0x05);
         check_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
 
-        flash_allocator.deallocate(alloc4);
+        flash_allocator.deallocate(alloc4).unwrap();
         check_block(&mut shadow_copy, block1 as usize, BLOCK_SIZE, 0x01);
         check_block(&mut shadow_copy, block2 as usize, BLOCK_SIZE, 0x03);
         check_block(&mut shadow_copy, block3 as usize, 4 * BLOCK_SIZE, 0x05);
@@ -483,10 +496,10 @@ mod tests {
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
 
         // Dismiss block 1,2,3,4
-        flash_allocator.deallocate(block4);
-        flash_allocator.deallocate(block2);
-        flash_allocator.deallocate(block1);
-        flash_allocator.deallocate(block3);
+        flash_allocator.deallocate(block4).unwrap();
+        flash_allocator.deallocate(block2).unwrap();
+        flash_allocator.deallocate(block1).unwrap();
+        flash_allocator.deallocate(block3).unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
     }
 
@@ -522,8 +535,8 @@ mod tests {
         fill_block(&mut shadow_copy, block3 as usize, 4 * BLOCK_SIZE, 0x05);
         let block4 = initial_allocator.allocate(8 * BLOCK_SIZE as u32).unwrap();
         fill_block(&mut shadow_copy, block4 as usize, 8 * BLOCK_SIZE, 0x06);
-        initial_allocator.deallocate(alloc2);
-        initial_allocator.deallocate(alloc4);
+        initial_allocator.deallocate(alloc2).unwrap();
+        initial_allocator.deallocate(alloc4).unwrap();
         println!("{:?}", &Fmt(|f| initial_allocator.dump(f)));
 
         // Modify the memory and mark the third block as deallocated

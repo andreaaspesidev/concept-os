@@ -344,7 +344,7 @@ mod tests {
         // Recreate from flash
         let mut flash_allocator_rec = init_stm32f303e(&mut flash, true);
         // Deallocate 1
-        flash_allocator_rec.deallocate(alloc1);
+        flash_allocator_rec.deallocate(alloc1).unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Allocate 2
         let alloc2 = flash_allocator_rec.allocate(3 * BLOCK_SIZE as u32).unwrap();
@@ -354,10 +354,10 @@ mod tests {
         println!("Allocated at: {:#010x}", alloc3);
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Deallocate 2
-        flash_allocator_rec.deallocate(alloc2);
+        flash_allocator_rec.deallocate(alloc2).unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Deallocate 3
-        flash_allocator_rec.deallocate(alloc3);
+        flash_allocator_rec.deallocate(alloc3).unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
     }
 }

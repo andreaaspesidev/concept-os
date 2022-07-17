@@ -62,13 +62,25 @@ pub trait FlashMethods<'a> {
     ) -> crate::flash_allocator::swap::SwapResult;
 }
 
+/// Interface offered to the storage component
 pub trait FlashAllocator<'a, const FLAG_BYTES: usize> {
-    fn allocate(&mut self, size: u32) -> Option<u32>
+    /// Allocate the requested size. If enough space is available,
+    /// the block is provisioned and the base address of the block is returned.
+    /// N.B.: The base address of the block already points to usable space.
+    ///       The actual available size is less that the requested, as the block starts with the header.
+    ///       To get the actual size, use the get_size method below.
+    fn allocate(&mut self, size: u32) -> Result<u32, ()>
     where
         [(); FLAG_BYTES * 4 + 2 + 2]: Sized;
-    fn deallocate(&mut self, base_addr: u32)
+    /// Deallocate the block that starts at the provided base address
+    fn deallocate(&mut self, base_addr: u32) -> Result<(), ()>
     where
         [(); FLAG_BYTES * 4 + 2 + 2]: Sized;
+
+    /// Calculate the actual size of the block (nominal block size - header size)
+    fn get_actual_size(&mut self, original_size: u32) -> u32;
+
+    /// Dumps the state of the allocator
     fn dump(&self, f: &mut Formatter) -> Result<(), core::fmt::Error>;
 }
 
@@ -297,6 +309,31 @@ impl<
             }
         }
     }
+    fn is_base_address_valid(&self, base_address: u32) -> bool {
+        let mut process_index: usize = 0;
+        while process_index < Self::SIZE {
+            // Read header
+            let block_header = Self::read_block_header(
+                self.flash,
+                process_index as u32,
+                self.buddy_allocator.max_level(),
+            );
+            // Allocated blocks
+            if block_header.is_allocated() {
+                // Check this is the block
+                if process_index as u32 + START_ADDR == base_address {
+                    return true;
+                }
+                // Countinue scanning
+                let block_size = Self::SIZE >> block_header.block_level();
+                process_index += block_size;
+            } else {
+                // Continue scanning
+                process_index += BLOCK_SIZE;
+            }
+        }
+        return false;
+    }
 
     pub fn dump(&self, f: &mut Formatter) -> Result<(), core::fmt::Error> {
         f.write_str("\n------- Block Status -------\n")?;
@@ -324,14 +361,14 @@ impl<
         self.buddy_allocator.dump(f)?;
         Ok(())
     }
-    pub fn allocate(&mut self, size: u32) -> Option<u32>
+    pub fn allocate(&mut self, size: u32) -> Result<u32, ()>
     where
         [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
     {
         // Get block
         let addr_result = self.buddy_allocator.alloc(size as usize);
         if addr_result.is_none() {
-            return None;
+            return Err(());
         }
         let addr = addr_result.unwrap();
         let level: u16 = self.buddy_allocator.size_to_level(size as usize).unwrap() as u16;
@@ -348,14 +385,18 @@ impl<
             self.flash.write(addr + i as u32, header[i]);
         }
         // Return only a pointer to the usable space
-        return Some(addr + (BlockHeaderGen::<FLAG_BYTES>::HEADER_SIZE as u32));
+        return Ok(addr + (BlockHeaderGen::<FLAG_BYTES>::HEADER_SIZE as u32));
     }
-    pub fn deallocate(&mut self, base_addr: u32)
+    pub fn deallocate(&mut self, base_addr: u32) -> Result<(), ()>
     where
         [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
     {
         // Get back the original start address of the block
         let addr = base_addr - (BlockHeaderGen::<FLAG_BYTES>::HEADER_SIZE as u32);
+        // Check that this is a valid base_addr
+        if !self.is_base_address_valid(addr) {
+            return Err(());
+        }
         // Deallocate
         let mut block_level: u16 = 0;
         Self::deallocate_procedure(
@@ -371,6 +412,11 @@ impl<
         for b in first_block..first_block + num_blocks {
             self.buddy_allocator.add_free_block(b as u8);
         }
+        return Ok(());
+    }
+
+    pub fn get_actual_size(&mut self, original_size: u32) -> u32 {
+        original_size - (BlockHeaderGen::<FLAG_BYTES>::HEADER_SIZE as u32)
     }
 
     pub fn from_flash(flash: &'a mut dyn FlashMethods<'a>) -> Self
@@ -422,14 +468,14 @@ impl<
     > FlashAllocator<'a, FLAG_BYTES>
     for FlashAllocatorImpl<'a, START_ADDR, END_ADDR, BLOCK_SIZE, NUM_BLOCKS, NUM_SLOTS, FLAG_BYTES>
 {
-    fn allocate(&mut self, size: u32) -> Option<u32>
+    fn allocate(&mut self, size: u32) -> Result<u32, ()>
     where
         [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
     {
         self.allocate(size)
     }
 
-    fn deallocate(&mut self, addr: u32)
+    fn deallocate(&mut self, addr: u32) -> Result<(), ()>
     where
         [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
     {
@@ -438,5 +484,9 @@ impl<
 
     fn dump(&self, f: &mut Formatter) -> Result<(), core::fmt::Error> {
         self.dump(f)
+    }
+
+    fn get_actual_size(&mut self, original_size: u32) -> u32 {
+        self.get_actual_size(original_size)
     }
 }
