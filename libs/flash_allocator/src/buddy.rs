@@ -14,7 +14,6 @@ pub trait BuddyAllocator {
     /// Dump a structure representation to the specified formatter
     fn dump(&self, f: &mut Formatter) -> Result<(), core::fmt::Error>;
 
-    fn max_level(&self) -> usize;
     fn size_to_level(&self, level: usize) -> Option<usize>;
     fn add_free_block(&mut self, block_num: u8) -> Option<()>;
 }
@@ -174,10 +173,6 @@ impl<
             None
         }
     }
-
-    fn max_level(&self) -> usize {
-        self.free_lists.len() - 1
-    }
 }
 
 impl<
@@ -216,8 +211,8 @@ impl<
     fn add_free_block(&mut self, block_num: u8) -> Option<()> {
         self.add_free_block(block_num, NUM_SLOTS - 1)
     }
+}
 
-    fn max_level(&self) -> usize {
-        self.max_level()
-    }
+pub fn get_max_level<const NUM_SLOTS: usize>() -> usize {
+    NUM_SLOTS - 1
 }

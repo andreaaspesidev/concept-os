@@ -1,4 +1,4 @@
-use flash_allocator::flash::{FlashPage, FlashMethods};
+use flash_allocator::flash::{page::FlashPage, FlashMethods};
 
 fn u32_from_arr(arr: &[u8]) -> u32 {
     ((arr[0] as u32) <<  0) +

@@ -11,8 +11,10 @@ mod tests {
     use abi::flash::BlockType;
 
     use crate::fake_flash::Flash;
+    use crate::flash_allocator::flash::page::FlashPage;
+    use crate::flash_allocator::flash::walker::{FlashWalker, FlashWalkerImpl};
     use crate::flash_allocator::flash::{
-        FlashAllocator, FlashAllocatorImpl, FlashMethods, FlashPage, FlashBlock,
+        FlashAllocator, FlashAllocatorImpl, FlashMethods, FlashBlock,
     };
     use std::fmt;
 
@@ -179,7 +181,7 @@ mod tests {
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Allocate 2
         let alloc2 = flash_allocator_rec.allocate(3 * BLOCK_SIZE as u32).unwrap();
-        assert_eq!(alloc2.get_size(), 3 * BLOCK_SIZE as u32 - 12);
+        assert_eq!(alloc2.get_size(), 4 * BLOCK_SIZE as u32 - 12);
         println!("Allocated at: {:#010x}, actual size: {}", alloc2.get_base_address(), alloc2.get_size());
         // Allocate 3
         let alloc3 = flash_allocator_rec.allocate(4 * BLOCK_SIZE as u32).unwrap();
@@ -217,6 +219,11 @@ mod tests {
         assert_eq!(alloc1.get_size(), BLOCK_SIZE as u32 - 12);
         assert_eq!(alloc1.get_type(), BlockType::NONE);
         assert!(!alloc1.is_finalized());
+        // Allocation 2
+        let alloc1 = flash_allocator.allocate(3*BLOCK_SIZE as u32).unwrap();
+        assert_eq!(alloc1.get_size(), 4*BLOCK_SIZE as u32 - 12);
+        assert_eq!(alloc1.get_type(), BlockType::NONE);
+        assert!(!alloc1.is_finalized());
     }
 
     #[test]
@@ -252,6 +259,58 @@ mod tests {
         assert_eq!(block1.get_type(), BlockType::COMPONENT);
         assert!(block1.is_finalized());
     }
+
+
+    #[test]
+    fn test_block_iterator() {
+        const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
+        let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
+        let mut flash =
+            Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, FLAG_SIZE, SWAP_PAGE_NUM>::new(
+                FLASH_START_ADDR,
+                &FLASH_PAGES,
+                &mut flash_content,
+            );
+        let mut flash_allocator = init_allocator(&mut flash, false);
+        // Allocation 1
+        let block1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
+        // Allocation 2
+        let block2 = flash_allocator.allocate(2*BLOCK_SIZE as u32).unwrap();
+        // Allocation 3
+        let block3 = flash_allocator.allocate(3*BLOCK_SIZE as u32).unwrap();
+        // Allocation 4
+        let block4 = flash_allocator.allocate(4*BLOCK_SIZE as u32).unwrap();
+        // Create a new iterator
+        drop(flash_allocator);  // Needed to release the flash interface
+        let mut iterator = FlashWalkerImpl
+            ::<ALLOCATOR_START_ADDR, ALLOCATOR_END_ADDR, NUM_SLOTS, BLOCK_SIZE, FLAG_SIZE>
+            ::new(&mut flash);
+        let b1 = iterator.next();
+        assert!(b1.is_some());
+        assert_eq!(b1.unwrap(), block1);
+        let b2 = iterator.next();
+        assert!(b2.is_some());
+        assert_eq!(b2.unwrap(), block2);
+        let b3 = iterator.next();
+        assert!(b3.is_some());
+        assert_eq!(b3.unwrap(), block3);
+        let b4 = iterator.next();
+        assert!(b4.is_some());
+        assert_eq!(b4.unwrap(), block4);
+        let b5 = iterator.next();
+        assert!(b5.is_none());
+        // Iterate from the beginning
+        let bb1 = iterator.nth(0);
+        assert!(bb1.is_some());
+        assert_eq!(bb1.unwrap(), block1);
+
+        // Try using the wrapper class
+        let iterator_ref: &mut dyn FlashWalker = &mut iterator;
+        assert_eq!(iterator_ref.nth(0).unwrap(), block1);
+        assert_eq!(iterator_ref.nth(1).unwrap(), block2);
+        assert_eq!(iterator_ref.next().unwrap(), block3);
+    }
+
     /// Deallocate block 1, keeping the other intact (see vfp_example_1.svg)
     #[test]
     fn test_deallocate_block1() {

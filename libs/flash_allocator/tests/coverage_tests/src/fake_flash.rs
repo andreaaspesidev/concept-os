@@ -1,4 +1,5 @@
-use crate::flash_allocator::flash::{FlashMethods, FlashPage};
+use crate::flash_allocator::flash::page::FlashPage;
+use crate::flash_allocator::flash::FlashMethods;
 use crate::flash_allocator::swap::{SwapResult, SwapStartType, Swapper, SwapperImpl};
 
 /*

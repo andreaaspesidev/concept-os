@@ -2,9 +2,11 @@ mod fake_flash;
 
 #[cfg(test)]
 mod tests {
-    use std::fmt;
-    use flash_allocator::flash::{FlashAllocator, FlashAllocatorImpl, FlashMethods, FlashPage};
     use crate::fake_flash::Flash;
+    use flash_allocator::flash::{
+        page::FlashPage, FlashAllocator, FlashAllocatorImpl, FlashMethods,
+    };
+    use std::fmt;
 
     /*
         Used to get a formatter instance
@@ -344,7 +346,9 @@ mod tests {
         // Recreate from flash
         let mut flash_allocator_rec = init_stm32f303e(&mut flash, true);
         // Deallocate 1
-        flash_allocator_rec.deallocate(alloc1.get_base_address()).unwrap();
+        flash_allocator_rec
+            .deallocate(alloc1.get_base_address())
+            .unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Allocate 2
         let alloc2 = flash_allocator_rec.allocate(3 * BLOCK_SIZE as u32).unwrap();
@@ -354,10 +358,14 @@ mod tests {
         println!("Allocated at: {:#010x}", alloc3.get_base_address());
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Deallocate 2
-        flash_allocator_rec.deallocate(alloc2.get_base_address()).unwrap();
+        flash_allocator_rec
+            .deallocate(alloc2.get_base_address())
+            .unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Deallocate 3
-        flash_allocator_rec.deallocate(alloc3.get_base_address()).unwrap();
+        flash_allocator_rec
+            .deallocate(alloc3.get_base_address())
+            .unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
     }
 }

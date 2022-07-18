@@ -2,9 +2,7 @@
     SWAP Procedure
 */
 
-use abi::flash::{BlockHeader, BlockHeaderGen};
-
-use crate::flash_allocator::flash::FlashMethods;
+use crate::flash_allocator::flash::{FlashMethods, header::BlockHeader};
 
 /// u32 from big endian bytes
 /// 0x12345678
@@ -82,12 +80,12 @@ impl<
         }
     }
 
-    fn read_block_header(&self, address: u32) -> impl BlockHeader<'a, FLAG_BYTES> {
+    fn read_block_header(&self, address: u32) -> BlockHeader<'a, FLAG_BYTES> {
         let header_buffer = self
             .flash
-            .read(address, BlockHeaderGen::<FLAG_BYTES>::HEADER_SIZE);
-        let block_header: BlockHeaderGen<FLAG_BYTES> =
-            BlockHeaderGen::<FLAG_BYTES>::new(header_buffer, BLOCK_MAX_LEVEL);
+            .read(address, BlockHeader::<FLAG_BYTES>::HEADER_SIZE);
+        let block_header: BlockHeader<FLAG_BYTES> =
+            BlockHeader::<FLAG_BYTES>::new(header_buffer, BLOCK_MAX_LEVEL);
         return block_header;
     }
 
