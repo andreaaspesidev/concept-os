@@ -337,27 +337,27 @@ mod tests {
         let mut flash_allocator = init_stm32f303e(&mut flash, false);
         // Allocation 1
         let alloc1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        println!("Allocated at: {:#010x}", alloc1);
+        println!("Allocated at: {:#010x}", alloc1.get_base_address());
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
         // Destroy allocator
         drop(flash_allocator);
         // Recreate from flash
         let mut flash_allocator_rec = init_stm32f303e(&mut flash, true);
         // Deallocate 1
-        flash_allocator_rec.deallocate(alloc1).unwrap();
+        flash_allocator_rec.deallocate(alloc1.get_base_address()).unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Allocate 2
         let alloc2 = flash_allocator_rec.allocate(3 * BLOCK_SIZE as u32).unwrap();
-        println!("Allocated at: {:#010x}", alloc2);
+        println!("Allocated at: {:#010x}", alloc2.get_base_address());
         // Allocate 3
         let alloc3 = flash_allocator_rec.allocate(4 * BLOCK_SIZE as u32).unwrap();
-        println!("Allocated at: {:#010x}", alloc3);
+        println!("Allocated at: {:#010x}", alloc3.get_base_address());
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Deallocate 2
-        flash_allocator_rec.deallocate(alloc2).unwrap();
+        flash_allocator_rec.deallocate(alloc2.get_base_address()).unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Deallocate 3
-        flash_allocator_rec.deallocate(alloc3).unwrap();
+        flash_allocator_rec.deallocate(alloc3.get_base_address()).unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
     }
 }
