@@ -6,6 +6,8 @@
 mod fake_flash;
 mod flash_allocator;
 
+// For inspecting memory, address swap: 0x7FFFF7BEF4C0 (could change on a different pc)
+
 #[cfg(test)]
 mod tests {
     use abi::flash::BlockType;

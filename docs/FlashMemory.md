@@ -81,6 +81,8 @@ This second option is considered, due to the constraint resources of the STM32 d
 
 >The following block header could be further compressed in devices that support the full flash specification (F4, F7, ...). Here is kept generic, assigning to each flag half-word (16bits, 2bytes).
 
+>Unless otherwise specified, all fields with more than one byte are encoded as little-endian.
+
 Offset| Size (bytes) | Field Name  | Possible Values |            Content           |
 ------|--------------|-------------|-----------------|------------------------------|
 0x00  |      2*      | Block Allocated | 0xFFFF = block not allocated<br> 0x0000 = block allocated | Flag meaning this block was once allocated. `Block Level` can be used to determine the allocated size (in use).
@@ -287,7 +289,7 @@ The swap layout is the following:
 |      X       |  FRGM_DATA   (N)   | Contains the actual data of the fragment (optional header + block data)
 
 
-*Note: the swap procedure must be called on a page with at least a `freed_block` or `free_block`, as should always be the case. The corresponding data is not copied to swap, and this space can be used for the headers of the swap. Otherwise there is not enough space in swap, and the whole operation will fail: the kernel can be as careful as it wants during the process, actually managing this corner case.*
+*Note: the swap procedure must be called on a page with at least a `freed_block` or `free_block`, as should always be the case. The corresponding data is not copied to swap, and this space can be used for the headers of the swap. Otherwise, there is not enough space in swap and the whole operation will fail: the kernel can be as careful as it wants during the process, actually managing this corner case.*
 
 >Note: values with * must be set to a multiple of the minimum granularity of flash write, in case of special devices that requires writing more than 2bytes (half-word) at a time
 
@@ -297,12 +299,12 @@ At system start-up, the kernel:
     1. If `0xFFFF`, then considers the swap erased. Exits the procedure
     2. Otherwise, a swap operation was interrupted. Checks the `COPY_COMPLETED` flag:
         - If `COPY_COMPLETED = 0`, then data was still being copied to the swap before the interruption. It's safe to **erase** the swap and exit the procedure.
-        - If `COPY_COMPLETED = 1`, then the kernel has to copy data back. To this purpose, in order to be sure, **erase** again the page `PAGE_NUM` (see notes). Then follows the steps from point *4* of the standard algorithm (steps *4*, *5*), that conclude with an erase of the swap page. Then exits the procedure.
+        - If `COPY_COMPLETED = 1`, then the kernel has to copy data back. To this purpose, in order to be sure, **erase** again the page `PAGE_NUM` (see notes). Then follows the steps from point *4* of the standard algorithm (steps *4*, *5*), that conclude with erasing the swap page. Then exits the procedure.
 
 *Note: the process can be more erase-conservative if we avoid erasing the destination page a priori, and simply start to copy data back by comparing first each byte of the source (swap) and destination. This could actually perform no copy at all if the page was not yet erased, or behave exactly like now with more overhead. The only problem is a reboot that happened during a page erase operation, that could have brought the page into an unsafe state: it's better to erase everything to be sure.*
 
 #### Examples
-In order to clarify the process, let's start from the following base layout. In each run, we will restart from the layout and deallocated a different block.
+In order to clarify the process, let's start from the following base layout. In each run, we will restart from the layout and deallocate a different block.
 
 **Layout**  
 <img src="images/vfp_example_0.svg">

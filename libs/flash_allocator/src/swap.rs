@@ -10,19 +10,40 @@ use crate::flash::{header::BlockHeader, FlashMethods};
 /// [1] 0x34
 /// [2] 0x56
 /// [3] 0x78
-fn u32_be_from_array(arr: &[u8]) -> u32 {
+/*fn u32_be_from_array(arr: &[u8]) -> u32 {
     ((arr[3] as u32) << 0)
         + ((arr[2] as u32) << 8)
         + ((arr[1] as u32) << 16)
         + ((arr[0] as u32) << 24)
+}*/
+
+/// u32 from little endian bytes
+/// 0x12345678
+/// [0] 0x78
+/// [1] 0x56
+/// [2] 0x34
+/// [3] 0x12
+fn u32_le_from_array(arr: &[u8]) -> u32 {
+    ((arr[0] as u32) << 0)
+        + ((arr[1] as u32) << 8)
+        + ((arr[2] as u32) << 16)
+        + ((arr[3] as u32) << 24)
 }
 
 /// u16 from big endian bytes
 /// 0x1234
 /// [0] 0x12
 /// [1] 0x34
-fn u16_be_from_array(arr: &[u8]) -> u16 {
+/*fn u16_be_from_array(arr: &[u8]) -> u16 {
     ((arr[1] as u16) << 0) + ((arr[0] as u16) << 8)
+}*/
+
+/// u16 from little endian bytes
+/// 0x1234
+/// [0] 0x34
+/// [1] 0x12
+fn u16_le_from_array(arr: &[u8]) -> u16 {
+    ((arr[0] as u16) << 0) + ((arr[1] as u16) << 8)
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -94,13 +115,12 @@ impl<
         if self.swap_init {
             return;
         }
-        // Write PAGE_NUM
+        // Write PAGE_NUM (in little endian)
         let swap_page = self.flash.page_from_number(SWAP_PAGE_NUM).unwrap();
         self.flash
-            .write(swap_page.base_address(), (page_number >> 8) as u8); // High word
+            .write(swap_page.base_address(), (page_number & 0xFF) as u8); // Low word
         self.flash
-            .write(swap_page.base_address() + 1, (page_number & 0xFF) as u8); // Low word
-                                                                              // Mark completed
+            .write(swap_page.base_address() + 1,(page_number >> 8) as u8); // High word
         self.current_position += 2 + FLAG_BYTES as u32; // The header size
         self.swap_init = true;
     }
@@ -115,13 +135,13 @@ impl<
         // Write header
         let mut buff: [u8; 4];
         // 1 - write target address
-        buff = frgm_target.to_be_bytes();
+        buff = frgm_target.to_le_bytes();
         for b in buff {
             self.flash.write(swap_start_addr + self.current_position, b);
             self.current_position += 1;
         }
         // 2 - write fragment size
-        buff = frgm_size.to_be_bytes();
+        buff = frgm_size.to_le_bytes();
         for b in buff {
             self.flash.write(swap_start_addr + self.current_position, b);
             self.current_position += 1;
@@ -154,11 +174,11 @@ impl<
 
     fn read_u32(&self, address: u32) -> u32 {
         let buff = self.flash.read(address, 4);
-        return u32_be_from_array(buff);
+        return u32_le_from_array(buff);
     }
     fn read_u16(&self, address: u32) -> u16 {
         let buff = self.flash.read(address, 2);
-        return u16_be_from_array(buff);
+        return u16_le_from_array(buff);
     }
     fn read_flag(&self, address: u32) -> bool {
         let buff = self.flash.read(address, FLAG_BYTES);
