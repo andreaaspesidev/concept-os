@@ -1,4 +1,4 @@
-use crate::{buddy, flash::{header::BlockHeader, FlashMethods}};
+use crate::flash::{header::BlockHeader, FlashMethods};
 
 pub fn read_block_header<
     'a,
@@ -14,7 +14,7 @@ pub fn read_block_header<
         BlockHeader::<FLAG_BYTES>::HEADER_SIZE,
     );
     let block_header: BlockHeader<FLAG_BYTES> =
-        BlockHeader::<FLAG_BYTES>::new(header_buffer, buddy::get_max_level::<NUM_SLOTS>() as u16);
+        BlockHeader::<FLAG_BYTES>::new(header_buffer, buddy_allocator::get_max_level::<NUM_SLOTS>() as u16);
     return block_header;
 }
 

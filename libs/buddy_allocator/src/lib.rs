@@ -1,8 +1,8 @@
 #![no_std]
 
-use heapless::Vec;
-use core::fmt::{Debug, Write};
 use core::fmt::Formatter;
+use core::fmt::Write;
+use heapless::Vec;
 
 pub trait BuddyAllocator {
     /// Returns the first memory address managed by this allocator
@@ -11,67 +11,84 @@ pub trait BuddyAllocator {
     fn max_size(&self) -> usize;
     /// Whether a given physical address belongs to this allocator
     fn contains(&self, addr: u32) -> bool;
-    /// Allocates memory for the requested size, returning the address of the base of this allocation
+    /// Allocates memory for the requested size, 
+    /// returning the address of the base of this allocation
     fn alloc(&mut self, size: usize) -> Option<u32>;
-    /// Deallocates memory previously allocated
-    fn dealloc(&mut self, addr: u32, size: usize);
+
+    #[cfg(feature = "deallocation")]
+    /// Deallocated memory prev. allocated. 
+    /// Considered unsafe as it's not possible to check here if at this address
+    /// there is actually an allocated block.
+    unsafe fn dealloc(&mut self, addr: u32, size: usize);
+
     /// Dump a structure representation to the specified formatter
     fn dump(&self, f: &mut Formatter) -> Result<(), core::fmt::Error>;
+
+    /// Converts the requested size into the corresponding level 
+    fn size_to_level(&self, size: usize) -> Option<usize>;
+
+    #[cfg(not(feature = "deallocation"))]
+    /// Directly adds a free basic block (size = 1)
+    fn add_free_block(&mut self, block_num: u8) -> Option<()>;
 }
 
 /// Creates a BuddyAllocator
 /// NUM_BLOCKS: number of blocks (each of block_size bytes).
 /// NUM_SLOTS: number of levels +1. Given the number of blocks, NUM_SLOTS = ceil(log2(NUM_BLOCKS)) + 1
-/// 
+///
 /// TODO: replace level 0 with a flag (save up to NUM_BLOCKS bytes)
-/// TODO: automatically infer NUM_SLOTS when the compiler will support operations on constants
-pub struct BuddyAllocatorImpl
-    <
-        const START_ADDR: u32,
-        const END_ADDR: u32,
-        const BLOCK_SIZE: u16,
-        const NUM_BLOCKS: usize, 
-        const NUM_SLOTS: usize,
-    > {
+pub struct BuddyAllocatorImpl<
+    const START_ADDR: u32,
+    const END_ADDR: u32,
+    const BLOCK_SIZE: usize,
+    const NUM_BLOCKS: usize,
+    const NUM_SLOTS: usize,
+> {
     num_levels: u8,
-    free_lists: Vec<Vec<u8,NUM_BLOCKS>,NUM_SLOTS>
+    free_lists: Vec<Vec<u8, NUM_BLOCKS>, NUM_SLOTS>,
 }
 
-impl <const START_ADDR: u32, 
-      const END_ADDR: u32,
-      const BLOCK_SIZE: u16,
-      const NUM_BLOCKS: usize, 
-      const NUM_SLOTS: usize> BuddyAllocatorImpl<START_ADDR, END_ADDR, BLOCK_SIZE, NUM_BLOCKS, NUM_SLOTS> {
-    
+impl<
+        const START_ADDR: u32,
+        const END_ADDR: u32,
+        const BLOCK_SIZE: usize,
+        const NUM_BLOCKS: usize,
+        const NUM_SLOTS: usize,
+    > BuddyAllocatorImpl<START_ADDR, END_ADDR, BLOCK_SIZE, NUM_BLOCKS, NUM_SLOTS>
+{
     /// Creates a new instance of the allocator
-    pub fn new() -> BuddyAllocatorImpl<START_ADDR, END_ADDR, BLOCK_SIZE, NUM_BLOCKS, NUM_SLOTS> {
-        let mut free_lists: Vec<_,NUM_SLOTS> = Vec::<_,NUM_SLOTS>::new();
+    pub fn new(
+        skip_initialization: bool,
+    ) -> BuddyAllocatorImpl<START_ADDR, END_ADDR, BLOCK_SIZE, NUM_BLOCKS, NUM_SLOTS> {
+        let mut free_lists: Vec<_, NUM_SLOTS> = Vec::<_, NUM_SLOTS>::new();
         // Check for hard limits
         if NUM_BLOCKS > 256 {
-            panic!("Too many blocks");
+            panic!("Too many blocks: {}", NUM_BLOCKS);
         }
         // Create the sublists
         for _ in 0..NUM_SLOTS {
             free_lists.push(Vec::<u8, NUM_BLOCKS>::new()).unwrap();
         }
-        // Populate the first one
-        free_lists[0].push(0).unwrap();
+        if !skip_initialization {
+            // Populate the first one
+            free_lists[0].push(0).unwrap();
+        }
         // Return the instance
-        BuddyAllocatorImpl::<START_ADDR,END_ADDR,BLOCK_SIZE,NUM_BLOCKS,NUM_SLOTS> {
+        BuddyAllocatorImpl::<START_ADDR, END_ADDR, BLOCK_SIZE, NUM_BLOCKS, NUM_SLOTS> {
             num_levels: (NUM_SLOTS - 1) as u8,
-            free_lists: free_lists
+            free_lists: free_lists,
         }
     }
-    
+
     fn max_size(&self) -> usize {
         (BLOCK_SIZE as usize) << (self.num_levels as usize)
     }
-    
+
     fn contains(&self, addr: u32) -> bool {
         addr >= START_ADDR && addr <= END_ADDR
     }
 
-    fn req_size_to_level(&self, size: usize) -> Option<usize> {
+    pub fn req_size_to_level(&self, size: usize) -> Option<usize> {
         // Find the level of this allocator than can accommodate the required memory size.
         let max_size = self.max_size();
         if size > max_size {
@@ -80,7 +97,7 @@ impl <const START_ADDR: u32,
         } else {
             // find the largest block level that can support this size
             let mut next_level = 1; // As level 0 stores the whole memory
-            while (max_size >> next_level) >= size {  
+            while (max_size >> next_level) >= size {
                 next_level += 1;
             }
             // ...but not larger than the max level!
@@ -137,11 +154,12 @@ impl <const START_ADDR: u32,
         // if buddy block in free list
         if let Some(buddy_idx) = self.free_lists[level]
             .iter()
-            .position(|blk| *blk == buddy_block) {
+            .position(|blk| *blk == buddy_block)
+        {
             // remove current block (in last place)
             self.free_lists[level].pop();
             // remove buddy block
-            self.free_lists[level].swap_remove(buddy_idx);  //TODO: check that an unordered list is not a problem for allocations
+            self.free_lists[level].swap_remove(buddy_idx);
             // add free block to free list 1 level above
             self.free_lists[level - 1].push(block_num / 2).unwrap();
             // repeat the process!
@@ -149,6 +167,7 @@ impl <const START_ADDR: u32,
         }
     }
 
+    #[cfg(feature = "deallocation")]
     fn dealloc(&mut self, addr: u32, size: usize) {
         // As above, find which size was used for this allocation so that we can find the level
         // that gave us this memory block.
@@ -177,24 +196,26 @@ impl <const START_ADDR: u32,
         f.write_char('\n')
     }
 
-}
-
-impl <const START_ADDR: u32, 
-      const END_ADDR: u32,
-      const BLOCK_SIZE: u16,
-      const NUM_BLOCKS: usize, 
-      const NUM_SLOTS: usize> Debug for BuddyAllocatorImpl<START_ADDR,END_ADDR,BLOCK_SIZE,NUM_BLOCKS,NUM_SLOTS> {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), core::fmt::Error> {
-        self.dump(f)
+    #[cfg(not(feature = "deallocation"))]
+    fn add_free_block(&mut self, block_num: u8, level: usize) -> Option<()> {
+        if self.free_lists[level].push(block_num).is_ok() {
+            self.merge_buddies(level, block_num);
+            Some(())
+        } else {
+            None
+        }
     }
 }
 
-impl<const START_ADDR: u32, 
-     const END_ADDR: u32,
-     const BLOCK_SIZE: u16,
-     const NUM_BLOCKS: usize, 
-     const NUM_SLOTS: usize> BuddyAllocator for BuddyAllocatorImpl<START_ADDR,END_ADDR,BLOCK_SIZE,NUM_BLOCKS,NUM_SLOTS> {
-        
+impl<
+        const START_ADDR: u32,
+        const END_ADDR: u32,
+        const BLOCK_SIZE: usize,
+        const NUM_BLOCKS: usize,
+        const NUM_SLOTS: usize,
+    > BuddyAllocator
+    for BuddyAllocatorImpl<START_ADDR, END_ADDR, BLOCK_SIZE, NUM_BLOCKS, NUM_SLOTS>
+{
     fn start_addr(&self) -> u32 {
         START_ADDR
     }
@@ -211,11 +232,25 @@ impl<const START_ADDR: u32,
         self.alloc(size)
     }
 
-    fn dealloc(&mut self, addr: u32, size: usize) {
+    #[cfg(feature = "deallocation")]
+    unsafe fn dealloc(&mut self, addr: u32, size: usize) {
         self.dealloc(addr, size)
     }
 
     fn dump(&self, formatter: &mut Formatter) -> Result<(), core::fmt::Error> {
         self.dump(formatter)
     }
+
+    fn size_to_level(&self, size: usize) -> Option<usize> {
+        self.req_size_to_level(size)
+    }
+
+    #[cfg(not(feature = "deallocation"))]
+    fn add_free_block(&mut self, block_num: u8) -> Option<()> {
+        self.add_free_block(block_num, NUM_SLOTS - 1)
+    }
+}
+
+pub fn get_max_level<const NUM_SLOTS: usize>() -> usize {
+    NUM_SLOTS - 1
 }

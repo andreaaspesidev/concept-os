@@ -8,4 +8,5 @@ swap = []
 
 [dependencies]
 abi = {path = "../../sys/abi"}
+buddy_allocator = {path = "../buddy_allocator", default_features=false}
 heapless = "0.7.13" # Stack data structures

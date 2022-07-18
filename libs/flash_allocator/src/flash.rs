@@ -1,10 +1,10 @@
 use abi::flash::BlockType;
 
 use crate::{
-    buddy::{BuddyAllocator, BuddyAllocatorImpl},
     flash::header::BlockHeader,
     utils,
 };
+use buddy_allocator::{BuddyAllocator, BuddyAllocatorImpl};
 use core::fmt::Formatter;
 use self::page::FlashPage;
 
