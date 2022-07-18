@@ -9,25 +9,27 @@ use core::marker::PhantomData;
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum BlockType {
-    NONE,      // 0x0000
-    COMPONENT, // 0x0001
+    NONE,
+    COMPONENT,
     // DATA,
     UNKNOWN(u16),
 }
 
-impl BlockType {
-    pub fn from_u16(val: u16) -> Self {
-        match val {
-            0xFFFF => Self::NONE,
-            0xFFFE => Self::COMPONENT,
-            val => Self::UNKNOWN(val),
+impl From<u16> for BlockType {
+    fn from(x: u16) -> Self {
+        match x {
+            0xFFFF => BlockType::NONE,
+            0xFFFE => BlockType::COMPONENT,
+            x => BlockType::UNKNOWN(x)
         }
     }
-    pub fn to_u16(&self) -> u16 {
-        match *self {
-            Self::NONE => 0xFFFF,
-            Self::COMPONENT => 0xFFFE,
-            Self::UNKNOWN(val) => val,
+}
+impl From<BlockType> for u16 {
+    fn from(x: BlockType) -> Self {
+        match x {
+            BlockType::NONE => 0xFFFF,
+            BlockType::COMPONENT => 0xFFFE,
+            BlockType::UNKNOWN(x) => x
         }
     }
 }
@@ -81,7 +83,7 @@ impl<'a, const FLAG_BYTES: usize> BlockHeaderGen<'a, FLAG_BYTES> {
                 true => block_level,
                 false => max_level,
             },
-            block_type: BlockType::from_u16(block_type),
+            block_type: BlockType::from(block_type),
             ph: &PhantomData,
         }
     }
@@ -111,7 +113,7 @@ impl<'a, const FLAG_BYTES: usize> BlockHeaderGen<'a, FLAG_BYTES> {
         buffer[level_offset] = block_level.to_le_bytes()[0];
         buffer[level_offset + 1] = block_level.to_le_bytes()[1];
         let flags_offset = level_offset + 2;
-        let block_type_u = block_type.to_u16();
+        let block_type_u: u16 = block_type.into();
         buffer[flags_offset] = block_type_u.to_le_bytes()[0];
         buffer[flags_offset + 1] = block_type_u.to_le_bytes()[1];
         buffer
