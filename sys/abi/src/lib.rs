@@ -5,7 +5,6 @@
 //! Kernel ABI definitions, shared between kernel and applications.
 
 #![no_std]
-#![feature(generic_const_exprs)]
 
 pub mod flash;
 
