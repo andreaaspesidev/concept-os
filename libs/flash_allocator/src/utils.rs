@@ -1,4 +1,4 @@
-use crate::{buddy, flash::{FlashMethods, header::BlockHeader}};
+use crate::{buddy, flash::{header::BlockHeader, FlashMethods}};
 
 pub fn read_block_header<
     'a,
@@ -27,7 +27,7 @@ pub fn get_block_size<
 >(
     block_header: &BlockHeader<'a, FLAG_BYTES>,
 ) -> usize {
-    let size: usize = (END_ADDR - START_ADDR + 1) as usize;
+    let size = (END_ADDR - START_ADDR + 1) as usize;
     if block_header.is_allocated() {
         size >> block_header.block_level()
     } else {

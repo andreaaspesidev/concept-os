@@ -2,7 +2,7 @@
     SWAP Procedure
 */
 
-use crate::flash_allocator::flash::{FlashMethods, header::BlockHeader};
+use crate::flash_allocator::flash::{header::BlockHeader, FlashMethods};
 
 /// u32 from big endian bytes
 /// 0x12345678

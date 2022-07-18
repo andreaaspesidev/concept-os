@@ -14,7 +14,7 @@ mod tests {
     use crate::flash_allocator::flash::page::FlashPage;
     use crate::flash_allocator::flash::walker::{FlashWalker, FlashWalkerImpl};
     use crate::flash_allocator::flash::{
-        FlashAllocator, FlashAllocatorImpl, FlashMethods, FlashBlock,
+        FlashAllocator, FlashAllocatorImpl, FlashBlock, FlashMethods,
     };
     use std::fmt;
 
@@ -47,7 +47,7 @@ mod tests {
         }
     }
 
-    fn check_block_region(flash: &mut [u8], start_addr: usize, block_size: usize, filled_with: u8){
+    fn check_block_region(flash: &mut [u8], start_addr: usize, block_size: usize, filled_with: u8) {
         for i in start_addr..(start_addr + block_size - 12) {
             if flash[i - ALLOCATOR_START_ADDR as usize] != filled_with {
                 panic!("Broken block");
@@ -89,10 +89,13 @@ mod tests {
 
     // Flash: 0x0800 0000 - 0x0807 FFFF
     // Size: 512Kb
-    // "Flash Layout": "../../../../../docs/images/vfp_example_0.svg"
+
+    // Allocator Generic Constraints
     const ALLOCATOR_START_ADDR: u32 = 0x0800_0000;
     const ALLOCATOR_END_ADDR: u32 = 0x0800_7FFF;
     const ALLOCATOR_SIZE: usize = (ALLOCATOR_END_ADDR - ALLOCATOR_START_ADDR + 1) as usize; // 0x8000 -> 32768
+                                                                                            // Allocator scan constraints (blocks before are considered allocated space)
+    const ALLOCATOR_START_SCAN_ADDR: u32 = 0x0800_0000; // ALLOCATOR_START_SCAN_ADDR - ALLOCATOR_START_ADDR MUST BE A POWER OF 2
 
     const FLASH_START_ADDR: u32 = 0x0800_0000;
     const FLASH_END_ADDR: u32 = 0x0807_FFFF;
@@ -115,35 +118,24 @@ mod tests {
 
     fn init_allocator<'a>(
         flash: &'a mut dyn FlashMethods<'a>,
-        from_flash: bool,
     ) -> impl FlashAllocator<'a, FLAG_SIZE> {
         assert!(ALLOCATOR_SIZE % BLOCK_SIZE as usize == 0);
-        let bd;
-        if !from_flash {
-            bd = FlashAllocatorImpl::<
-                ALLOCATOR_START_ADDR,
-                ALLOCATOR_END_ADDR,
-                BLOCK_SIZE,
-                NUM_BLOCKS,
-                NUM_SLOTS,
-                FLAG_SIZE,
-            >::new(flash);
-        } else {
-            bd = FlashAllocatorImpl::<
-                ALLOCATOR_START_ADDR,
-                ALLOCATOR_END_ADDR,
-                BLOCK_SIZE,
-                NUM_BLOCKS,
-                NUM_SLOTS,
-                FLAG_SIZE,
-            >::from_flash(flash);
-        }
+        let bd = FlashAllocatorImpl::<
+            ALLOCATOR_START_ADDR,
+            ALLOCATOR_END_ADDR,
+            ALLOCATOR_START_SCAN_ADDR,
+            BLOCK_SIZE,
+            NUM_BLOCKS,
+            NUM_SLOTS,
+            FLAG_SIZE,
+        >::from_flash(flash);
         println!(
             "Required memory bytes: {}",
             core::mem::size_of::<
                 FlashAllocatorImpl::<
                     ALLOCATOR_START_ADDR,
                     ALLOCATOR_END_ADDR,
+                    ALLOCATOR_START_SCAN_ADDR,
                     BLOCK_SIZE,
                     NUM_BLOCKS,
                     NUM_SLOTS,
@@ -165,42 +157,202 @@ mod tests {
                 &FLASH_PAGES,
                 &mut flash_content,
             );
-        let mut flash_allocator = init_allocator(&mut flash, false);
+        let mut flash_allocator = init_allocator(&mut flash);
         // Allocation 1
         let alloc1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
         assert_eq!(alloc1.get_size(), BLOCK_SIZE as u32 - 12);
-        println!("Allocated at: {:#010x}, actual size: {}", alloc1.get_base_address(), alloc1.get_size());
+        println!(
+            "Allocated at: {:#010x}, actual size: {}",
+            alloc1.get_base_address(),
+            alloc1.get_size()
+        );
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
         // Destroy allocator
         drop(flash_allocator);
         // Recreate from flash
-        let mut flash_allocator_rec = init_allocator(&mut flash, true);
+        let mut flash_allocator_rec = init_allocator(&mut flash);
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Deallocate 1
-        flash_allocator_rec.deallocate(alloc1.get_base_address()).unwrap();
+        flash_allocator_rec
+            .deallocate(alloc1.get_base_address())
+            .unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Allocate 2
         let alloc2 = flash_allocator_rec.allocate(3 * BLOCK_SIZE as u32).unwrap();
         assert_eq!(alloc2.get_size(), 4 * BLOCK_SIZE as u32 - 12);
-        println!("Allocated at: {:#010x}, actual size: {}", alloc2.get_base_address(), alloc2.get_size());
+        println!(
+            "Allocated at: {:#010x}, actual size: {}",
+            alloc2.get_base_address(),
+            alloc2.get_size()
+        );
         // Allocate 3
         let alloc3 = flash_allocator_rec.allocate(4 * BLOCK_SIZE as u32).unwrap();
         assert_eq!(alloc3.get_size(), 4 * BLOCK_SIZE as u32 - 12);
-        println!("Allocated at: {:#010x}, actual size: {}", alloc3.get_base_address(), alloc3.get_size());
+        println!(
+            "Allocated at: {:#010x}, actual size: {}",
+            alloc3.get_base_address(),
+            alloc3.get_size()
+        );
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Try to deallocate a wrong address
-        flash_allocator_rec.deallocate(alloc3.get_base_address() + 33).unwrap_err(); 
+        flash_allocator_rec
+            .deallocate(alloc3.get_base_address() + 33)
+            .unwrap_err();
         // Deallocate 3
-        flash_allocator_rec.deallocate(alloc3.get_base_address()).unwrap();
+        flash_allocator_rec
+            .deallocate(alloc3.get_base_address())
+            .unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Deallocate 2
-        flash_allocator_rec.deallocate(alloc2.get_base_address()).unwrap();
+        flash_allocator_rec
+            .deallocate(alloc2.get_base_address())
+            .unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Try to deallocate a wrong address
-        flash_allocator_rec.deallocate(alloc2.get_base_address() + 33).unwrap_err();
+        flash_allocator_rec
+            .deallocate(alloc2.get_base_address() + 33)
+            .unwrap_err();
         // Try to deallocate a free block
-        flash_allocator_rec.deallocate(ALLOCATOR_START_ADDR).unwrap_err();
-        flash_allocator_rec.deallocate(alloc3.get_base_address()).unwrap_err();
+        flash_allocator_rec
+            .deallocate(ALLOCATOR_START_ADDR)
+            .unwrap_err();
+        flash_allocator_rec
+            .deallocate(alloc3.get_base_address())
+            .unwrap_err();
+    }
+
+    #[test]
+    fn test_basic_functionality_start_end() {
+        const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
+        let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
+        let mut shadow_copy: &mut [u8];
+        unsafe {
+            let ptr = flash_content.as_mut_ptr();
+            shadow_copy = core::slice::from_raw_parts_mut(ptr, FLASH_SIZE);
+        }
+        let mut flash =
+            Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, FLAG_SIZE, SWAP_PAGE_NUM>::new(
+                FLASH_START_ADDR,
+                &FLASH_PAGES,
+                &mut flash_content,
+            );
+        const SCAN_START: u32 = 0x0800_1000; // 0x0800_1000 - 0x0800_0000 = 4096 (4Kb)
+        let mut flash_allocator = FlashAllocatorImpl::<
+            ALLOCATOR_START_ADDR,
+            ALLOCATOR_END_ADDR,
+            SCAN_START,
+            BLOCK_SIZE,
+            NUM_BLOCKS,
+            NUM_SLOTS,
+            FLAG_SIZE,
+        >::from_flash(&mut flash);
+        // Safely color the prev. space
+        fill_block_region(
+            &mut shadow_copy,
+            ALLOCATOR_START_ADDR as usize,
+            (SCAN_START - ALLOCATOR_START_ADDR + 1) as usize,
+            0x11,
+        );
+        println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
+        // Allocation 1
+        let alloc1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
+        assert_eq!(alloc1.get_size(), BLOCK_SIZE as u32 - 12);
+        println!(
+            "Allocated at: {:#010x}, actual size: {}",
+            alloc1.get_base_address(),
+            alloc1.get_size()
+        );
+        println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
+        // Check
+        check_block_region(
+            &mut shadow_copy,
+            ALLOCATOR_START_ADDR as usize,
+            (SCAN_START - ALLOCATOR_START_ADDR + 1) as usize,
+            0x11,
+        );
+        // Deallocate 1
+        flash_allocator
+            .deallocate(alloc1.get_base_address())
+            .unwrap();
+        println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
+        // Check
+        check_block_region(
+            &mut shadow_copy,
+            ALLOCATOR_START_ADDR as usize,
+            (SCAN_START - ALLOCATOR_START_ADDR + 1) as usize,
+            0x11,
+        );
+        // Allocate 2
+        let alloc2 = flash_allocator.allocate(3 * BLOCK_SIZE as u32).unwrap();
+        assert_eq!(alloc2.get_size(), 4 * BLOCK_SIZE as u32 - 12);
+        println!(
+            "Allocated at: {:#010x}, actual size: {}",
+            alloc2.get_base_address(),
+            alloc2.get_size()
+        );
+        // Check
+        check_block_region(
+            &mut shadow_copy,
+            ALLOCATOR_START_ADDR as usize,
+            (SCAN_START - ALLOCATOR_START_ADDR + 1) as usize,
+            0x11,
+        );
+        // Allocate 3
+        let alloc3 = flash_allocator.allocate(4 * BLOCK_SIZE as u32).unwrap();
+        assert_eq!(alloc3.get_size(), 4 * BLOCK_SIZE as u32 - 12);
+        println!(
+            "Allocated at: {:#010x}, actual size: {}",
+            alloc3.get_base_address(),
+            alloc3.get_size()
+        );
+        println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
+        // Check
+        check_block_region(
+            &mut shadow_copy,
+            ALLOCATOR_START_ADDR as usize,
+            (SCAN_START - ALLOCATOR_START_ADDR + 1) as usize,
+            0x11,
+        );
+        // Try to deallocate a wrong address
+        flash_allocator
+            .deallocate(alloc3.get_base_address() + 33)
+            .unwrap_err();
+        // Deallocate 3
+        flash_allocator
+            .deallocate(alloc3.get_base_address())
+            .unwrap();
+        println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
+        // Check
+        check_block_region(
+            &mut shadow_copy,
+            ALLOCATOR_START_ADDR as usize,
+            (SCAN_START - ALLOCATOR_START_ADDR + 1) as usize,
+            0x11,
+        );
+        // Deallocate 2
+        flash_allocator
+            .deallocate(alloc2.get_base_address())
+            .unwrap();
+        println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
+        // Check
+        check_block_region(
+            &mut shadow_copy,
+            ALLOCATOR_START_ADDR as usize,
+            (SCAN_START - ALLOCATOR_START_ADDR + 1) as usize,
+            0x11,
+        );
+        // Try to deallocate a wrong address
+        flash_allocator
+            .deallocate(alloc2.get_base_address() + 33)
+            .unwrap_err();
+        flash_allocator
+            .deallocate(ALLOCATOR_START_ADDR)
+            .unwrap_err();
+        // Try to deallocate a free block
+        flash_allocator.deallocate(SCAN_START).unwrap_err();
+        flash_allocator
+            .deallocate(alloc3.get_base_address())
+            .unwrap_err();
     }
 
     #[test]
@@ -213,15 +365,15 @@ mod tests {
                 &FLASH_PAGES,
                 &mut flash_content,
             );
-        let mut flash_allocator = init_allocator(&mut flash, false);
+        let mut flash_allocator = init_allocator(&mut flash);
         // Allocation 1
         let alloc1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
         assert_eq!(alloc1.get_size(), BLOCK_SIZE as u32 - 12);
         assert_eq!(alloc1.get_type(), BlockType::NONE);
         assert!(!alloc1.is_finalized());
         // Allocation 2
-        let alloc1 = flash_allocator.allocate(3*BLOCK_SIZE as u32).unwrap();
-        assert_eq!(alloc1.get_size(), 4*BLOCK_SIZE as u32 - 12);
+        let alloc1 = flash_allocator.allocate(3 * BLOCK_SIZE as u32).unwrap();
+        assert_eq!(alloc1.get_size(), 4 * BLOCK_SIZE as u32 - 12);
         assert_eq!(alloc1.get_type(), BlockType::NONE);
         assert!(!alloc1.is_finalized());
     }
@@ -241,7 +393,7 @@ mod tests {
                 &FLASH_PAGES,
                 &mut flash_content,
             );
-        let mut flash_allocator = init_allocator(&mut flash, false);
+        let mut flash_allocator = init_allocator(&mut flash);
         // Allocation 1
         let mut block1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
         assert_eq!(block1.get_size(), BLOCK_SIZE as u32 - 12);
@@ -260,7 +412,6 @@ mod tests {
         assert!(block1.is_finalized());
     }
 
-
     #[test]
     fn test_block_iterator() {
         const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
@@ -271,20 +422,25 @@ mod tests {
                 &FLASH_PAGES,
                 &mut flash_content,
             );
-        let mut flash_allocator = init_allocator(&mut flash, false);
+        let mut flash_allocator = init_allocator(&mut flash);
         // Allocation 1
         let block1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
         // Allocation 2
-        let block2 = flash_allocator.allocate(2*BLOCK_SIZE as u32).unwrap();
+        let block2 = flash_allocator.allocate(2 * BLOCK_SIZE as u32).unwrap();
         // Allocation 3
-        let block3 = flash_allocator.allocate(3*BLOCK_SIZE as u32).unwrap();
+        let block3 = flash_allocator.allocate(3 * BLOCK_SIZE as u32).unwrap();
         // Allocation 4
-        let block4 = flash_allocator.allocate(4*BLOCK_SIZE as u32).unwrap();
+        let block4 = flash_allocator.allocate(4 * BLOCK_SIZE as u32).unwrap();
         // Create a new iterator
-        drop(flash_allocator);  // Needed to release the flash interface
-        let mut iterator = FlashWalkerImpl
-            ::<ALLOCATOR_START_ADDR, ALLOCATOR_END_ADDR, NUM_SLOTS, BLOCK_SIZE, FLAG_SIZE>
-            ::new(&mut flash);
+        drop(flash_allocator); // Needed to release the flash interface
+        let mut iterator = FlashWalkerImpl::<
+            ALLOCATOR_START_ADDR,
+            ALLOCATOR_END_ADDR,
+            ALLOCATOR_START_SCAN_ADDR,
+            NUM_SLOTS,
+            BLOCK_SIZE,
+            FLAG_SIZE,
+        >::new(&mut flash);
         let b1 = iterator.next();
         assert!(b1.is_some());
         assert_eq!(b1.unwrap(), block1);
@@ -329,35 +485,69 @@ mod tests {
                 &mut flash_content,
             );
 
-        let mut flash_allocator = init_allocator(&mut flash, false);
+        let mut flash_allocator = init_allocator(&mut flash);
         // Construct initial layout
         let block1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block1.get_base_address() as usize, BLOCK_SIZE, 0x01);
+        fill_block_region(
+            &mut shadow_copy,
+            block1.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x01,
+        );
         check_block(&mut shadow_copy, &block1, 0x01);
         let alloc2 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, alloc2.get_base_address() as usize, BLOCK_SIZE, 0x02);
+        fill_block_region(
+            &mut shadow_copy,
+            alloc2.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x02,
+        );
         check_block(&mut shadow_copy, &alloc2, 0x02);
         let block2 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block2.get_base_address() as usize, BLOCK_SIZE, 0x03);
+        fill_block_region(
+            &mut shadow_copy,
+            block2.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x03,
+        );
         check_block(&mut shadow_copy, &block2, 0x03);
         let alloc4 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, alloc4.get_base_address() as usize, BLOCK_SIZE, 0x04);
+        fill_block_region(
+            &mut shadow_copy,
+            alloc4.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x04,
+        );
         check_block(&mut shadow_copy, &alloc4, 0x04);
         let block3 = flash_allocator.allocate(4 * BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block3.get_base_address() as usize, 4 * BLOCK_SIZE, 0x05);
+        fill_block_region(
+            &mut shadow_copy,
+            block3.get_base_address() as usize,
+            4 * BLOCK_SIZE,
+            0x05,
+        );
         check_block(&mut shadow_copy, &block3, 0x05);
         let block4 = flash_allocator.allocate(8 * BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block4.get_base_address() as usize, 8 * BLOCK_SIZE, 0x06);
+        fill_block_region(
+            &mut shadow_copy,
+            block4.get_base_address() as usize,
+            8 * BLOCK_SIZE,
+            0x06,
+        );
         check_block(&mut shadow_copy, &block4, 0x06);
 
-        flash_allocator.deallocate(alloc2.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(alloc2.get_base_address())
+            .unwrap();
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block2, 0x03);
         check_block(&mut shadow_copy, &alloc4, 0x04);
         check_block(&mut shadow_copy, &block3, 0x05);
         check_block(&mut shadow_copy, &block4, 0x06);
 
-        flash_allocator.deallocate(alloc4.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(alloc4.get_base_address())
+            .unwrap();
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block2, 0x03);
         check_block(&mut shadow_copy, &block3, 0x05);
@@ -365,13 +555,20 @@ mod tests {
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
 
         // Dismiss block 1
-        flash_allocator.deallocate(block1.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(block1.get_base_address())
+            .unwrap();
         // Check the other blocks are still intact
         check_block(&mut shadow_copy, &block2, 0x03);
         check_block(&mut shadow_copy, &block3, 0x05);
         check_block(&mut shadow_copy, &block4, 0x06);
         // Check that the block 1 is now free
-        check_block_region(&mut shadow_copy, block1.get_base_address() as usize, BLOCK_SIZE, 0xFF);
+        check_block_region(
+            &mut shadow_copy,
+            block1.get_base_address() as usize,
+            BLOCK_SIZE,
+            0xFF,
+        );
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
     }
 
@@ -393,35 +590,69 @@ mod tests {
                 &mut flash_content,
             );
 
-        let mut flash_allocator = init_allocator(&mut flash, false);
+        let mut flash_allocator = init_allocator(&mut flash);
         // Construct initial layout
         let block1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block1.get_base_address() as usize, BLOCK_SIZE, 0x01);
+        fill_block_region(
+            &mut shadow_copy,
+            block1.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x01,
+        );
         check_block(&mut shadow_copy, &block1, 0x01);
         let alloc2 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, alloc2.get_base_address() as usize, BLOCK_SIZE, 0x02);
+        fill_block_region(
+            &mut shadow_copy,
+            alloc2.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x02,
+        );
         check_block(&mut shadow_copy, &alloc2, 0x02);
         let block2 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block2.get_base_address() as usize, BLOCK_SIZE, 0x03);
+        fill_block_region(
+            &mut shadow_copy,
+            block2.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x03,
+        );
         check_block(&mut shadow_copy, &block2, 0x03);
         let alloc4 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, alloc4.get_base_address() as usize, BLOCK_SIZE, 0x04);
+        fill_block_region(
+            &mut shadow_copy,
+            alloc4.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x04,
+        );
         check_block(&mut shadow_copy, &alloc4, 0x04);
         let block3 = flash_allocator.allocate(4 * BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block3.get_base_address() as usize, 4 * BLOCK_SIZE, 0x05);
+        fill_block_region(
+            &mut shadow_copy,
+            block3.get_base_address() as usize,
+            4 * BLOCK_SIZE,
+            0x05,
+        );
         check_block(&mut shadow_copy, &block3, 0x05);
         let block4 = flash_allocator.allocate(8 * BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block4.get_base_address() as usize, 8 * BLOCK_SIZE, 0x06);
+        fill_block_region(
+            &mut shadow_copy,
+            block4.get_base_address() as usize,
+            8 * BLOCK_SIZE,
+            0x06,
+        );
         check_block(&mut shadow_copy, &block4, 0x06);
 
-        flash_allocator.deallocate(alloc2.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(alloc2.get_base_address())
+            .unwrap();
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block2, 0x03);
         check_block(&mut shadow_copy, &alloc4, 0x04);
         check_block(&mut shadow_copy, &block3, 0x05);
         check_block(&mut shadow_copy, &block4, 0x06);
 
-        flash_allocator.deallocate(alloc4.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(alloc4.get_base_address())
+            .unwrap();
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block2, 0x03);
         check_block(&mut shadow_copy, &block3, 0x05);
@@ -429,13 +660,20 @@ mod tests {
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
 
         // Dismiss block 2
-        flash_allocator.deallocate(block2.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(block2.get_base_address())
+            .unwrap();
         // Check the other blocks are still intact
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block3, 0x05);
         check_block(&mut shadow_copy, &block4, 0x06);
         // Check that the block 2 is now free
-        check_block_region(&mut shadow_copy, block2.get_base_address() as usize, BLOCK_SIZE, 0xFF);
+        check_block_region(
+            &mut shadow_copy,
+            block2.get_base_address() as usize,
+            BLOCK_SIZE,
+            0xFF,
+        );
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
     }
 
@@ -457,35 +695,69 @@ mod tests {
                 &mut flash_content,
             );
 
-        let mut flash_allocator = init_allocator(&mut flash, false);
+        let mut flash_allocator = init_allocator(&mut flash);
         // Construct initial layout
         let block1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block1.get_base_address() as usize, BLOCK_SIZE, 0x01);
+        fill_block_region(
+            &mut shadow_copy,
+            block1.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x01,
+        );
         check_block(&mut shadow_copy, &block1, 0x01);
         let alloc2 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, alloc2.get_base_address() as usize, BLOCK_SIZE, 0x02);
+        fill_block_region(
+            &mut shadow_copy,
+            alloc2.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x02,
+        );
         check_block(&mut shadow_copy, &alloc2, 0x02);
         let block2 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block2.get_base_address() as usize, BLOCK_SIZE, 0x03);
+        fill_block_region(
+            &mut shadow_copy,
+            block2.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x03,
+        );
         check_block(&mut shadow_copy, &block2, 0x03);
         let alloc4 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, alloc4.get_base_address() as usize, BLOCK_SIZE, 0x04);
+        fill_block_region(
+            &mut shadow_copy,
+            alloc4.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x04,
+        );
         check_block(&mut shadow_copy, &alloc4, 0x04);
         let block3 = flash_allocator.allocate(4 * BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block3.get_base_address() as usize, 4 * BLOCK_SIZE, 0x05);
+        fill_block_region(
+            &mut shadow_copy,
+            block3.get_base_address() as usize,
+            4 * BLOCK_SIZE,
+            0x05,
+        );
         check_block(&mut shadow_copy, &block3, 0x05);
         let block4 = flash_allocator.allocate(8 * BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block4.get_base_address() as usize, 8 * BLOCK_SIZE, 0x06);
+        fill_block_region(
+            &mut shadow_copy,
+            block4.get_base_address() as usize,
+            8 * BLOCK_SIZE,
+            0x06,
+        );
         check_block(&mut shadow_copy, &block4, 0x06);
 
-        flash_allocator.deallocate(alloc2.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(alloc2.get_base_address())
+            .unwrap();
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block2, 0x03);
         check_block(&mut shadow_copy, &alloc4, 0x04);
         check_block(&mut shadow_copy, &block3, 0x05);
         check_block(&mut shadow_copy, &block4, 0x06);
 
-        flash_allocator.deallocate(alloc4.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(alloc4.get_base_address())
+            .unwrap();
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block2, 0x03);
         check_block(&mut shadow_copy, &block3, 0x05);
@@ -493,13 +765,20 @@ mod tests {
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
 
         // Dismiss block 3
-        flash_allocator.deallocate(block3.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(block3.get_base_address())
+            .unwrap();
         // Check the others are still intact
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block2, 0x03);
         check_block(&mut shadow_copy, &block4, 0x06);
         // Check that the block 3 is now free
-        check_block_region(&mut shadow_copy, block3.get_base_address() as usize, 4 * BLOCK_SIZE, 0xFF);
+        check_block_region(
+            &mut shadow_copy,
+            block3.get_base_address() as usize,
+            4 * BLOCK_SIZE,
+            0xFF,
+        );
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
     }
 
@@ -521,35 +800,69 @@ mod tests {
                 &mut flash_content,
             );
 
-        let mut flash_allocator = init_allocator(&mut flash, false);
+        let mut flash_allocator = init_allocator(&mut flash);
         // Construct initial layout
         let block1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block1.get_base_address() as usize, BLOCK_SIZE, 0x01);
+        fill_block_region(
+            &mut shadow_copy,
+            block1.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x01,
+        );
         check_block(&mut shadow_copy, &block1, 0x01);
         let alloc2 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, alloc2.get_base_address() as usize, BLOCK_SIZE, 0x02);
+        fill_block_region(
+            &mut shadow_copy,
+            alloc2.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x02,
+        );
         check_block(&mut shadow_copy, &alloc2, 0x02);
         let block2 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block2.get_base_address() as usize, BLOCK_SIZE, 0x03);
+        fill_block_region(
+            &mut shadow_copy,
+            block2.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x03,
+        );
         check_block(&mut shadow_copy, &block2, 0x03);
         let alloc4 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, alloc4.get_base_address() as usize, BLOCK_SIZE, 0x04);
+        fill_block_region(
+            &mut shadow_copy,
+            alloc4.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x04,
+        );
         check_block(&mut shadow_copy, &alloc4, 0x04);
         let block3 = flash_allocator.allocate(4 * BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block3.get_base_address() as usize, 4 * BLOCK_SIZE, 0x05);
+        fill_block_region(
+            &mut shadow_copy,
+            block3.get_base_address() as usize,
+            4 * BLOCK_SIZE,
+            0x05,
+        );
         check_block(&mut shadow_copy, &block3, 0x05);
         let block4 = flash_allocator.allocate(8 * BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block4.get_base_address() as usize, 8 * BLOCK_SIZE, 0x06);
+        fill_block_region(
+            &mut shadow_copy,
+            block4.get_base_address() as usize,
+            8 * BLOCK_SIZE,
+            0x06,
+        );
         check_block(&mut shadow_copy, &block4, 0x06);
 
-        flash_allocator.deallocate(alloc2.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(alloc2.get_base_address())
+            .unwrap();
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block2, 0x03);
         check_block(&mut shadow_copy, &alloc4, 0x04);
         check_block(&mut shadow_copy, &block3, 0x05);
         check_block(&mut shadow_copy, &block4, 0x06);
 
-        flash_allocator.deallocate(alloc4.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(alloc4.get_base_address())
+            .unwrap();
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block2, 0x03);
         check_block(&mut shadow_copy, &block3, 0x05);
@@ -557,13 +870,20 @@ mod tests {
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
 
         // Dismiss block 4
-        flash_allocator.deallocate(block4.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(block4.get_base_address())
+            .unwrap();
         // Check the others are still intact
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block2, 0x03);
         check_block(&mut shadow_copy, &block3, 0x05);
         // Check that the block 4 is now free
-        check_block_region(&mut shadow_copy, block4.get_base_address() as usize, 8 * BLOCK_SIZE, 0xFF);
+        check_block_region(
+            &mut shadow_copy,
+            block4.get_base_address() as usize,
+            8 * BLOCK_SIZE,
+            0xFF,
+        );
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
     }
 
@@ -584,35 +904,69 @@ mod tests {
                 &mut flash_content,
             );
 
-        let mut flash_allocator = init_allocator(&mut flash, false);
+        let mut flash_allocator = init_allocator(&mut flash);
         // Construct initial layout
         let block1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block1.get_base_address() as usize, BLOCK_SIZE, 0x01);
+        fill_block_region(
+            &mut shadow_copy,
+            block1.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x01,
+        );
         check_block(&mut shadow_copy, &block1, 0x01);
         let alloc2 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, alloc2.get_base_address() as usize, BLOCK_SIZE, 0x02);
+        fill_block_region(
+            &mut shadow_copy,
+            alloc2.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x02,
+        );
         check_block(&mut shadow_copy, &alloc2, 0x02);
         let block2 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block2.get_base_address() as usize, BLOCK_SIZE, 0x03);
+        fill_block_region(
+            &mut shadow_copy,
+            block2.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x03,
+        );
         check_block(&mut shadow_copy, &block2, 0x03);
         let alloc4 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, alloc4.get_base_address() as usize, BLOCK_SIZE, 0x04);
+        fill_block_region(
+            &mut shadow_copy,
+            alloc4.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x04,
+        );
         check_block(&mut shadow_copy, &alloc4, 0x04);
         let block3 = flash_allocator.allocate(4 * BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block3.get_base_address() as usize, 4 * BLOCK_SIZE, 0x05);
+        fill_block_region(
+            &mut shadow_copy,
+            block3.get_base_address() as usize,
+            4 * BLOCK_SIZE,
+            0x05,
+        );
         check_block(&mut shadow_copy, &block3, 0x05);
         let block4 = flash_allocator.allocate(8 * BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block4.get_base_address() as usize, 8 * BLOCK_SIZE, 0x06);
+        fill_block_region(
+            &mut shadow_copy,
+            block4.get_base_address() as usize,
+            8 * BLOCK_SIZE,
+            0x06,
+        );
         check_block(&mut shadow_copy, &block4, 0x06);
 
-        flash_allocator.deallocate(alloc2.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(alloc2.get_base_address())
+            .unwrap();
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block2, 0x03);
         check_block(&mut shadow_copy, &alloc4, 0x04);
         check_block(&mut shadow_copy, &block3, 0x05);
         check_block(&mut shadow_copy, &block4, 0x06);
 
-        flash_allocator.deallocate(alloc4.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(alloc4.get_base_address())
+            .unwrap();
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block2, 0x03);
         check_block(&mut shadow_copy, &block3, 0x05);
@@ -620,10 +974,18 @@ mod tests {
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
 
         // Dismiss block 1,2,3,4
-        flash_allocator.deallocate(block4.get_base_address()).unwrap();
-        flash_allocator.deallocate(block2.get_base_address()).unwrap();
-        flash_allocator.deallocate(block1.get_base_address()).unwrap();
-        flash_allocator.deallocate(block3.get_base_address()).unwrap();
+        flash_allocator
+            .deallocate(block4.get_base_address())
+            .unwrap();
+        flash_allocator
+            .deallocate(block2.get_base_address())
+            .unwrap();
+        flash_allocator
+            .deallocate(block1.get_base_address())
+            .unwrap();
+        flash_allocator
+            .deallocate(block3.get_base_address())
+            .unwrap();
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
     }
 
@@ -645,21 +1007,55 @@ mod tests {
             );
 
         // Create the initial layout
-        let mut initial_allocator = init_allocator(&mut flash, false);
+        let mut initial_allocator = init_allocator(&mut flash);
         let block1 = initial_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block1.get_base_address() as usize, BLOCK_SIZE, 0x01);
+        fill_block_region(
+            &mut shadow_copy,
+            block1.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x01,
+        );
         let alloc2 = initial_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, alloc2.get_base_address() as usize, BLOCK_SIZE, 0x02);
+        fill_block_region(
+            &mut shadow_copy,
+            alloc2.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x02,
+        );
         let block2 = initial_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block2.get_base_address() as usize, BLOCK_SIZE, 0x03);
+        fill_block_region(
+            &mut shadow_copy,
+            block2.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x03,
+        );
         let alloc4 = initial_allocator.allocate(BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, alloc4.get_base_address() as usize, BLOCK_SIZE, 0x04);
+        fill_block_region(
+            &mut shadow_copy,
+            alloc4.get_base_address() as usize,
+            BLOCK_SIZE,
+            0x04,
+        );
         let block3 = initial_allocator.allocate(4 * BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block3.get_base_address() as usize, 4 * BLOCK_SIZE, 0x05);
+        fill_block_region(
+            &mut shadow_copy,
+            block3.get_base_address() as usize,
+            4 * BLOCK_SIZE,
+            0x05,
+        );
         let block4 = initial_allocator.allocate(8 * BLOCK_SIZE as u32).unwrap();
-        fill_block_region(&mut shadow_copy, block4.get_base_address() as usize, 8 * BLOCK_SIZE, 0x06);
-        initial_allocator.deallocate(alloc2.get_base_address()).unwrap();
-        initial_allocator.deallocate(alloc4.get_base_address()).unwrap();
+        fill_block_region(
+            &mut shadow_copy,
+            block4.get_base_address() as usize,
+            8 * BLOCK_SIZE,
+            0x06,
+        );
+        initial_allocator
+            .deallocate(alloc2.get_base_address())
+            .unwrap();
+        initial_allocator
+            .deallocate(alloc4.get_base_address())
+            .unwrap();
         println!("{:?}", &Fmt(|f| initial_allocator.dump(f)));
 
         // Modify the memory and mark the third block as deallocated
@@ -667,13 +1063,18 @@ mod tests {
         mark_deallocated(&mut shadow_copy, block3.get_base_address() as usize);
 
         // Create the allocator from flash
-        let flash_allocator = init_allocator(&mut flash, true);
+        let flash_allocator = init_allocator(&mut flash);
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
 
         // Check whether the block has been freed
         check_block(&mut shadow_copy, &block1, 0x01);
         check_block(&mut shadow_copy, &block2, 0x03);
-        check_block_region(&mut shadow_copy, block3.get_base_address() as usize, 4 * BLOCK_SIZE, 0xFF);
+        check_block_region(
+            &mut shadow_copy,
+            block3.get_base_address() as usize,
+            4 * BLOCK_SIZE,
+            0xFF,
+        );
         check_block(&mut shadow_copy, &block4, 0x06);
     }
 }
