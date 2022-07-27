@@ -1,0 +1,13 @@
+[package]
+name = "ram_allocator"
+version = "0.0.1"
+edition = "2021"
+
+[features]
+swap = []
+
+[dependencies]
+abi = {path = "../../sys/abi"}
+buddy_allocator = {path = "../buddy_allocator", default_features=false}
+flash_allocator = {path = "../flash_allocator"}
+heapless = "0.7.13" # Stack data structures

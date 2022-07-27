@@ -75,8 +75,8 @@ In order to satisfy the second point (permanent assignments), we need to store t
 This information can be efficiently stored inside the block allocated in flash for storing the `HBF` of this component, that can be organized in this way:
 
 ```
-        | 12 bytes |  4 bytes  | ... | ...        |
-    ... |  Header  | SRAM Base | HBF | Free Space | ... 
+        | 12 bytes |  4 bytes  |  4 bytes  |... | ...        |
+    ... |  Header  | SRAM Base | SRAM Size |HBF | Free Space | ... 
 ```
 
 This keeps the HBF start aligned to 4 bytes (requirement), and avoid using a complex filesystem in order to allocate new components.

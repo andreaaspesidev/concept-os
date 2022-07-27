@@ -1,0 +1,8 @@
+[package]
+name = "stm32f303e_example"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ram_allocator = {path="../../../ram_allocator"}
+flash_allocator = {path="../../../flash_allocator"}
