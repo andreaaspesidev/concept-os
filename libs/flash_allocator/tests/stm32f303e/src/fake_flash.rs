@@ -1,10 +1,10 @@
 use flash_allocator::flash::{page::FlashPage, FlashMethods};
 
 fn u32_from_arr(arr: &[u8]) -> u32 {
-    ((arr[0] as u32) <<  0) +
-    ((arr[1] as u32) <<  8) +
-    ((arr[2] as u32) << 16) +
-    ((arr[3] as u32) << 24)
+    ((arr[0] as u32) << 0)
+        + ((arr[1] as u32) << 8)
+        + ((arr[2] as u32) << 16)
+        + ((arr[3] as u32) << 24)
 }
 
 /*
@@ -14,7 +14,7 @@ fn u32_from_arr(arr: &[u8]) -> u32 {
 pub struct Flash {
     content: Vec<u8>,
     start_addr: u32,
-    page_mapping: &'static [FlashPage]
+    page_mapping: &'static [FlashPage],
 }
 
 impl Flash {
@@ -22,7 +22,7 @@ impl Flash {
         Self {
             content: vec![0xFF; size],
             start_addr: start_addr,
-            page_mapping: page_mapping
+            page_mapping: page_mapping,
         }
     }
     fn page_from_num(&self, page_num: u16) -> Option<&FlashPage> {
@@ -38,28 +38,31 @@ impl Flash {
             let page_start = self.page_mapping[page].base_address() - self.start_addr;
             println!("[Page #{}]", page);
             for i in 0..4 {
-                let offset_start: usize = (page_start) as usize + i*4;
-                let word = u32_from_arr(&self.content[offset_start..offset_start+4]);
+                let offset_start: usize = (page_start) as usize + i * 4;
+                let word = u32_from_arr(&self.content[offset_start..offset_start + 4]);
                 println!("\t[{}] {:#010x}", i, word);
             }
         }
     }
 }
 
-impl <'a> FlashMethods<'a> for Flash {
-    fn read(&self, address: u32, len: usize) -> &'a [u8] {
+impl<'a> FlashMethods<'a> for Flash {
+    fn read(&self, address: u32, len: usize) -> Result<&'a [u8], ()> {
         let offset = (address - self.start_addr) as usize;
-        unsafe{
+        unsafe {
             // Needed as for testing now we are using vectors in heap, that would outlive the lifetime 'a
-            core::slice::from_raw_parts(&self.content[offset], len)
+            Ok(core::slice::from_raw_parts(&self.content[offset], len))
         }
     }
-    fn write(&mut self, address: u32, value: u8) {
+    fn write(&mut self, address: u32, value: u8) -> Result<(), ()> {
         // In case flash memory requires an higher granularity for writing
         // this method must enforce it by buffering data and make a single write
         let offset = (address - self.start_addr) as usize;
-        assert!(self.content[offset] == 0xFF || value == 0x00 || self.content[offset] == value);
+        if !(self.content[offset] == 0xFF || value == 0x00 || self.content[offset] == value) {
+            return Err(());
+        }
         self.content[offset] = value;
+        Ok(())
     }
     fn page_from_address(&self, address: u32) -> Option<FlashPage> {
         for p in self.page_mapping {
@@ -69,13 +72,14 @@ impl <'a> FlashMethods<'a> for Flash {
         }
         None
     }
-    fn erase(&mut self, page_num: u16) {
-        let page = self.page_from_num(page_num).unwrap();
+    fn erase(&mut self, page_num: u16) -> Result<(), ()> {
+        let page = self.page_from_num(page_num).ok_or(())?;
         let offset_start = (page.base_address() - self.start_addr) as usize;
         let offset_end = offset_start + page.size() as usize;
         for i in offset_start..offset_end {
             self.content[i] = 0xFF; // Erase byte
         }
+        Ok(())
     }
 
     fn page_from_number(&self, page_num: u16) -> Option<FlashPage> {

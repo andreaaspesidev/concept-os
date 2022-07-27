@@ -1,7 +1,7 @@
 use abi::flash::BlockType;
 
 use self::page::FlashPage;
-use crate::{flash::header::BlockHeader};
+use crate::flash::header::BlockHeader;
 use buddy_allocator::{BuddyAllocator, BuddyAllocatorImpl};
 use core::fmt::Formatter;
 
@@ -144,8 +144,8 @@ pub mod page {
 }
 
 pub mod walker {
-    use super::{header::BlockHeader, FlashBlock, FlashMethods};
     use super::utils;
+    use super::{header::BlockHeader, FlashBlock, FlashMethods};
 
     pub struct FlashWalkerImpl<
         'a,
@@ -293,11 +293,11 @@ pub mod walker {
             FLAG_BYTES,
         >
     {
-        fn read(&self, address: u32, len: usize) -> &'a [u8] {
+        fn read(&self, address: u32, len: usize) -> Result<&'a [u8], ()> {
             self.flash.read(address, len)
         }
 
-        fn write(&mut self, address: u32, value: u8) {
+        fn write(&mut self, address: u32, value: u8) -> Result<(), ()> {
             self.flash.write(address, value)
         }
 
@@ -313,7 +313,7 @@ pub mod walker {
             self.flash.prev_page(page_num)
         }
 
-        fn erase(&mut self, page_num: u16) {
+        fn erase(&mut self, page_num: u16) -> Result<(), ()> {
             self.flash.erase(page_num)
         }
 
@@ -359,7 +359,7 @@ pub mod walker {
 }
 
 pub mod utils {
-    use super::{FlashMethods, header::BlockHeader, FlashBlock};
+    use super::{header::BlockHeader, FlashBlock, FlashMethods};
 
     pub fn read_block_header<
         'a,
@@ -370,7 +370,9 @@ pub mod utils {
         flash: &dyn FlashMethods<'a>,
         offset: u32,
     ) -> BlockHeader<'a, FLAG_BYTES> {
-        let header_buffer = flash.read(START_ADDR + offset, BlockHeader::<FLAG_BYTES>::HEADER_SIZE);
+        let header_buffer = flash
+            .read(START_ADDR + offset, BlockHeader::<FLAG_BYTES>::HEADER_SIZE)
+            .unwrap();
         let block_header: BlockHeader<FLAG_BYTES> = BlockHeader::<FLAG_BYTES>::new(
             header_buffer,
             buddy_allocator::get_max_level::<NUM_SLOTS>() as u16,
@@ -406,7 +408,7 @@ pub mod utils {
     >(
         flash: &dyn FlashMethods<'a>,
         mut base_address: u32,
-        is_base_exact: bool
+        is_base_exact: bool,
     ) -> Option<FlashBlock> {
         let size = (END_ADDR - START_ADDR + 1) as usize;
         let start_scan_offset: usize = (START_SCAN_ADDR - START_ADDR) as usize;
@@ -446,9 +448,9 @@ pub mod utils {
 /// Interface for interacting with flash memory.
 pub trait FlashMethods<'a> {
     /// Reads a slice of len bytes starting from the specified offset
-    fn read(&self, address: u32, len: usize) -> &'a [u8];
+    fn read(&self, address: u32, len: usize) -> Result<&'a [u8], ()>;
     /// Writes a byte to the corresponding offset
-    fn write(&mut self, address: u32, value: u8);
+    fn write(&mut self, address: u32, value: u8) -> Result<(), ()>;
     /// Retrieve the page number from the offset
     fn page_from_address(&self, address: u32) -> Option<FlashPage>;
     /// Retrieve the page from a page number
@@ -456,7 +458,7 @@ pub trait FlashMethods<'a> {
     /// Retrieve the prev. page from the offset
     fn prev_page(&self, page_num: u16) -> Option<FlashPage>;
     /// Erase a page number
-    fn erase(&mut self, page_num: u16);
+    fn erase(&mut self, page_num: u16) -> Result<(), ()>;
 
     #[cfg(feature = "swap")]
     /// Launch the swap procedure
@@ -619,7 +621,7 @@ impl<
         drop(block_header); // Needed to release flash object
                             // Write the new header
         for i in 0..header.len() {
-            flash.write(addr + i as u32, header[i]);
+            flash.write(addr + i as u32, header[i]).unwrap();
         }
         // Erase block
         Self::block_erase_procedure(flash, addr, block_level as usize);
@@ -695,7 +697,7 @@ impl<
             let mut page = flash.prev_page(pe.page_number()).unwrap();
             while page.page_number() > ps.page_number() {
                 // Just erase the page
-                flash.erase(page.page_number());
+                flash.erase(page.page_number()).unwrap();
                 // Go to prev. page
                 page = flash.prev_page(page.page_number()).unwrap(); // Surely exists as > PS
             }
@@ -774,7 +776,7 @@ impl<
             BlockHeader::<FLAG_BYTES>::write_buffer(true, false, false, level, BlockType::NONE);
         // Write header
         for i in 0..header.len() {
-            self.flash.write(addr + i as u32, header[i]);
+            self.flash.write(addr + i as u32, header[i]).unwrap();
         }
         // Return only a pointer to the usable space
         return Ok(FlashBlock {

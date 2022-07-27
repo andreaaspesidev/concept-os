@@ -57,6 +57,7 @@ pub enum SwapResult {
     Success = 0,
     UnknownPage = 1,
     SwapSmall = 2,
+    FlashError = 3,
 }
 
 pub trait Swapper<'a> {
@@ -104,7 +105,8 @@ impl<
     fn read_block_header(&self, address: u32) -> BlockHeader<'a, FLAG_BYTES> {
         let header_buffer = self
             .flash
-            .read(address, BlockHeader::<FLAG_BYTES>::HEADER_SIZE);
+            .read(address, BlockHeader::<FLAG_BYTES>::HEADER_SIZE)
+            .unwrap();
         let block_header: BlockHeader<FLAG_BYTES> =
             BlockHeader::<FLAG_BYTES>::new(header_buffer, BLOCK_MAX_LEVEL);
         return block_header;
@@ -118,9 +120,11 @@ impl<
         // Write PAGE_NUM (in little endian)
         let swap_page = self.flash.page_from_number(SWAP_PAGE_NUM).unwrap();
         self.flash
-            .write(swap_page.base_address(), (page_number & 0xFF) as u8); // Low word
+            .write(swap_page.base_address(), (page_number & 0xFF) as u8)
+            .unwrap(); // Low word
         self.flash
-            .write(swap_page.base_address() + 1,(page_number >> 8) as u8); // High word
+            .write(swap_page.base_address() + 1, (page_number >> 8) as u8)
+            .unwrap(); // High word
         self.current_position += 2 + FLAG_BYTES as u32; // The header size
         self.swap_init = true;
     }
@@ -137,13 +141,17 @@ impl<
         // 1 - write target address
         buff = frgm_target.to_le_bytes();
         for b in buff {
-            self.flash.write(swap_start_addr + self.current_position, b);
+            self.flash
+                .write(swap_start_addr + self.current_position, b)
+                .unwrap();
             self.current_position += 1;
         }
         // 2 - write fragment size
         buff = frgm_size.to_le_bytes();
         for b in buff {
-            self.flash.write(swap_start_addr + self.current_position, b);
+            self.flash
+                .write(swap_start_addr + self.current_position, b)
+                .unwrap();
             self.current_position += 1;
         }
         // 3 - copy fragment data
@@ -151,10 +159,11 @@ impl<
         let frgm_end_addr = read_pos + frgm_size;
         while read_pos < frgm_end_addr {
             // todo: check if included or not
-            let data = self.flash.read(read_pos, 1);
+            let data = self.flash.read(read_pos, 1).unwrap();
             assert!(data.len() == 1);
             self.flash
-                .write(swap_start_addr + self.current_position, data[0]);
+                .write(swap_start_addr + self.current_position, data[0])
+                .unwrap();
             self.current_position += 1;
             read_pos += 1;
         }
@@ -173,15 +182,15 @@ impl<
     }
 
     fn read_u32(&self, address: u32) -> u32 {
-        let buff = self.flash.read(address, 4);
+        let buff = self.flash.read(address, 4).unwrap();
         return u32_le_from_array(buff);
     }
     fn read_u16(&self, address: u32) -> u16 {
-        let buff = self.flash.read(address, 2);
+        let buff = self.flash.read(address, 2).unwrap();
         return u16_le_from_array(buff);
     }
     fn read_flag(&self, address: u32) -> bool {
-        let buff = self.flash.read(address, FLAG_BYTES);
+        let buff = self.flash.read(address, FLAG_BYTES).unwrap();
         return buff == [0x00; FLAG_BYTES];
     }
 
@@ -198,9 +207,10 @@ impl<
             // Empty header, finished fragments
             // Copy back fragment
             for i in 0..frgm_size {
-                let data = self.flash.read(curr_pos + i, 1);
+                let data = self.flash.read(curr_pos + i, 1).unwrap();
                 self.flash
-                    .write(target_page_start_addr + frgm_target + i, data[0]);
+                    .write(target_page_start_addr + frgm_target + i, data[0])
+                    .unwrap();
             }
             curr_pos += frgm_size;
             if curr_pos + 4 >= swap_page.end_address() {
@@ -257,7 +267,7 @@ impl<
         if start_type != SwapStartType::PreserveStart {
             if !self.contains_allocated_blocks(curr_pos, page.end_address()) {
                 // Just erase the page
-                self.flash.erase(page.page_number());
+                self.flash.erase(page.page_number()).unwrap();
                 return SwapResult::Success;
             }
         }
@@ -279,13 +289,15 @@ impl<
         }
         // 3 - mark copy completed, erase target page
         for i in 0..(FLAG_BYTES as u32) {
-            self.flash.write(swap_page.base_address() + 2 + i, 0x00);
+            self.flash
+                .write(swap_page.base_address() + 2 + i, 0x00)
+                .unwrap();
         }
-        self.flash.erase(page_number);
+        self.flash.erase(page_number).unwrap();
         // 4 - copy back
         self.copy_back(page.base_address());
         // 5 - erase swap
-        self.flash.erase(SWAP_PAGE_NUM);
+        self.flash.erase(SWAP_PAGE_NUM).unwrap();
 
         return SwapResult::Success;
     }
@@ -302,14 +314,14 @@ impl<
         let copy_completed = self.read_flag(swap_page.base_address() + 2);
         if !copy_completed {
             // Safe to erase and return
-            self.flash.erase(SWAP_PAGE_NUM);
+            self.flash.erase(SWAP_PAGE_NUM).unwrap();
             return;
         }
         // Erase again target page
-        self.flash.erase(page_number);
+        self.flash.erase(page_number).unwrap();
         // 4 - copy back
         self.copy_back(page.base_address());
         // 5 - erase swap
-        self.flash.erase(SWAP_PAGE_NUM);
+        self.flash.erase(SWAP_PAGE_NUM).unwrap();
     }
 }
