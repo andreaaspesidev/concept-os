@@ -88,33 +88,35 @@ uint32_t flash_test() {
     snprintf(buffer, 100, "%lu ms\n", ticks);
     HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
 
-    /* Program first half-word, setting the first bit -> 11111111_11111110*/
+    /* Program second half-word, setting the first bit -> 11111111_11111110*/
     uint32_t address = ADDR_FLASH_PAGE_16;
-    snprintf(buffer, 100, "Programming half word 0...");
+    snprintf(buffer, 100, "Programming half word 1...");
     HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
     ticks = HAL_GetTick();
-    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, address, 0xFFFE) != HAL_OK) {
+    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, address+2, 0xFFFE) != HAL_OK) {
       return HAL_FLASH_GetError();
     }
     ticks = HAL_GetTick() - ticks;
     /* Check the word */
-    uint16_t word = *(__IO uint16_t *)address;
-    if (word != 0xFFFE) {
+    uint16_t word0 = *(__IO uint16_t *)address;
+    uint16_t word1 = *(__IO uint16_t *)(address+2);
+    if (word0 != 0xFFFF || word1 != 0xFFFE) {
     	return 10;
     }
     snprintf(buffer, 100, "ok! (%lu ms)\n", ticks);
     HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
 
-    /* Program second half-word, setting the second bit -> 11111111_11111101*/
-    snprintf(buffer, 100, "Programming half word 1...");
+    /* Program first half-word, setting the second bit -> 11111111_11111101*/
+    snprintf(buffer, 100, "Programming half word 0...");
     HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
     ticks = HAL_GetTick();
-    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, address+2, 0xFFFD) != HAL_OK) {
+    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, address, 0xFFFD) != HAL_OK) {
         return HAL_FLASH_GetError();
     }
     ticks = HAL_GetTick() - ticks;
-    word = *(__IO uint16_t *)(address+2);
-    if (word != 0xFFFD) {
+    word0 = *(__IO uint16_t *)address;
+    word1 = *(__IO uint16_t *)(address+2);
+    if (word0 != 0xFFFD || word1 != 0xFFFE) {
       return 10;
     }
     snprintf(buffer, 100, "ok! (%lu ms)\nSuccess!\n", ticks);
@@ -189,7 +191,8 @@ int main(void)
         HAL_UART_Receive(&UART_Handler, buffer, sizeof(buffer), HAL_MAX_DELAY);
         HAL_UART_Transmit(&UART_Handler, buffer, sizeof(buffer), HAL_MAX_DELAY);
         if (buffer[0] == 't') {
-            flash_test_byte();
+          flash_test();
+          flash_test_byte();
         } 
   }
 }
