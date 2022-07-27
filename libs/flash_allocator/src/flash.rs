@@ -1,12 +1,9 @@
 use abi::flash::BlockType;
 
-use crate::{
-    flash::header::BlockHeader,
-    utils,
-};
+use self::page::FlashPage;
+use crate::{flash::header::BlockHeader};
 use buddy_allocator::{BuddyAllocator, BuddyAllocatorImpl};
 use core::fmt::Formatter;
-use self::page::FlashPage;
 
 #[cfg(feature = "swap")]
 use crate::swap::SwapStartType;
@@ -147,11 +144,12 @@ pub mod page {
 }
 
 pub mod walker {
-    use super::{header::BlockHeader, FlashMethods, FlashBlock};
-    use crate::utils;
+    use super::{header::BlockHeader, FlashBlock, FlashMethods};
+    use super::utils;
 
     pub struct FlashWalkerImpl<
         'a,
+        'b,
         const START_ADDR: u32,      // Allocator start address
         const END_ADDR: u32,        // Allocator end address
         const START_SCAN_ADDR: u32, // Position of the first block (>= START_ADDR)
@@ -160,41 +158,67 @@ pub mod walker {
         const FLAG_BYTES: usize,
     > {
         current_offset: usize,
-        flash: &'a mut dyn FlashMethods<'a>,
+        flash: &'a mut dyn FlashMethods<'b>,
     }
     impl<
             'a,
+            'b,
             const START_ADDR: u32,      // Allocator start address
             const END_ADDR: u32,        // Allocator end address
             const START_SCAN_ADDR: u32, // Position of the first block (>= START_ADDR)
             const NUM_SLOTS: usize,
             const BLOCK_SIZE: usize,
             const FLAG_BYTES: usize,
-        > FlashWalkerImpl<'a, START_ADDR, END_ADDR, START_SCAN_ADDR, NUM_SLOTS, BLOCK_SIZE, FLAG_BYTES>
+        >
+        FlashWalkerImpl<
+            'a,
+            'b,
+            START_ADDR,
+            END_ADDR,
+            START_SCAN_ADDR,
+            NUM_SLOTS,
+            BLOCK_SIZE,
+            FLAG_BYTES,
+        >
     {
         const ALLOCATOR_SIZE: usize = (END_ADDR - START_ADDR + 1) as usize;
         const START_SCAN_OFFSET: usize = (START_SCAN_ADDR - START_ADDR) as usize;
-       
-        pub fn new(flash: &'a mut dyn FlashMethods<'a>) -> Self {
+
+        pub fn new(flash: &'a mut dyn FlashMethods<'b>) -> Self {
             Self {
                 flash: flash,
                 current_offset: Self::START_SCAN_OFFSET,
             }
         }
+
+        fn reset(&mut self) {
+            self.current_offset = Self::START_SCAN_OFFSET;
+        }
     }
 
     impl<
             'a,
+            'b,
             const START_ADDR: u32,      // Allocator start address
             const END_ADDR: u32,        // Allocator end address
             const START_SCAN_ADDR: u32, // Position of the first block (>= START_ADDR)
             const NUM_SLOTS: usize,
             const BLOCK_SIZE: usize,
-            const FLAG_BYTES: usize
-        > Iterator for FlashWalkerImpl<'a, START_ADDR, END_ADDR, START_SCAN_ADDR, NUM_SLOTS, BLOCK_SIZE, FLAG_BYTES>
+            const FLAG_BYTES: usize,
+        > Iterator
+        for FlashWalkerImpl<
+            'a,
+            'b,
+            START_ADDR,
+            END_ADDR,
+            START_SCAN_ADDR,
+            NUM_SLOTS,
+            BLOCK_SIZE,
+            FLAG_BYTES,
+        >
     {
         type Item = FlashBlock;
-        fn next(&mut self) -> Option<Self::Item>  {
+        fn next(&mut self) -> Option<Self::Item> {
             // Scan for next valid block
             while self.current_offset < Self::ALLOCATOR_SIZE {
                 // Read header of the next block
@@ -248,19 +272,177 @@ pub mod walker {
         }
     }
 
-    pub trait FlashWalker: Iterator<Item = FlashBlock> {}
     impl<
             'a,
+            'b,
             const START_ADDR: u32,      // Allocator start address
             const END_ADDR: u32,        // Allocator end address
             const START_SCAN_ADDR: u32, // Position of the first block (>= START_ADDR)
             const NUM_SLOTS: usize,
             const BLOCK_SIZE: usize,
             const FLAG_BYTES: usize,
-        > FlashWalker for FlashWalkerImpl<'a, START_ADDR, END_ADDR, START_SCAN_ADDR, NUM_SLOTS, BLOCK_SIZE, FLAG_BYTES>  {
+        > FlashMethods<'a>
+        for FlashWalkerImpl<
+            'a,
+            'b,
+            START_ADDR,
+            END_ADDR,
+            START_SCAN_ADDR,
+            NUM_SLOTS,
+            BLOCK_SIZE,
+            FLAG_BYTES,
+        >
+    {
+        fn read(&self, address: u32, len: usize) -> &'a [u8] {
+            self.flash.read(address, len)
         }
+
+        fn write(&mut self, address: u32, value: u8) {
+            self.flash.write(address, value)
+        }
+
+        fn page_from_address(&self, address: u32) -> Option<super::page::FlashPage> {
+            self.flash.page_from_address(address)
+        }
+
+        fn page_from_number(&self, page_num: u16) -> Option<super::page::FlashPage> {
+            self.flash.page_from_number(page_num)
+        }
+
+        fn prev_page(&self, page_num: u16) -> Option<super::page::FlashPage> {
+            self.flash.prev_page(page_num)
+        }
+
+        fn erase(&mut self, page_num: u16) {
+            self.flash.erase(page_num)
+        }
+
+        #[cfg(feature = "swap")]
+        fn launch_swap(
+            &mut self,
+            page_number: u16,
+            start_type: crate::swap::SwapStartType,
+            start_size: usize,
+        ) -> crate::swap::SwapResult {
+            self.flash.launch_swap(page_number, start_type, start_size)
+        }
+    }
+
+    pub trait FlashWalker: Iterator<Item = FlashBlock> {
+        fn reset(&mut self);
+    }
+    impl<
+            'a,
+            'b,
+            const START_ADDR: u32,      // Allocator start address
+            const END_ADDR: u32,        // Allocator end address
+            const START_SCAN_ADDR: u32, // Position of the first block (>= START_ADDR)
+            const NUM_SLOTS: usize,
+            const BLOCK_SIZE: usize,
+            const FLAG_BYTES: usize,
+        > FlashWalker
+        for FlashWalkerImpl<
+            'a,
+            'b,
+            START_ADDR,
+            END_ADDR,
+            START_SCAN_ADDR,
+            NUM_SLOTS,
+            BLOCK_SIZE,
+            FLAG_BYTES,
+        >
+    {
+        fn reset(&mut self) {
+            self.reset()
+        }
+    }
 }
 
+pub mod utils {
+    use super::{FlashMethods, header::BlockHeader, FlashBlock};
+
+    pub fn read_block_header<
+        'a,
+        const FLAG_BYTES: usize,
+        const START_ADDR: u32,
+        const NUM_SLOTS: usize,
+    >(
+        flash: &dyn FlashMethods<'a>,
+        offset: u32,
+    ) -> BlockHeader<'a, FLAG_BYTES> {
+        let header_buffer = flash.read(START_ADDR + offset, BlockHeader::<FLAG_BYTES>::HEADER_SIZE);
+        let block_header: BlockHeader<FLAG_BYTES> = BlockHeader::<FLAG_BYTES>::new(
+            header_buffer,
+            buddy_allocator::get_max_level::<NUM_SLOTS>() as u16,
+        );
+        return block_header;
+    }
+
+    pub fn get_block_size<
+        'a,
+        const START_ADDR: u32,
+        const END_ADDR: u32,
+        const BLOCK_SIZE: usize,
+        const FLAG_BYTES: usize,
+    >(
+        block_header: &BlockHeader<'a, FLAG_BYTES>,
+    ) -> usize {
+        let size = (END_ADDR - START_ADDR + 1) as usize;
+        if block_header.is_allocated() {
+            size >> block_header.block_level()
+        } else {
+            BLOCK_SIZE
+        }
+    }
+
+    pub fn get_flash_block<
+        'a,
+        const START_ADDR: u32,
+        const END_ADDR: u32,
+        const START_SCAN_ADDR: u32,
+        const NUM_SLOTS: usize,
+        const BLOCK_SIZE: usize,
+        const FLAG_BYTES: usize,
+    >(
+        flash: &dyn FlashMethods<'a>,
+        mut base_address: u32,
+        is_base_exact: bool
+    ) -> Option<FlashBlock> {
+        let size = (END_ADDR - START_ADDR + 1) as usize;
+        let start_scan_offset: usize = (START_SCAN_ADDR - START_ADDR) as usize;
+        // Convert address if its not already pointing to the exact start
+        if !is_base_exact {
+            base_address -= BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32;
+        }
+        let mut process_index: usize = start_scan_offset;
+        while process_index < size {
+            // Read header
+            let block_header =
+                read_block_header::<FLAG_BYTES, START_ADDR, NUM_SLOTS>(flash, process_index as u32);
+            // Allocated blocks
+            if block_header.is_allocated() && !block_header.is_dismissed() {
+                // Check this is the block
+                if process_index as u32 + START_ADDR == base_address {
+                    return Some(FlashBlock {
+                        block_base_address: base_address
+                            + (BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32),
+                        finalized: block_header.is_finalized(),
+                        block_type: block_header.block_type(),
+                        block_size: (size as u32 >> block_header.block_level())
+                            - (BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32),
+                    });
+                }
+                // Countinue scanning
+                let block_size = size >> block_header.block_level();
+                process_index += block_size;
+            } else {
+                // Continue scanning
+                process_index += BLOCK_SIZE;
+            }
+        }
+        return None;
+    }
+}
 /// Interface for interacting with flash memory.
 pub trait FlashMethods<'a> {
     /// Reads a slice of len bytes starting from the specified offset
@@ -347,9 +529,9 @@ pub struct FlashAllocatorImpl<
     const END_ADDR: u32,        // Allocator end address
     const START_SCAN_ADDR: u32, // Position of the first block (>= START_ADDR)
     const BLOCK_SIZE: usize,    // Minimum granularity of the allocator
-    const NUM_BLOCKS: usize,    
+    const NUM_BLOCKS: usize,
     const NUM_SLOTS: usize,
-    const FLAG_BYTES: usize,    // Number of bytes to reserve for each flag
+    const FLAG_BYTES: usize, // Number of bytes to reserve for each flag
 > {
     buddy_allocator: BuddyAllocatorImpl<START_ADDR, END_ADDR, BLOCK_SIZE, NUM_BLOCKS, NUM_SLOTS>,
     flash: &'a mut dyn FlashMethods<'a>,
@@ -364,11 +546,21 @@ impl<
         const NUM_BLOCKS: usize,
         const NUM_SLOTS: usize,
         const FLAG_BYTES: usize,
-    > FlashAllocatorImpl<'a, START_ADDR, END_ADDR, START_SCAN_ADDR, BLOCK_SIZE, NUM_BLOCKS, NUM_SLOTS, FLAG_BYTES>
+    >
+    FlashAllocatorImpl<
+        'a,
+        START_ADDR,
+        END_ADDR,
+        START_SCAN_ADDR,
+        BLOCK_SIZE,
+        NUM_BLOCKS,
+        NUM_SLOTS,
+        FLAG_BYTES,
+    >
 {
     const ALLOCATOR_SIZE: usize = (END_ADDR - START_ADDR + 1) as usize;
     const START_SCAN_OFFSET: usize = (START_SCAN_ADDR - START_ADDR) as usize;
-    
+
     fn check_for_recovery(flash: &mut dyn FlashMethods<'a>)
     where
         [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
@@ -540,35 +732,11 @@ impl<
             }
         }
     }
-    fn is_base_address_valid(&self, base_address: u32) -> bool {
-        let mut process_index: usize = Self::START_SCAN_OFFSET;
-        while process_index < Self::ALLOCATOR_SIZE {
-            // Read header
-            let block_header = utils::read_block_header::<FLAG_BYTES, START_ADDR, NUM_SLOTS>(
-                self.flash,
-                process_index as u32,
-            );
-            // Allocated blocks
-            if block_header.is_allocated() {
-                // Check this is the block
-                if process_index as u32 + START_ADDR == base_address {
-                    return true;
-                }
-                // Countinue scanning
-                let block_size = Self::ALLOCATOR_SIZE >> block_header.block_level();
-                process_index += block_size;
-            } else {
-                // Continue scanning
-                process_index += BLOCK_SIZE;
-            }
-        }
-        return false;
-    }
 
     pub fn dump(&self, f: &mut Formatter) -> Result<(), core::fmt::Error> {
         f.write_str("\n------- Block Status -------\n")?;
         let mut block_index = Self::START_SCAN_OFFSET;
-        while block_index < ((Self::ALLOCATOR_SIZE - Self::START_SCAN_OFFSET)/ BLOCK_SIZE) {
+        while block_index < ((Self::ALLOCATOR_SIZE - Self::START_SCAN_OFFSET) / BLOCK_SIZE) {
             let offset: usize = block_index * BLOCK_SIZE;
             let block_header = utils::read_block_header::<FLAG_BYTES, START_ADDR, NUM_SLOTS>(
                 self.flash,
@@ -612,7 +780,8 @@ impl<
         return Ok(FlashBlock {
             block_base_address: addr + (BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32),
             block_type: BlockType::NONE,
-            block_size: (Self::ALLOCATOR_SIZE as u32 >> level) - (BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32),
+            block_size: (Self::ALLOCATOR_SIZE as u32 >> level)
+                - (BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32),
             finalized: false,
         });
     }
@@ -623,7 +792,16 @@ impl<
         // Get back the original start address of the block
         let addr = base_addr - (BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32);
         // Check that this is a valid base_addr
-        if !self.is_base_address_valid(addr) {
+        if utils::get_flash_block::<
+            START_ADDR,
+            END_ADDR,
+            START_SCAN_ADDR,
+            NUM_SLOTS,
+            BLOCK_SIZE,
+            FLAG_BYTES,
+        >(self.flash, addr, true)
+        .is_none()
+        {
             return Err(());
         }
         // Deallocate
@@ -702,7 +880,16 @@ impl<
         const NUM_SLOTS: usize,
         const FLAG_BYTES: usize,
     > FlashAllocator<'a, FLAG_BYTES>
-    for FlashAllocatorImpl<'a, START_ADDR, END_ADDR, START_SCAN_ADDR, BLOCK_SIZE, NUM_BLOCKS, NUM_SLOTS, FLAG_BYTES>
+    for FlashAllocatorImpl<
+        'a,
+        START_ADDR,
+        END_ADDR,
+        START_SCAN_ADDR,
+        BLOCK_SIZE,
+        NUM_BLOCKS,
+        NUM_SLOTS,
+        FLAG_BYTES,
+    >
 {
     fn allocate(&mut self, size: u32) -> Result<FlashBlock, ()>
     where

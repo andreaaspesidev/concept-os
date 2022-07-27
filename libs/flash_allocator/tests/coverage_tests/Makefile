@@ -9,3 +9,9 @@ coverage:
 	cargo clean
 	cargo tarpaulin --out HTML
 	xdg-open tarpaulin-report.html
+
+clean:
+	cargo clean
+
+test:
+	cargo test
