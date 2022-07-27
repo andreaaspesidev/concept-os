@@ -8,6 +8,64 @@ void UART2_Configuration(void);
 UART_HandleTypeDef UART_Handler; /*Create UART_HandleTypeDef struct instance */
 char Message[] = "Write t to start the flash test\r\n"; /* Message to be transmitted through UART */
 
+uint32_t current_base_address = 0;
+uint16_t write_buffer = 0x0000;
+
+uint8_t is_write_pending() {
+  return current_base_address > 0;
+}
+uint8_t launch_write_buffer() {
+  // Read prev 16 bits
+  uint16_t word = *(__IO uint16_t *)current_base_address;
+  // Check if write is possibile
+  if (word == 0xFFFF || write_buffer == 0x0000) {
+    // Launch write
+    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, current_base_address, write_buffer) != HAL_OK) {
+      return HAL_FLASH_GetError();
+    }
+    // Reinit buffer
+    write_buffer = 0x0000;
+    return 1;
+  }
+  return 0;
+}
+void flush_write_buffer() {
+  if (is_write_pending()) {
+    launch_write_buffer();
+  }
+}
+uint8_t write_single_byte(uint32_t address, uint8_t byte) {
+  // Get which byte we are writing
+  uint8_t is_high = address % 2;
+  // Get the base address (align to 2 bytes)
+  uint32_t base_addr = address - is_high;
+  // If prev. address is different, flush prev. write
+  if (is_write_pending() && current_base_address != base_addr) {
+    flush_write_buffer();
+  }
+  // Set new base
+  current_base_address = base_addr;
+  if (!is_high) {
+    write_buffer |= byte;
+    return 1;
+  } else {
+    write_buffer |= byte << 8;
+    return launch_write_buffer();
+  }
+}
+uint8_t read_single_byte(uint32_t address) {
+  // Get which byte we are writing
+  uint8_t is_high = address % 2;
+  // Get the base address (align to 2 bytes)
+  uint32_t base_addr = address - is_high;
+  // Check whether read from the flash or from the buffer
+  if (current_base_address == base_addr && !is_high) {
+    return write_buffer & 0xFF;
+  }
+  // Read from the actual flash
+  return (*(__IO uint8_t *)address);
+}
+
 uint32_t flash_test() {
     /* Unlock the Flash to enable the flash control register access *************/
     char buffer[100];
@@ -36,7 +94,7 @@ uint32_t flash_test() {
     HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
     ticks = HAL_GetTick();
     if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, address, 0xFFFE) != HAL_OK) {
-    	return HAL_FLASH_GetError();
+      return HAL_FLASH_GetError();
     }
     ticks = HAL_GetTick() - ticks;
     /* Check the word */
@@ -48,10 +106,6 @@ uint32_t flash_test() {
     HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
 
     /* Program second half-word, setting the second bit -> 11111111_11111101*/
-    word = *(__IO uint16_t *)(address+2);
-    if (word != 0xFFFF) {
-    	return 10;
-    }
     snprintf(buffer, 100, "Programming half word 1...");
     HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
     ticks = HAL_GetTick();
@@ -61,6 +115,62 @@ uint32_t flash_test() {
     ticks = HAL_GetTick() - ticks;
     word = *(__IO uint16_t *)(address+2);
     if (word != 0xFFFD) {
+      return 10;
+    }
+    snprintf(buffer, 100, "ok! (%lu ms)\nSuccess!\n", ticks);
+    HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+    return 0;
+}
+
+uint32_t flash_test_byte() {
+    /* Unlock the Flash to enable the flash control register access *************/
+    char buffer[100];
+    uint32_t ticks;
+    snprintf(buffer, 100, "Unlocking Flash...\n");
+    HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+    HAL_FLASH_Unlock();
+	  /* Erase the user Flash area */
+    snprintf(buffer, 100, "Erasing sector 16...");
+    HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+    
+    FLASH_EraseInitTypeDef InitEraseStruct;
+    InitEraseStruct.TypeErase=FLASH_TYPEERASE_PAGES;
+    InitEraseStruct.PageAddress=ADDR_FLASH_PAGE_16;
+    InitEraseStruct.NbPages=1;
+    uint32_t PageError;
+    ticks = HAL_GetTick();
+    HAL_FLASHEx_Erase(&InitEraseStruct, &PageError);
+    ticks = HAL_GetTick() - ticks;
+    snprintf(buffer, 100, "%lu ms\n", ticks);
+    HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+
+    /* Program first byte, setting the first bit -> 11111110_11111111*/
+    uint32_t address = ADDR_FLASH_PAGE_16;
+    snprintf(buffer, 100, "Programming byte 0...");
+    HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+    ticks = HAL_GetTick();
+    write_single_byte(address, 0xFE);
+    ticks = HAL_GetTick() - ticks;
+    /* Check the byte */
+    if (read_single_byte(address) != 0xFE)
+      return 10;
+    uint16_t word = *(__IO uint16_t *)address;
+    if (word != 0xFFFF) {
+    	return 10;
+    }
+    snprintf(buffer, 100, "ok! (%lu ms)\n", ticks);
+    HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+
+    /* Program second byte, setting the second bit -> 11111110_11111110*/
+    snprintf(buffer, 100, "Programming byte 1...");
+    HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+    ticks = HAL_GetTick();
+    write_single_byte(address+1, 0xFE);
+    ticks = HAL_GetTick() - ticks;
+    if (read_single_byte(address+1) != 0xFE)
+      return 10;
+    word = *(__IO uint16_t *)address;
+    if (word != 0xFEFE) {
       return 10;
     }
     snprintf(buffer, 100, "ok! (%lu ms)\nSuccess!\n", ticks);
@@ -79,7 +189,7 @@ int main(void)
         HAL_UART_Receive(&UART_Handler, buffer, sizeof(buffer), HAL_MAX_DELAY);
         HAL_UART_Transmit(&UART_Handler, buffer, sizeof(buffer), HAL_MAX_DELAY);
         if (buffer[0] == 't') {
-            flash_test();
+            flash_test_byte();
         } 
   }
 }
