@@ -123,8 +123,8 @@ impl<
                 // Check if this block is assigned to a component
                 if block.get_type() == BlockType::COMPONENT {
                     // In this case, the first 4 bytes of the block are the allocated address
-                    let address_bytes = flash_walker.read(block.get_base_address(), 4);
-                    let ram_size = flash_walker.read(block.get_base_address() + 4, 4);
+                    let address_bytes = flash_walker.read(block.get_base_address(), 4).unwrap();
+                    let ram_size = flash_walker.read(block.get_base_address() + 4, 4).unwrap();
                     let address = u32_from_le(address_bytes);
                     let size = u32_from_le(ram_size);
                     let end_addr_excl = address + size;
@@ -180,10 +180,10 @@ impl<
         for i in 0u32..4u32 {
             // Write a byte of address
             self.flash_methods
-                .write(block_base_address + i, addr_bytes[i as usize]);
+                .write(block_base_address + i, addr_bytes[i as usize]).unwrap();
             // Write a byte of size
             self.flash_methods
-                .write(block_base_address + 4 + i, size_bytes[i as usize]);
+                .write(block_base_address + 4 + i, size_bytes[i as usize]).unwrap();
         }
         // Return the allocation
         return Ok(RAMBlock {
