@@ -74,12 +74,12 @@ uint32_t flash_test() {
     HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
     HAL_FLASH_Unlock();
 	  /* Erase the user Flash area */
-    snprintf(buffer, 100, "Erasing sector 16...");
+    snprintf(buffer, 100, "Erasing page 128...");
     HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
     
     FLASH_EraseInitTypeDef InitEraseStruct;
     InitEraseStruct.TypeErase=FLASH_TYPEERASE_PAGES;
-    InitEraseStruct.PageAddress=ADDR_FLASH_PAGE_16;
+    InitEraseStruct.PageAddress=ADDR_FLASH_PAGE_128;
     InitEraseStruct.NbPages=1;
     uint32_t PageError;
     ticks = HAL_GetTick();
@@ -89,11 +89,13 @@ uint32_t flash_test() {
     HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
 
     /* Program second half-word, setting the first bit -> 11111111_11111110*/
-    uint32_t address = ADDR_FLASH_PAGE_16;
+    uint32_t address = ADDR_FLASH_PAGE_128;
     snprintf(buffer, 100, "Programming half word 1...");
     HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
     ticks = HAL_GetTick();
     if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, address+2, 0xFFFE) != HAL_OK) {
+      snprintf(buffer, 100, "Error: %d\n", HAL_FLASH_GetError());
+      HAL_UART_Transmit(&UART_Handler, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
       return HAL_FLASH_GetError();
     }
     ticks = HAL_GetTick() - ticks;
@@ -192,7 +194,7 @@ int main(void)
         HAL_UART_Transmit(&UART_Handler, buffer, sizeof(buffer), HAL_MAX_DELAY);
         if (buffer[0] == 't') {
           flash_test();
-          flash_test_byte();
+          //flash_test_byte();
         } 
   }
 }
@@ -211,7 +213,7 @@ void UART2_Configuration(void)
   HAL_GPIO_Init(GPIOA, &UART2_GPIO_Handler);
   //UART Configuration
   UART_Handler.Instance = USART2;
-  UART_Handler.Init.BaudRate = 38400;
+  UART_Handler.Init.BaudRate = 115200;
   UART_Handler.Init.WordLength = UART_WORDLENGTH_8B;
   UART_Handler.Init.StopBits = UART_STOPBITS_1;
   UART_Handler.Init.Parity = UART_PARITY_NONE;

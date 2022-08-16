@@ -200,6 +200,7 @@ void Error_Handler(void);
 #define ADDR_FLASH_PAGE_125   ((uint32_t)0x0803E800) /* Base address of Page 125, 2 Kbytes */
 #define ADDR_FLASH_PAGE_126   ((uint32_t)0x0803F000) /* Base address of Page 126, 2 Kbytes */
 #define ADDR_FLASH_PAGE_127   ((uint32_t)0x0803F800) /* Base address of Page 127, 2 Kbytes */
+#define ADDR_FLASH_PAGE_128   ((uint32_t)0x08040000) /* Base address of Page 128, 2 Kbytes */
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
