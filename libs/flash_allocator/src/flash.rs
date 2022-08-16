@@ -301,7 +301,7 @@ pub mod walker {
             self.flash.write(address, value)
         }
 
-        fn flush_write_buffer(&mut self) {
+        fn flush_write_buffer(&mut self) -> Result<(),()> {
             self.flash.flush_write_buffer()
         }
 
@@ -457,7 +457,7 @@ pub trait FlashMethods<'a> {
     fn write(&mut self, address: u32, value: u8) -> Result<(), ()>;
     /// In case writes to flash memory are buffered, forces the synchronization.
     /// Otherwise, is a nop.
-    fn flush_write_buffer(&mut self);
+    fn flush_write_buffer(&mut self) -> Result<(), ()>;
     /// Retrieve the page number from the offset
     fn page_from_address(&self, address: u32) -> Option<FlashPage>;
     /// Retrieve the page from a page number
@@ -631,7 +631,7 @@ impl<
             flash.write(addr + i as u32, header[i]).unwrap();
         }
         // Always flush after an header or flag
-        flash.flush_write_buffer();
+        flash.flush_write_buffer().unwrap();
         // Erase block
         Self::block_erase_procedure(flash, addr, block_level as usize);
         // Pass parameters
@@ -788,7 +788,7 @@ impl<
             self.flash.write(addr + i as u32, header[i]).unwrap();
         }
         // Always flush after an header or flag
-        self.flash.flush_write_buffer();
+        self.flash.flush_write_buffer().unwrap();
         // Return only a pointer to the usable space
         return Ok(FlashBlock {
             block_base_address: addr + (BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32),

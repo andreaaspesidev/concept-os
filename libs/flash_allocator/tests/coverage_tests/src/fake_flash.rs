@@ -121,7 +121,7 @@ impl<
         swapper.swap_procedure(page_number, start_type, start_size as u32)
     }
 
-    fn flush_write_buffer(&mut self) {
-        // NOP
+    fn flush_write_buffer(&mut self) -> Result<(),()> {
+        Ok(())
     }
 }

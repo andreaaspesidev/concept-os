@@ -1,9 +1,8 @@
 mod fake_flash;
-mod flash_structure;
 
 #[cfg(test)]
 mod tests {
-    use crate::{fake_flash::Flash, flash_structure::FLASH_PAGES};
+    use crate::fake_flash::Flash;
     use flash_allocator::flash::{
         FlashAllocator, FlashAllocatorImpl, FlashMethods,
     };
@@ -27,9 +26,11 @@ mod tests {
     // Flash: 0x0800 0000 - 0x0807 FFFF
     // Size: 512Kb
     const START_ADDR: u32 = 0x0800_0000;
+    const PAGE_SIZE: u32 = 2048;
     const START_SCAN_ADDR: u32 = 0x0800_1000; // ALLOCATOR_START_SCAN_ADDR - ALLOCATOR_START_ADDR MUST BE A POWER OF 2
     const END_ADDR: u32 = 0x0807_FFFF;
     const SIZE: usize = (END_ADDR - START_ADDR + 1) as usize; // 0x80000 -> 2^19 -> 524288
+    
     const BLOCK_SIZE: usize = 4096;
     const FLAG_SIZE: usize = 2;
 
@@ -67,7 +68,7 @@ mod tests {
 
     #[test]
     fn test() {
-        let mut flash = Flash::new(SIZE, START_ADDR, &FLASH_PAGES);
+        let mut flash = Flash::<START_ADDR, PAGE_SIZE, END_ADDR>::new();
         let mut flash_allocator = init_stm32f303e(&mut flash);
         // Allocation 1
         let alloc1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
