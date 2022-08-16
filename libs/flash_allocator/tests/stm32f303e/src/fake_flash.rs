@@ -95,4 +95,8 @@ impl<'a> FlashMethods<'a> for Flash {
         let prev_num = page_num - 1;
         self.page_from_number(prev_num)
     }
+
+    fn flush_write_buffer(&mut self) {
+        // NOP
+    }
 }

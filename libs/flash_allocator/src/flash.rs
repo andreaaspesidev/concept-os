@@ -301,6 +301,10 @@ pub mod walker {
             self.flash.write(address, value)
         }
 
+        fn flush_write_buffer(&mut self) {
+            self.flash.flush_write_buffer()
+        }
+
         fn page_from_address(&self, address: u32) -> Option<super::page::FlashPage> {
             self.flash.page_from_address(address)
         }
@@ -451,6 +455,9 @@ pub trait FlashMethods<'a> {
     fn read(&self, address: u32, len: usize) -> Result<&'a [u8], ()>;
     /// Writes a byte to the corresponding offset
     fn write(&mut self, address: u32, value: u8) -> Result<(), ()>;
+    /// In case writes to flash memory are buffered, forces the synchronization.
+    /// Otherwise, is a nop.
+    fn flush_write_buffer(&mut self);
     /// Retrieve the page number from the offset
     fn page_from_address(&self, address: u32) -> Option<FlashPage>;
     /// Retrieve the page from a page number
@@ -623,6 +630,8 @@ impl<
         for i in 0..header.len() {
             flash.write(addr + i as u32, header[i]).unwrap();
         }
+        // Always flush after an header or flag
+        flash.flush_write_buffer();
         // Erase block
         Self::block_erase_procedure(flash, addr, block_level as usize);
         // Pass parameters
@@ -642,7 +651,7 @@ impl<
             // Get the page
             let page = flash.page_from_address(current_addr).unwrap();
             // Erase the page
-            flash.erase(page.page_number());
+            flash.erase(page.page_number()).unwrap();
             // Move one page down
             current_addr -= page.size();
         }
@@ -778,6 +787,8 @@ impl<
         for i in 0..header.len() {
             self.flash.write(addr + i as u32, header[i]).unwrap();
         }
+        // Always flush after an header or flag
+        self.flash.flush_write_buffer();
         // Return only a pointer to the usable space
         return Ok(FlashBlock {
             block_base_address: addr + (BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32),
