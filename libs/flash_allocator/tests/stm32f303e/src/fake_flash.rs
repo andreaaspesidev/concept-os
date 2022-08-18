@@ -103,7 +103,7 @@ impl<'a, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_A
         }
 
         // Check whether this operation is possible
-        if self.write_buffer[0] != 0xFF || self.write_buffer[1] != 0xFF {
+        if self.write_buffer[is_high_byte as usize] != 0xFF {
             // We can only admit a 0x0000 or the same value (we will skip the write)
             if value != 0x00 && value != self.write_buffer[is_high_byte as usize] {
                 return Err(());
