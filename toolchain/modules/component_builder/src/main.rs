@@ -222,6 +222,8 @@ fn build_process(
         panic!("Enviromental variable 'ROOT_DIR' points to non-existing directory");
     }
 
+    println!("Using as root path: {}", root_path.display());
+
     // Read global board configuration
     let mut board_config_path = PathBuf::from(root_path);
     board_config_path.push("boards");
@@ -229,7 +231,7 @@ fn build_process(
     board_config_path.push("board.toml");
     let file_content = std::fs::read_to_string(board_config_path);
     if file_content.is_err() {
-        panic!("Cannot find the specified board");
+        panic!("Cannot find the specified board: {}", target_board);
     }
     let board_config: BoardConfig = toml::from_str(&file_content.unwrap()).unwrap();
     // Generate linker script inside the build folder
