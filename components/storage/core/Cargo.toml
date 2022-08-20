@@ -1,0 +1,25 @@
+[package]
+name = "storage"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+stm32f303e = []
+
+[dependencies]
+storage-api = {path = "../api"}
+userlib = {path = "../../../sys/userlib"}
+cortex-m = { version = "0.7", features = ["inline-asm"] }
+flash_allocator = {path = "../../../libs/flash_allocator"}
+ram_allocator = {path = "../../../libs/ram_allocator"}
+
+[dependencies.stm32f3]
+version = "0.15.1"
+features = ["stm32f303", "rt"]
+
+# This section is here to discourage RLS/rust-analyzer from doing test builds,
+# since test builds don't work for cross compilation.
+[[bin]]
+name = "storage"
+test = false
+bench = false
