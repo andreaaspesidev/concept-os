@@ -301,7 +301,7 @@ pub mod walker {
             self.flash.write(address, value)
         }
 
-        fn flush_write_buffer(&mut self) -> Result<(),()> {
+        fn flush_write_buffer(&mut self) -> Result<(), ()> {
             self.flash.flush_write_buffer()
         }
 
@@ -363,6 +363,8 @@ pub mod walker {
 }
 
 pub mod utils {
+    use abi::flash::BlockType;
+
     use super::{header::BlockHeader, FlashBlock, FlashMethods};
 
     pub fn read_block_header<
@@ -448,6 +450,88 @@ pub mod utils {
         }
         return None;
     }
+
+    /// Sets the flag on a flash block
+    pub fn mark_block<'a, const START_ADDR: u32, const NUM_SLOTS: usize, const FLAG_BYTES: usize>(
+        flash: &mut dyn FlashMethods<'a>,
+        block: FlashBlock,
+        block_type: BlockType,
+    ) -> Result<(), ()>
+    where
+        [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
+    {
+        // Read again the header to be safe
+        let block_base_addr =
+            block.get_base_address() - BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32;
+        let curr_header = self::read_block_header::<FLAG_BYTES, START_ADDR, NUM_SLOTS>(
+            flash,
+            block_base_addr - START_ADDR,
+        );
+
+        // Check if this operation is possible
+        if !curr_header.is_allocated() || curr_header.is_dismissed() || curr_header.is_finalized() {
+            return Err(());
+        }
+        if curr_header.block_type() != BlockType::NONE {
+            return Err(());
+        }
+
+        // Generating the new header
+        let header = BlockHeader::<FLAG_BYTES>::write_buffer(
+            true,
+            false,
+            false,
+            curr_header.block_level(),
+            block_type,
+        );
+        // Writing new header
+        for i in 0..header.len() {
+            flash.write(block_base_addr + i as u32, header[i]).unwrap();
+        }
+        // Always flush after an header or flag
+        flash.flush_write_buffer().unwrap();
+
+        Ok(())
+    }
+
+    /// Sets the flag on a flash block
+    pub fn finalize_block<'a, const START_ADDR: u32, const NUM_SLOTS: usize, const FLAG_BYTES: usize>(
+        flash: &mut dyn FlashMethods<'a>,
+        block: FlashBlock
+    ) -> Result<(), ()>
+    where
+        [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
+    {
+        // Read again the header to be safe
+        let block_base_addr =
+            block.get_base_address() - BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32;
+        let curr_header = self::read_block_header::<FLAG_BYTES, START_ADDR, NUM_SLOTS>(
+            flash,
+            block_base_addr - START_ADDR,
+        );
+
+        // Check if this operation is possible
+        if !curr_header.is_allocated() || curr_header.is_dismissed() || curr_header.is_finalized() {
+            return Err(());
+        }
+
+        // Generating the new header
+        let header = BlockHeader::<FLAG_BYTES>::write_buffer(
+            true,
+            false,
+            true,
+            curr_header.block_level(),
+            curr_header.block_type(),
+        );
+        // Writing new header
+        for i in 0..header.len() {
+            flash.write(block_base_addr + i as u32, header[i]).unwrap();
+        }
+        // Always flush after an header or flag
+        flash.flush_write_buffer().unwrap();
+
+        Ok(())
+    }
 }
 /// Interface for interacting with flash memory.
 pub trait FlashMethods<'a> {
@@ -493,7 +577,10 @@ impl<'a> FlashBlock {
         self.block_type
     }
     pub fn get_size(&self) -> u32 {
-        self.block_size
+        match self.block_type {
+            BlockType::COMPONENT => self.block_size - 8,
+            _ => self.block_size
+        }
     }
     pub fn is_finalized(&self) -> bool {
         self.finalized
@@ -503,9 +590,13 @@ impl<'a> FlashBlock {
     /// the interface. If the component does not have read access, this call will make
     /// the component crash, instead of giving error
     pub unsafe fn get_data(&self) -> &'a [u8] {
+        let base_address = match self.block_type {
+            BlockType::COMPONENT => self.block_base_address + 8,
+            _ => self.block_base_address
+        };
         core::slice::from_raw_parts(
-            self.block_base_address as *const u8,
-            self.block_size as usize,
+            base_address as *const u8,
+            self.get_size() as usize,
         )
     }
 }

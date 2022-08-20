@@ -16,7 +16,7 @@ mod tests {
     use crate::flash_allocator::flash::page::FlashPage;
     use crate::flash_allocator::flash::walker::{FlashWalker, FlashWalkerImpl};
     use crate::flash_allocator::flash::{
-        FlashAllocator, FlashAllocatorImpl, FlashBlock, FlashMethods,
+        utils, FlashAllocator, FlashAllocatorImpl, FlashBlock, FlashMethods,
     };
     use std::fmt;
 
@@ -71,18 +71,6 @@ mod tests {
         let header_start: usize = start_addr - ALLOCATOR_START_ADDR as usize - 12;
         flash[header_start + 2] = 0x00;
         flash[header_start + 3] = 0x00;
-    }
-
-    fn mark_finalized(flash: &mut [u8], start_addr: usize) {
-        let header_start: usize = start_addr - ALLOCATOR_START_ADDR as usize - 12;
-        flash[header_start + 4] = 0x00;
-        flash[header_start + 5] = 0x00;
-    }
-
-    fn mark_component(flash: &mut [u8], start_addr: usize) {
-        let header_start: usize = start_addr - ALLOCATOR_START_ADDR as usize - 12;
-        flash[header_start + 10] = 0xFE;
-        flash[header_start + 11] = 0xFF;
     }
 
     /*
@@ -384,11 +372,6 @@ mod tests {
     fn test_block_refresh() {
         const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
         let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
-        let mut shadow_copy: &mut [u8];
-        unsafe {
-            let ptr = flash_content.as_mut_ptr();
-            shadow_copy = core::slice::from_raw_parts_mut(ptr, FLASH_SIZE);
-        }
         let mut flash =
             Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, FLAG_SIZE, SWAP_PAGE_NUM>::new(
                 FLASH_START_ADDR,
@@ -402,14 +385,24 @@ mod tests {
         assert_eq!(block1.get_type(), BlockType::NONE);
         assert!(!block1.is_finalized());
         // Mark as component
-        mark_component(&mut shadow_copy, block1.get_base_address() as usize);
+        drop(flash_allocator);
+        utils::mark_block::<FLASH_START_ADDR, NUM_SLOTS, FLAG_SIZE>(
+            &mut flash,
+            block1,
+            BlockType::COMPONENT,
+        )
+        .unwrap();
+        let flash_allocator1 = init_allocator(&mut flash);
         assert_eq!(block1.get_type(), BlockType::NONE);
-        flash_allocator.refresh(&mut block1);
+        flash_allocator1.refresh(&mut block1);
         assert_eq!(block1.get_type(), BlockType::COMPONENT);
         assert!(!block1.is_finalized());
         // Finalize component
-        mark_finalized(&mut shadow_copy, block1.get_base_address() as usize);
-        flash_allocator.refresh(&mut block1);
+        drop(flash_allocator1);
+        utils::finalize_block::<FLASH_START_ADDR, NUM_SLOTS, FLAG_SIZE>(&mut flash, block1)
+            .unwrap();
+        let flash_allocator2 = init_allocator(&mut flash);
+        flash_allocator2.refresh(&mut block1);
         assert_eq!(block1.get_type(), BlockType::COMPONENT);
         assert!(block1.is_finalized());
     }
