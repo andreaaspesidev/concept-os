@@ -1,9 +1,57 @@
 #![no_std]
+#![feature(generic_const_exprs)]
 
 use abi::flash::BlockType;
 use buddy_allocator::{BuddyAllocator, BuddyAllocatorImpl};
 use core::fmt::Formatter;
 use flash_allocator::flash::{self, walker::FlashWalkerImpl, FlashBlock, FlashMethods};
+
+pub mod utils {
+    use crate::u32_from_le;
+    use abi::flash::BlockType;
+    use flash_allocator::flash::{self, FlashMethods};
+
+    use super::RAMBlock;
+
+    pub fn get_ram_block<
+        'a,
+        const FLASH_START_ADDR: u32,
+        const FLASH_END_ADDR: u32,
+        const FLASH_START_SCAN_ADDR: u32,
+        const FLASH_NUM_SLOTS: usize,
+        const FLASH_BLOCK_SIZE: usize,
+        const FLAG_BYTES: usize,
+    >(
+        flash: &'a dyn FlashMethods<'a>,
+        block_base_address: u32,
+    ) -> Option<RAMBlock> {
+        // Check this is actually a component, by reading the header
+        let block_search = flash::utils::get_flash_block::<
+            FLASH_START_ADDR,
+            FLASH_END_ADDR,
+            FLASH_START_SCAN_ADDR,
+            FLASH_NUM_SLOTS,
+            FLASH_BLOCK_SIZE,
+            FLAG_BYTES,
+        >(flash, block_base_address, false);
+        if block_search.is_none() {
+            return None;
+        }
+        let block = block_search.unwrap();
+        if block.get_type() != BlockType::COMPONENT {
+            return None;
+        }
+        // Read fields
+        let data = flash.read(block.get_base_address(), 8).unwrap();
+        let sram_base = u32_from_le(&data[0..4]);
+        let sram_size = u32_from_le(&data[4..8]);
+        return Some(RAMBlock {
+            block_base_address: sram_base,
+            block_size: sram_size,
+            flash_position: block,
+        });
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct RAMBlock {
@@ -41,7 +89,9 @@ pub enum AllocatorError {
 }
 
 pub trait RAMAllocator<const FLAG_BYTES: usize> {
-    fn allocate(&mut self, block_base_address: u32, size: u32) -> Result<RAMBlock, AllocatorError>;
+    fn allocate(&mut self, block_base_address: u32, size: u32) -> Result<RAMBlock, AllocatorError>
+    where
+        [(); FLAG_BYTES * 4 + 2 + 2]: Sized;
     fn dump(&self, f: &mut Formatter) -> Result<(), core::fmt::Error>;
 }
 
@@ -127,6 +177,12 @@ impl<
                     let ram_size = flash_walker.read(block.get_base_address() + 4, 4).unwrap();
                     let address = u32_from_le(address_bytes);
                     let size = u32_from_le(ram_size);
+                    if address == 0xFFFF_FFFF || size == 0xFFFF_FFFF {
+                        // Malformed block, just skip for now.
+                        // Will be erased at next reboot
+                        assert!(!block.is_finalized());
+                        continue;
+                    }
                     let end_addr_excl = address + size;
                     assert!(address >= START_ADDR && address <= END_ADDR);
                     if curr_addr >= address && curr_addr < end_addr_excl {
@@ -152,9 +208,12 @@ impl<
         }
     }
 
-    fn allocate(&mut self, block_base_address: u32, size: u32) -> Result<RAMBlock, AllocatorError> {
+    fn allocate(&mut self, block_base_address: u32, size: u32) -> Result<RAMBlock, AllocatorError>
+    where
+        [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
+    {
         // Get flash block
-        let flash_block = flash::utils::get_flash_block::<
+        let flash_block_res = flash::utils::get_flash_block::<
             FLASH_ALLOCATOR_START_ADDR,
             FLASH_ALLOCATOR_END_ADDR,
             FLASH_ALLOCATOR_START_SCAN_ADDR,
@@ -162,7 +221,12 @@ impl<
             FLASH_BLOCK_SIZE,
             FLAG_BYTES,
         >(self.flash_methods, block_base_address, false);
-        if flash_block.is_none() {
+        // Check if this block is valid
+        if flash_block_res.is_none() {
+            return Err(AllocatorError::InvalidBlock);
+        }
+        let flash_block = flash_block_res.unwrap();
+        if flash_block.get_type() != BlockType::NONE {
             return Err(AllocatorError::InvalidBlock);
         }
         // Get a new block of RAM
@@ -180,16 +244,31 @@ impl<
         for i in 0u32..4u32 {
             // Write a byte of address
             self.flash_methods
-                .write(block_base_address + i, addr_bytes[i as usize]).unwrap();
+                .write(block_base_address + i, addr_bytes[i as usize])
+                .unwrap();
+        }
+        for i in 0u32..4u32 {
             // Write a byte of size
             self.flash_methods
-                .write(block_base_address + 4 + i, size_bytes[i as usize]).unwrap();
+                .write(block_base_address + 4 + i, size_bytes[i as usize])
+                .unwrap();
         }
+        // Flush write buffer
+        self.flash_methods.flush_write_buffer().unwrap();
+
+        // Mark the block as a component
+        flash_allocator::flash::utils::mark_block::<
+            FLASH_ALLOCATOR_START_ADDR,
+            FLASH_NUM_SLOTS,
+            FLAG_BYTES,
+        >(self.flash_methods, flash_block, BlockType::COMPONENT)
+        .unwrap();
+
         // Return the allocation
         return Ok(RAMBlock {
             block_base_address: addr,
             block_size: actual_size,
-            flash_position: flash_block.unwrap(),
+            flash_position: flash_block,
         });
     }
 
@@ -231,7 +310,10 @@ impl<
         FLAG_BYTES,
     >
 {
-    fn allocate(&mut self, block_base_address: u32, size: u32) -> Result<RAMBlock, AllocatorError> {
+    fn allocate(&mut self, block_base_address: u32, size: u32) -> Result<RAMBlock, AllocatorError>
+    where
+        [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
+    {
         self.allocate(block_base_address, size)
     }
 
@@ -240,7 +322,7 @@ impl<
     }
 }
 
-fn u32_from_le(arr: &[u8]) -> u32 {
+pub fn u32_from_le(arr: &[u8]) -> u32 {
     ((arr[0] as u32) << 0)
         + ((arr[1] as u32) << 8)
         + ((arr[2] as u32) << 16)
