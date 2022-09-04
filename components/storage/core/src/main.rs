@@ -1,18 +1,23 @@
 #![no_std]
 #![no_main]
 
-#[cfg(feature = "stm32f303e")]
-mod stm32f303e;
-
-#[cfg(feature = "stm32f303e")]
-use stm32f303e::*;
+// Import board specific constants
+cfg_if::cfg_if! {
+    if #[cfg(feature = "stm32f303re")] {
+        mod stm32f303re;
+        use stm32f303re::*;
+    } else {
+        compile_error!("Board not supported");
+    }
+}
 
 use flash_allocator::flash::{self, walker::FlashWalkerImpl, FlashAllocatorImpl, FlashMethods};
 use ram_allocator::{AllocatorError, RAMAllocator, RAMAllocatorImpl};
 use storage_api::{
     AllocateComponentRequest, AllocateComponentResponse, AllocateGenericRequest,
-    AllocateGenericResponse, DeallocateBlockRequest, FinalizeBlockRequest, Operation,
-    ReportStatusRequest, ReportStatusResponse, StorageError, WriteStreamRequest, ReadStreamRequest,
+    AllocateGenericResponse, DeallocateBlockRequest, FinalizeBlockRequest, GetNthBlockRequest,
+    GetNthBlockResponse, Operation, ReadStreamRequest, ReportStatusRequest, ReportStatusResponse,
+    StorageError, WriteStreamRequest,
 };
 use userlib::{flash::BlockType, hl::Borrow, *};
 
@@ -38,7 +43,7 @@ fn main() -> ! {
                     ram_size: ram_size,
                 });
                 Ok(())
-            },
+            }
             Operation::AllocateGeneric => {
                 // Parse message
                 let (msg, caller) = msg
@@ -52,7 +57,7 @@ fn main() -> ! {
                     flash_size: flash_size,
                 });
                 Ok(())
-            },
+            }
             Operation::DeallocateBlock => {
                 // Parse message
                 let (msg, caller) = msg
@@ -65,7 +70,7 @@ fn main() -> ! {
                 // Respond okay
                 caller.reply(());
                 Ok(())
-            },
+            }
             Operation::WriteStream => {
                 // Parse message
                 let (msg, caller) = msg
@@ -82,7 +87,7 @@ fn main() -> ! {
                 // Respond okay
                 caller.reply(());
                 Ok(())
-            },
+            }
             Operation::ReadStream => {
                 // Parse message
                 let (msg, caller) = msg
@@ -99,7 +104,7 @@ fn main() -> ! {
                 // Respond okay
                 caller.reply(());
                 Ok(())
-            },
+            }
             Operation::FinalizeBlock => {
                 // Parse message
                 let (msg, caller) = msg
@@ -110,7 +115,7 @@ fn main() -> ! {
                 // Respond okay
                 caller.reply(());
                 Ok(())
-            },
+            }
             Operation::ReportStatus => {
                 // Parse message
                 let (_, caller) = msg
@@ -120,6 +125,21 @@ fn main() -> ! {
                 let response = generate_status()?;
                 // Respond okay
                 caller.reply(response);
+                Ok(())
+            }
+            Operation::GetNthBlock => {
+                // Parse message
+                let (msg, caller) = msg
+                    .fixed::<GetNthBlockRequest, GetNthBlockResponse>()
+                    .ok_or(StorageError::BadArgument)?;
+                // Search for block
+                let (flash_base_addr, flash_size, block_type) = get_nth_block(msg.block_number)?;
+                // Respond with data
+                caller.reply(GetNthBlockResponse {
+                    block_base_address: flash_base_addr,
+                    block_size: flash_size,
+                    block_type: block_type,
+                });
                 Ok(())
             }
         }
@@ -178,7 +198,7 @@ fn generate_status() -> Result<ReportStatusResponse, StorageError> {
             response.ram_used += sram_size;
         }
     }
-    
+
     Ok(response)
 }
 
@@ -258,8 +278,7 @@ fn flash_read_stream(
     total_size: usize,
 ) -> Result<(), StorageError> {
     // Instantiate the flash operators
-    let mut flash =
-        Flash::<FLASH_START_ADDR, FLASH_PAGE_SIZE, FLASH_END_ADDR>::new();
+    let mut flash = Flash::<FLASH_START_ADDR, FLASH_PAGE_SIZE, FLASH_END_ADDR>::new();
     // Get the block
     let block_res = flash::utils::get_flash_block::<
         FLASH_ALLOCATOR_START_ADDR,
@@ -267,7 +286,7 @@ fn flash_read_stream(
         FLASH_ALLOCATOR_START_SCAN_ADDR,
         FLASH_NUM_SLOTS,
         FLASH_BLOCK_SIZE,
-        FLASH_FLAG_SIZE
+        FLASH_FLAG_SIZE,
     >(&mut flash, base_address, false);
     if block_res.is_none() {
         return Err(StorageError::InvalidBlockPointer);
@@ -294,14 +313,13 @@ fn flash_read_stream(
             tbr = total_size - pos;
         }
         // Read chunk
-        let read_result =
-            flash.read(block_start_addr + offset + pos as u32, tbr);
+        let read_result = flash.read(block_start_addr + offset + pos as u32, tbr);
         if read_result.is_err() {
             // Read failed
             return Err(StorageError::FlashError);
         }
         // Workaround in order to avoid getting fault from the syscall.
-        // In fact, the source or destination for leases must be in the 
+        // In fact, the source or destination for leases must be in the
         // memory space owned by the component, it's not enough the component can read it.
         let data = read_result.unwrap();
         for i in 0..tbr {
@@ -427,4 +445,29 @@ fn ram_allocate(
             AllocatorError::InvalidBlock => StorageError::InvalidBlockPointer,
         });
     }
+}
+
+fn get_nth_block(block_number: u32) -> Result<(u32, u32, BlockType), StorageError> {
+    // Instantiate the flash operators
+    let mut flash = Flash::<FLASH_START_ADDR, FLASH_PAGE_SIZE, FLASH_END_ADDR>::new();
+    // Create flash walker
+    let walker = FlashWalkerImpl::<
+        FLASH_ALLOCATOR_START_ADDR,
+        FLASH_ALLOCATOR_END_ADDR,
+        FLASH_ALLOCATOR_START_SCAN_ADDR,
+        FLASH_NUM_SLOTS,
+        FLASH_BLOCK_SIZE,
+        FLASH_FLAG_SIZE,
+    >::new(&mut flash);
+    // Iterate on each block
+    let mut count: u32 = 0;
+    for b in walker {
+        if count == block_number {
+            // Found the block, return data
+            return Ok((b.get_base_address(), b.get_size(), b.get_type()));
+        }
+        count += 1;
+    }
+    // No block found
+    return Err(StorageError::NoBlockAvailable);
 }

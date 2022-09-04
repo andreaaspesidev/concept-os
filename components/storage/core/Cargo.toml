@@ -4,12 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-stm32f303e = []
+stm32f303re = []
 
 [dependencies]
 storage-api = {path = "../api"}
 userlib = {path = "../../../sys/userlib"}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
+cfg-if = "1.0.0"
+# Component dependencies
 flash_allocator = {path = "../../../libs/flash_allocator"}
 ram_allocator = {path = "../../../libs/ram_allocator"}
 

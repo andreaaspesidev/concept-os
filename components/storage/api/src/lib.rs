@@ -1,12 +1,12 @@
 #![no_std]
 
-use userlib::{hl, TaskId, FromPrimitive, sys_send, Lease};
+use userlib::{hl, TaskId, FromPrimitive, sys_send, Lease, flash::BlockType};
 use zerocopy::{AsBytes,FromBytes};
 
 /**
  * Constants
  */
-const STORAGE_TASK_ID: TaskId = TaskId(2);
+const STORAGE_TASK_ID: TaskId = TaskId(4);
 
 /**
  * Error Type
@@ -21,7 +21,8 @@ pub enum StorageError {
     BlockTooSmall = 5,
     FlashError = 6,
     BadArgument = 7,
-    ComponentUnavailable = 8
+    NoBlockAvailable = 8,
+    ComponentUnavailable = 9
 }
 impl From<u32> for StorageError {
     fn from(x: u32) -> Self {
@@ -33,6 +34,7 @@ impl From<u32> for StorageError {
             5 => StorageError::BlockTooSmall,
             6 => StorageError::FlashError,
             7 => StorageError::BadArgument,
+            8 => StorageError::NoBlockAvailable,
             _ => StorageError::ComponentUnavailable
         }
     }
@@ -59,6 +61,7 @@ pub enum Operation {
     FinalizeBlock = 30,
     // Status Operations
     ReportStatus = 40,
+    GetNthBlock = 41,
 }
 
 /// Component Allocation
@@ -68,7 +71,7 @@ pub struct AllocateComponentRequest {
     pub flash_size: u32,
     pub ram_size: u32
 }
-#[derive(FromBytes, AsBytes)]
+#[derive(Debug, FromBytes, AsBytes)]
 #[repr(C)]
 pub struct AllocateComponentResponse {
     pub flash_base_address: u32,
@@ -88,7 +91,7 @@ impl hl::Call for AllocateComponentRequest {
 pub struct AllocateGenericRequest {
     pub flash_size: u32
 }
-#[derive(FromBytes, AsBytes)]
+#[derive(Debug, FromBytes, AsBytes)]
 #[repr(C)]
 pub struct AllocateGenericResponse {
     pub flash_base_address: u32,
@@ -145,7 +148,7 @@ impl hl::Call for FinalizeBlockRequest {
 #[repr(C)]
 pub struct ReportStatusRequest {
 }
-#[derive(FromBytes, AsBytes)]
+#[derive(Debug, FromBytes, AsBytes)]
 #[repr(C)]
 pub struct ReportStatusResponse {
     pub blocks: u32,
@@ -160,6 +163,25 @@ pub struct ReportStatusResponse {
 impl hl::Call for ReportStatusRequest {
     const OP: u16 = Operation::ReportStatus as u16;
     type Response = ReportStatusResponse;
+    type Err = StorageError;
+}
+
+/// Get N-th block
+#[derive(FromBytes, AsBytes)]
+#[repr(C)]
+pub struct GetNthBlockRequest {
+    pub block_number: u32
+}
+#[derive(Debug, FromBytes, AsBytes)]
+#[repr(C)]
+pub struct GetNthBlockResponse {
+    pub block_base_address: u32,
+    pub block_size: u32,
+    pub block_type: BlockType
+}
+impl hl::Call for GetNthBlockRequest {
+    const OP: u16 = Operation::GetNthBlock as u16;
+    type Response = GetNthBlockResponse;
     type Err = StorageError;
 }
 
@@ -233,5 +255,11 @@ impl Storage {
 
     pub fn report_status(&self) -> Result<ReportStatusResponse, StorageError> {
         hl::send(STORAGE_TASK_ID, &ReportStatusRequest {})
+    }
+
+    pub fn get_nth_block(&self, block_number: u32) -> Result<GetNthBlockResponse, StorageError> {
+        hl::send(STORAGE_TASK_ID, &GetNthBlockRequest{
+            block_number: block_number
+        })
     }
 }

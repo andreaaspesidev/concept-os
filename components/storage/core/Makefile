@@ -27,5 +27,8 @@ dump: build
 	arm-none-eabi-objcopy -O binary --only-section=.rodata build/image.elf build/image.rodata
 	arm-none-eabi-objcopy -O binary --only-section=.data build/image.elf build/image.data
 
+dump-hbf: build
+	../../../libs/hbf_lite/tests/simple_read/target/release/hbf_simple_read $(current_dir)/$(COMPONENT_NAME).hbf
+
 size: build
 	size -A build/image.elf
