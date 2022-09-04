@@ -191,6 +191,9 @@ impl hl::Call for GetNthBlockRequest {
 pub struct Storage();
 
 impl Storage {
+    pub fn new() -> Self {
+        Self {}
+    }
     pub fn allocate_component(&mut self, flash_size: u32, ram_size: u32) -> Result<AllocateComponentResponse, StorageError> {
         hl::send(STORAGE_TASK_ID, &AllocateComponentRequest{
             flash_size: flash_size,

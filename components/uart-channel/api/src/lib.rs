@@ -56,9 +56,9 @@ pub struct ReadBlockTimedRequest {
  * Single transmitter - Receiver interface
  * for USART2
  */
-pub struct UsartChannel();
+pub struct UartChannel();
 
-impl UsartChannel {
+impl UartChannel {
     pub fn new() -> Self {
         Self {}
     }
