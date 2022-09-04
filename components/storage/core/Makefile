@@ -1,4 +1,4 @@
-COMPONENT_NAME:="allocator"
+COMPONENT_NAME:=storage
 current_dir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 root_dir := $(shell dirname $(realpath ../../.))
 
@@ -6,13 +6,13 @@ root_dir := $(shell dirname $(realpath ../../.))
 
 clean:
 	rm -rf build
-	rm allocator.hbf
+	rm $(COMPONENT_NAME).hbf
 
 build:
-	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/allocator.hbf -b stm32f303e
+	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32f303re
 
 build-verbose:
-	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/allocator.hbf -b stm32f303e -v
+	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32f303re -v
 
 
 disassemble: build
@@ -26,3 +26,6 @@ dump: build
 	arm-none-eabi-objcopy -O binary --only-section=.text build/image.elf build/image.text
 	arm-none-eabi-objcopy -O binary --only-section=.rodata build/image.elf build/image.rodata
 	arm-none-eabi-objcopy -O binary --only-section=.data build/image.elf build/image.data
+
+size: build
+	size -A build/image.elf
