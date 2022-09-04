@@ -31,6 +31,9 @@ pub fn dump_section(bytes: &[u8], f: &mut Formatter) -> Result<(), Error> {
         index += 1;
 
         if index >= bytes.len() {
+            f.write_str("   ")?;
+            // Print textual representation
+            dump_text(&bytes[last_row_start..index], f)?;
             return Ok(());
         }
     }
