@@ -1,0 +1,16 @@
+[component]
+id = 2
+version = 1
+priority = 0
+flags = ['START_AT_BOOT']
+min_ram = 1024
+
+# RCC
+[[regions]]
+base_address = '0x40021000'
+size = '0x0400' # 1024
+attributes = [
+    'READ',
+    'WRITE',
+    'DEVICE'
+]
