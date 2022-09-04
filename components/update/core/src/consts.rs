@@ -1,0 +1,3 @@
+pub const READ_TIMEOUT_TICKS: u32 = 50_000;
+pub const PACKET_BUFFER_SIZE: usize = 64;
+pub const ORIGINAL_FLASH_ADDR: u32 = 0x0800_0000;

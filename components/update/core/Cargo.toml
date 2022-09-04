@@ -1,0 +1,28 @@
+[package]
+name = "update"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+stm32f303re = []
+
+[dependencies]
+userlib = {path = "../../../sys/userlib"}
+cortex-m = { version = "0.7", features = ["inline-asm"] }
+aes-gcm = {version="0.10.1", default-features = false, features = ["aes", "heapless"] }
+hbf_lite = {path = "../../../libs/hbf_lite"}
+bitflags = "1.3.2"
+# Component dependencies
+storage-api = {path = "../../storage/api"}
+uart-channel-api = {path = "../../uart-channel/api"}
+
+[dependencies.stm32f3]
+version = "0.15.1"
+features = ["stm32f303", "rt"]
+
+# This section is here to discourage RLS/rust-analyzer from doing test builds,
+# since test builds don't work for cross compilation.
+[[bin]]
+name = "update"
+test = false
+bench = false

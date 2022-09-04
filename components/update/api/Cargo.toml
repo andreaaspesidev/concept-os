@@ -1,0 +1,10 @@
+[package]
+name = "update-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+userlib = {path = "../../../sys/userlib"}
+cortex-m = { version = "0.7", features = ["inline-asm"] }
+zerocopy = "0.6.1"
+num-traits = { version = "0.2.15", default-features = false }
