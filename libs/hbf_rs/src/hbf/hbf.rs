@@ -108,6 +108,15 @@ impl <'a> HbfGen<'a> {
         let cum_size = self.header_main().databss_size();
         return cum_size - self.data_size();
     }
+
+    fn payload_size(&self) -> u32 {
+        let offset = core::mem::size_of::<HbfHeaderBaseGen>()
+            + core::mem::size_of::<HbfHeaderMainGen>()
+            + core::mem::size_of::<HbfHeaderRegionGen>() * self.header_base().num_regions() as usize
+            + core::mem::size_of::<HbfHeaderInterruptGen>() * self.header_base().num_interrupts() as usize
+            + core::mem::size_of::<HbfHeaderRelocationGen>() * self.header_base().num_relocations() as usize;
+        self.header_base().total_size() - offset as u32
+    }
     
     /*
         Direct access
@@ -230,6 +239,10 @@ impl <'a> HbfFile for HbfGen<'a> {
 
     fn validate(&self) -> bool {
         self.validate()
+    }
+
+    fn payload_size(&self) -> u32 {
+        self.payload_size()
     }
 
 }

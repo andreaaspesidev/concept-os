@@ -17,6 +17,7 @@ mod hbf_header;
 pub const HBF_MAGIC : [u8; 4] = [0x7f, b'H', b'B', b'F'];
 pub const HBF_HEADER_MIN_SIZE: usize = core::mem::size_of::<HbfHeaderBaseGen>();
 pub const HBF_CHECKSUM_OFFSET: usize = 0x20;
+pub const FIXED_HEADER_SIZE: usize = core::mem::size_of::<HbfHeaderBaseGen>()+ core::mem::size_of::<HbfHeaderMainGen>();
 
 bitflags::bitflags! {
     #[repr(transparent)]
@@ -62,7 +63,7 @@ impl From<u16> for HbfVersion {
     }
 }
 
-pub trait HbfHeaderBase {
+pub trait HbfHeaderBase<'a> {
     fn hbf_version(&self) -> HbfVersion;
     fn total_size(&self) -> u32;
     
@@ -81,9 +82,11 @@ pub trait HbfHeaderBase {
     fn offset_relocation(&self) -> u16;
     
     fn checksum(&self) -> u32;
+
+    fn get_raw(&self) -> &'a [u8];
 }
 
-pub trait HbfHeaderMain {
+pub trait HbfHeaderMain<'a> {
     fn component_priority(&self) -> u16;
     fn component_flags(&self) -> ComponentFlags;
     fn component_min_ram(&self) -> u32;
@@ -92,21 +95,29 @@ pub trait HbfHeaderMain {
 
     fn data_offset(&self) -> u32;
     fn databss_size(&self) -> u32;
+
+    fn get_raw(&self) -> &'a [u8];
 }
 
-pub trait HbfHeaderRegion {
+pub trait HbfHeaderRegion<'a> {
     fn base_address(&self) -> u32;
     fn size(&self) -> u32;
     fn attributes(&self) -> RegionAttributes;
+
+    fn get_raw(&self) -> &'a [u8];
 }
 
-pub trait HbfHeaderInterrupt {
+pub trait HbfHeaderInterrupt<'a> {
     fn irq_number(&self) -> u32;
     fn notification_mask(&self) -> u32;
+
+    fn get_raw(&self) -> &'a [u8];
 }
 
-pub trait HbfHeaderRelocation {
+pub trait HbfHeaderRelocation<'a> {
     fn offset(&self) -> u32;
+
+    fn get_raw(&self) -> &'a [u8];
 }
 
 
@@ -117,10 +128,10 @@ pub trait HbfHeaderRelocation {
 // Base
 pub struct HbfHeaderBaseWrapper<'a> {
     _hbf_file: &'a dyn HbfFile,
-    inner: &'a dyn HbfHeaderBase,
+    inner: &'a dyn HbfHeaderBase<'a>,
 }
 impl<'a> HbfHeaderBaseWrapper<'a> {
-    pub fn new(hbf_file: &'a dyn HbfFile, inner: &'a dyn HbfHeaderBase) -> Self {
+    pub fn new(hbf_file: &'a dyn HbfFile, inner: &'a dyn HbfHeaderBase<'a>) -> Self {
         Self {
             _hbf_file: hbf_file,
             inner,
@@ -128,7 +139,7 @@ impl<'a> HbfHeaderBaseWrapper<'a> {
     }
 }
 impl<'a> Deref for HbfHeaderBaseWrapper<'a> {
-    type Target = dyn HbfHeaderBase + 'a;
+    type Target = dyn HbfHeaderBase<'a> + 'a;
     fn deref(&self) -> &Self::Target {
         self.inner
     }
@@ -150,10 +161,10 @@ impl<'a> Debug for HbfHeaderBaseWrapper<'a> {
 // Main
 pub struct HbfHeaderMainWrapper<'a> {
     _hbf_file: &'a dyn HbfFile,
-    inner: &'a dyn HbfHeaderMain,
+    inner: &'a dyn HbfHeaderMain<'a>,
 }
 impl<'a> HbfHeaderMainWrapper<'a> {
-    pub fn new(hbf_file: &'a dyn HbfFile, inner: &'a dyn HbfHeaderMain) -> Self {
+    pub fn new(hbf_file: &'a dyn HbfFile, inner: &'a dyn HbfHeaderMain<'a>) -> Self {
         Self {
             _hbf_file: hbf_file,
             inner,
@@ -161,7 +172,7 @@ impl<'a> HbfHeaderMainWrapper<'a> {
     }
 }
 impl<'a> Deref for HbfHeaderMainWrapper<'a> {
-    type Target = dyn HbfHeaderMain + 'a;
+    type Target = dyn HbfHeaderMain<'a> + 'a;
     fn deref(&self) -> &Self::Target {
         self.inner
     }
@@ -179,10 +190,10 @@ impl<'a> Debug for HbfHeaderMainWrapper<'a> {
 // Region
 pub struct HbfHeaderRegionWrapper<'a> {
     _hbf_file: &'a dyn HbfFile,
-    inner: &'a dyn HbfHeaderRegion,
+    inner: &'a dyn HbfHeaderRegion<'a>,
 }
 impl<'a> HbfHeaderRegionWrapper<'a> {
-    pub fn new(hbf_file: &'a dyn HbfFile, inner: &'a dyn HbfHeaderRegion) -> Self {
+    pub fn new(hbf_file: &'a dyn HbfFile, inner: &'a dyn HbfHeaderRegion<'a>) -> Self {
         Self {
             _hbf_file: hbf_file,
             inner,
@@ -190,7 +201,7 @@ impl<'a> HbfHeaderRegionWrapper<'a> {
     }
 }
 impl<'a> Deref for HbfHeaderRegionWrapper<'a> {
-    type Target = dyn HbfHeaderRegion + 'a;
+    type Target = dyn HbfHeaderRegion<'a> + 'a;
     fn deref(&self) -> &Self::Target {
         self.inner
     }
@@ -208,10 +219,10 @@ impl<'a> Debug for HbfHeaderRegionWrapper<'a> {
 // Interrupt
 pub struct HbfHeaderInterruptWrapper<'a> {
     _hbf_file: &'a dyn HbfFile,
-    inner: &'a dyn HbfHeaderInterrupt,
+    inner: &'a dyn HbfHeaderInterrupt<'a>,
 }
 impl<'a> HbfHeaderInterruptWrapper<'a> {
-    pub fn new(hbf_file: &'a dyn HbfFile, inner: &'a dyn HbfHeaderInterrupt) -> Self {
+    pub fn new(hbf_file: &'a dyn HbfFile, inner: &'a dyn HbfHeaderInterrupt<'a>) -> Self {
         Self {
             _hbf_file: hbf_file,
             inner,
@@ -219,7 +230,7 @@ impl<'a> HbfHeaderInterruptWrapper<'a> {
     }
 }
 impl<'a> Deref for HbfHeaderInterruptWrapper<'a> {
-    type Target = dyn HbfHeaderInterrupt + 'a;
+    type Target = dyn HbfHeaderInterrupt<'a> + 'a;
     fn deref(&self) -> &Self::Target {
         self.inner
     }
@@ -236,10 +247,10 @@ impl<'a> Debug for HbfHeaderInterruptWrapper<'a> {
 // Relocations
 pub struct HbfHeaderRelocationWrapper<'a> {
     _hbf_file: &'a dyn HbfFile,
-    inner: &'a dyn HbfHeaderRelocation,
+    inner: &'a dyn HbfHeaderRelocation<'a>,
 }
 impl<'a> HbfHeaderRelocationWrapper<'a> {
-    pub fn new(hbf_file: &'a dyn HbfFile, inner: &'a dyn HbfHeaderRelocation) -> Self {
+    pub fn new(hbf_file: &'a dyn HbfFile, inner: &'a dyn HbfHeaderRelocation<'a>) -> Self {
         Self {
             _hbf_file: hbf_file,
             inner,
@@ -254,7 +265,7 @@ impl<'a> HbfHeaderRelocationWrapper<'a> {
     }
 }
 impl<'a> Deref for HbfHeaderRelocationWrapper<'a> {
-    type Target = dyn HbfHeaderRelocation + 'a;
+    type Target = dyn HbfHeaderRelocation<'a> + 'a;
     fn deref(&self) -> &Self::Target {
         self.inner
     }

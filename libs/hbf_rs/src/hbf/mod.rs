@@ -1,8 +1,11 @@
+use core::fmt::Debug;
+
 use crate::{header::{HbfHeaderBaseWrapper, HbfHeaderRegionWrapper, HbfHeaderInterruptWrapper, HbfHeaderRelocationWrapper, HbfHeaderRegionIter, HbfHeaderInterruptIter, HbfHeaderRelocationIter, HbfHeaderMainWrapper}, section::HbfPayloadSectionWrapper};
 
 pub mod hbf;
 
-pub trait HbfFile {
+
+pub trait HbfFile: Debug {
     fn content(&self) -> &[u8];
 
     fn header_base(&self) -> HbfHeaderBaseWrapper;
@@ -20,6 +23,7 @@ pub trait HbfFile {
     fn read_only_section(&self) -> HbfPayloadSectionWrapper;
     fn data_section(&self) -> Option<HbfPayloadSectionWrapper>;
     fn bss_size(&self) -> u32;
+    fn payload_size(&self) -> u32;
 
     fn validate(&self) -> bool;
 }
