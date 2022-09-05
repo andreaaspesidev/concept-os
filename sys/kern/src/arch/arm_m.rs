@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Architecture support for ARMv{6,7,8}-M.
+//! Architecture support for ARMv7.
 //!
 //! # ARM-M timer
 //!
@@ -120,37 +120,21 @@ pub struct SavedState {
     exc_return: u32,
 
     // gosh it would sure be nice if cfg_if were legal here
-    #[cfg(any(armv7m, armv8m))]
     s16: u32,
-    #[cfg(any(armv7m, armv8m))]
     s17: u32,
-    #[cfg(any(armv7m, armv8m))]
     s18: u32,
-    #[cfg(any(armv7m, armv8m))]
     s19: u32,
-    #[cfg(any(armv7m, armv8m))]
     s20: u32,
-    #[cfg(any(armv7m, armv8m))]
     s21: u32,
-    #[cfg(any(armv7m, armv8m))]
     s22: u32,
-    #[cfg(any(armv7m, armv8m))]
     s23: u32,
-    #[cfg(any(armv7m, armv8m))]
     s24: u32,
-    #[cfg(any(armv7m, armv8m))]
     s25: u32,
-    #[cfg(any(armv7m, armv8m))]
     s26: u32,
-    #[cfg(any(armv7m, armv8m))]
     s27: u32,
-    #[cfg(any(armv7m, armv8m))]
     s28: u32,
-    #[cfg(any(armv7m, armv8m))]
     s29: u32,
-    #[cfg(any(armv7m, armv8m))]
     s30: u32,
-    #[cfg(any(armv7m, armv8m))]
     s31: u32,
     // NOTE: the above fields must be kept contiguous!
 }
@@ -225,34 +209,20 @@ pub struct BaseExceptionFrame {
     xpsr: u32,
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(any(armv7m, armv8m))] {
-        /// Extended version for FPU.
-        #[derive(Debug, FromBytes, Default)]
-        #[repr(C)]
-        pub struct ExtendedExceptionFrame {
-            base: BaseExceptionFrame,
-            fpu_regs: [u32; 16],
-            fpscr: u32,
-            reserved: u32,
-        }
-    } else if #[cfg(armv6m)] {
-        /// Wee version for non-FPU.
-        #[derive(Debug, FromBytes, Default)]
-        #[repr(C)]
-        pub struct ExtendedExceptionFrame {
-            base: BaseExceptionFrame,
-        }
-    } else {
-        compile_error!("unknown M-profile");
-    }
+/// Extended version for FPU.
+#[derive(Debug, FromBytes, Default)]
+#[repr(C)]
+pub struct ExtendedExceptionFrame {
+    base: BaseExceptionFrame,
+    fpu_regs: [u32; 16],
+    fpscr: u32,
+    reserved: u32,
 }
 
 /// Initially we just set the Thumb Mode bit, the minimum required.
 const INITIAL_PSR: u32 = 1 << 24;
 
 /// We don't really care about the initial FPU mode; 0 is reasonable.
-#[cfg(any(armv7m, armv8m))]
 const INITIAL_FPSCR: u32 = 0;
 
 // Because debuggers need to know the clock frequency to set the SWO clock
@@ -314,10 +284,7 @@ pub fn reinitialize(task: &mut task::Task) {
     frame.base.pc = descriptor.entry_point | 1; // for thumb
     frame.base.xpsr = INITIAL_PSR;
     frame.base.lr = 0xFFFF_FFFF; // trap on return from main
-    #[cfg(any(armv7m, armv8m))]
-    {
-        frame.fpscr = INITIAL_FPSCR;
-    }
+    frame.fpscr = INITIAL_FPSCR;
 
     // Set the initial stack pointer, *not* to the stack top, but to the base of
     // this frame.
@@ -327,7 +294,6 @@ pub fn reinitialize(task: &mut task::Task) {
     task.save_mut().exc_return = EXC_RETURN_CONST;
 }
 
-#[cfg(any(armv6m, armv7m))]
 pub fn apply_memory_protection(task: &task::Task) {
     // We are manufacturing authority to interact with the MPU here, because we
     // can't thread a cortex-specific peripheral through an
@@ -419,109 +385,6 @@ pub fn apply_memory_protection(task: &task::Task) {
     }
 }
 
-#[cfg(armv8m)]
-pub fn apply_memory_protection(task: &task::Task) {
-    // Sigh cortex-m crate doesn't have armv8-m support
-    // Let's poke it manually to make sure we're doing this right..
-    let mpu = unsafe {
-        // At least by not taking a &mut we're confident we're not violating
-        // aliasing....
-        &*cortex_m::peripheral::MPU::ptr()
-    };
-    unsafe {
-        const DISABLE: u32 = 0b000;
-        const PRIVDEFENA: u32 = 0b100;
-        // From the ARMv8m MPU manual
-        //
-        // Any outstanding memory transactions must be forced to complete by
-        // executing a DMB instruction and the MPU disabled before it can be
-        // configured
-        cortex_m::asm::dmb();
-        mpu.ctrl.write(DISABLE | PRIVDEFENA);
-    }
-
-    for (i, region) in task.region_table().iter().enumerate() {
-        // This MPU requires that all regions are 32-byte aligned...in part
-        // because it stuffs extra stuff into the bottom five bits.
-        debug_assert_eq!(region.base & 0x1F, 0);
-
-        let rnr = i as u32;
-
-        let ratts = region.attributes;
-        let xn = !ratts.contains(abi::RegionAttributes::EXECUTE);
-        // ARMv8m has less granularity than ARMv7m for privilege
-        // vs non-privilege so there's no way to say that privilege
-        // can be read write but non-privilge can only be read only
-        // This _should_ be okay?
-        let ap = if ratts.contains(abi::RegionAttributes::WRITE) {
-            0b01 // RW by any privilege level
-        } else if ratts.contains(abi::RegionAttributes::READ) {
-            0b11 // Read only by any privilege level
-        } else {
-            0b00 // RW by privilege code only
-        };
-
-        let (mair, sh) = if ratts.contains(abi::RegionAttributes::DEVICE) {
-            // Most restrictive: device memory, outer shared.
-            (0b00000000, 0b10)
-        } else if ratts.contains(abi::RegionAttributes::DMA) {
-            // Outer/inner non-cacheable, outer shared.
-            (0b01000100, 0b10)
-        } else {
-            let rw = u32::from(ratts.contains(abi::RegionAttributes::READ))
-                << 1
-                | u32::from(ratts.contains(abi::RegionAttributes::WRITE));
-            // write-back transient, not shared
-            (0b0100_0100 | rw | rw << 4, 0b00)
-        };
-
-        // RLAR = our upper bound
-        let rlar = (region.base + region.size)
-                | (i as u32) << 1 // AttrIndx
-                | (1 << 0); // enable
-
-        // RBAR = the base
-        let rbar = (xn as u32)
-            | ap << 1
-            | (sh as u32) << 3  // sharability
-            | region.base;
-
-        unsafe {
-            // RNR
-            core::ptr::write_volatile(0xe000_ed98 as *mut u32, rnr);
-            // MAIR
-            if rnr < 4 {
-                let mut mair0 = (0xe000_edc0 as *const u32).read_volatile();
-                mair0 |= (mair as u32) << (rnr * 8);
-                core::ptr::write_volatile(0xe000_edc0 as *mut u32, mair0);
-            } else {
-                let mut mair1 = (0xe000_edc4 as *const u32).read_volatile();
-                mair1 |= (mair as u32) << ((rnr - 4) * 8);
-                core::ptr::write_volatile(0xe000_edc4 as *mut u32, mair1);
-            }
-            // RBAR
-            core::ptr::write_volatile(0xe000_ed9c as *mut u32, rbar);
-            // RLAR
-            core::ptr::write_volatile(0xe000_eda0 as *mut u32, rlar);
-        }
-    }
-
-    unsafe {
-        const ENABLE: u32 = 0b001;
-        const PRIVDEFENA: u32 = 0b100;
-        mpu.ctrl.write(ENABLE | PRIVDEFENA);
-        // From the ARMv8m MPU manual
-        //
-        // The final step is to enable the MPU by writing to MPU_CTRL. Code
-        // should then execute a memory barrier to ensure that the register
-        // updates are seen by any subsequent memory accesses. An Instruction
-        // Synchronization Barrier (ISB) ensures the updated configuration
-        // [is] used by any subsequent instructions.
-        cortex_m::asm::dmb();
-        cortex_m::asm::isb();
-    }
-}
-
 pub fn start_first_task(tick_divisor: u32, task: &mut task::Task) -> ! {
     // Enable faults and set fault/exception priorities to reasonable settings.
     // Our goal here is to keep the kernel non-preemptive, which means the
@@ -539,93 +402,47 @@ pub fn start_first_task(tick_divisor: u32, task: &mut task::Task) -> ! {
         //
         // - ARMv7+: MEMFAULT, BUSFAULT, USGFAULT
         // - ARMv8: SECUREFAULT
-        cfg_if::cfg_if! {
-            if #[cfg(armv7m)] {
-                scb.shcsr.modify(|x| x | 0b111 << 16);
-            } else if #[cfg(armv8m)] {
-                scb.shcsr.modify(|x| x | 0b1111 << 16);
-            } else if #[cfg(armv6m)] {
-                // This facility is missing.
-            } else {
-                compile_error!("missing fault setup for ARM profile");
-            }
-        }
+        scb.shcsr.modify(|x| x | 0b111 << 16);
 
         // Set fault and standard exception priorities.
-        cfg_if::cfg_if! {
-            if #[cfg(armv6m)] {
-                // ARMv6 only has 4 priority levels and no configurable fault
-                // priorities. Set priorities of SVCall, SysTick and PendSV to 3
-                // (the lowest configurable).
-                scb.shpr[0].modify(|x| x | 0b11 << 30);
-                scb.shpr[1].modify(|x| x | 0b11 << 22 | 0b11 << 30);
-            } else if #[cfg(any(armv7m, armv8m))] {
-                // Set priority of Usage, Bus, MemManage to 0 (highest
-                // configurable).
-                scb.shpr[0].write(0x00);
-                scb.shpr[1].write(0x00);
-                scb.shpr[2].write(0x00);
-                // Set priority of SVCall to 0xFF (lowest configurable).
-                scb.shpr[7].write(0xFF);
-                // SysTick and PendSV also to 0xFF
-                scb.shpr[10].write(0xFF);
-                scb.shpr[11].write(0xFF);
-            } else {
-                compile_error!("missing fault priorities for ARM profile");
-            }
-        }
+        // Set priority of Usage, Bus, MemManage to 0 (highest
+        // configurable).
+        scb.shpr[0].write(0x00);
+        scb.shpr[1].write(0x00);
+        scb.shpr[2].write(0x00);
+        // Set priority of SVCall to 0xFF (lowest configurable).
+        scb.shpr[7].write(0xFF);
+        // SysTick and PendSV also to 0xFF
+        scb.shpr[10].write(0xFF);
+        scb.shpr[11].write(0xFF);
 
-        #[cfg(any(armv7m, armv8m))]
-        {
-            // ARM's default disposition is that division by zero doesn't
-            // actually fail, but rather returns 0. (!)  It's unclear how
-            // placating this kind of programmatic sloppiness doesn't ultimately
-            // end in tears; we explicitly configure ourselves to trap on any
-            // divide by zero.
-            const DIV_0_TRP: u32 = 1 << 4;
-            scb.ccr.modify(|x| x | DIV_0_TRP);
-        }
+        // ARM's default disposition is that division by zero doesn't
+        // actually fail, but rather returns 0. (!)  It's unclear how
+        // placating this kind of programmatic sloppiness doesn't ultimately
+        // end in tears; we explicitly configure ourselves to trap on any
+        // divide by zero.
+        const DIV_0_TRP: u32 = 1 << 4;
+        scb.ccr.modify(|x| x | DIV_0_TRP);
 
         // Configure the priority of all external interrupts so that they can't
         // preempt the kernel.
         let nvic = &*cortex_m::peripheral::NVIC::ptr();
 
-        cfg_if::cfg_if! {
-            if #[cfg(armv6m)] {
-                // On ARMv6 there are 8 IPR registers, each containing 4
-                // interrupt priorities.  Only 2 bits, stored at bits[7:6], are
-                // used for the priority level, giving a range of 0-192 in steps
-                // of 64.  Writes to the other bits are ignored, so we just set
-                // everything high, i.e.  the lowest priority.  For more
-                // information see:
-                //
-                // ARMv6-M Architecture Reference Manual section B3.4.7
-                //
-                // Do not believe what the docs for the `cortex_m` crate suggest
-                // -- the IPR registers on ARMv6M are 32-bits wide.
-                for i in 0..8 {
-                    nvic.ipr[i].write(0xFFFF_FFFF);
-                }
-            } else if #[cfg(any(armv7m, armv8m))] {
-                // How many IRQs have we got on ARMv7+? This information is
-                // stored in a separate area of the address space, away from the
-                // NVIC, and is (presumably due to an oversight) not present in
-                // the cortex_m API, so let's fake it.
-                let ictr = (0xe000_e004 as *const u32).read_volatile();
-                // This gives interrupt count in blocks of 32, minus 1, so there
-                // are always at least 32 interrupts.
-                let irq_block_count = (ictr as usize & 0xF) + 1;
-                let irq_count = irq_block_count * 32;
-                // Blindly poke all the interrupts to 0xFF. IPR registers on
-                // ARMv7/8 are modeled as `u8` by `cortex_m`, unlike on ARMv6.
-                // We're explicit with the `u8` suffix below to ensure that we
-                // notice if this changes.
-                for i in 0..irq_count {
-                    nvic.ipr[i].write(0xFFu8);
-                }
-            } else {
-                compile_error!("missing IRQ priorities for ARM profile");
-            }
+        // How many IRQs have we got on ARMv7+? This information is
+        // stored in a separate area of the address space, away from the
+        // NVIC, and is (presumably due to an oversight) not present in
+        // the cortex_m API, so let's fake it.
+        let ictr = (0xe000_e004 as *const u32).read_volatile();
+        // This gives interrupt count in blocks of 32, minus 1, so there
+        // are always at least 32 interrupts.
+        let irq_block_count = (ictr as usize & 0xF) + 1;
+        let irq_count = irq_block_count * 32;
+        // Blindly poke all the interrupts to 0xFF. IPR registers on
+        // ARMv7/8 are modeled as `u8` by `cortex_m`, unlike on ARMv6.
+        // We're explicit with the `u8` suffix below to ensure that we
+        // notice if this changes.
+        for i in 0..irq_count {
+            nvic.ipr[i].write(0xFFu8);
         }
     }
 
@@ -659,25 +476,6 @@ pub fn start_first_task(tick_divisor: u32, task: &mut task::Task) -> ! {
 
     CURRENT_TASK_PTR.store(task, Ordering::Relaxed);
 
-    extern "C" {
-        // Exposed by the linker script.
-        static _stack_base: u32;
-    }
-
-    // Safety: this is setting the Main stack pointer (i.e. kernel/interrupt
-    // stack pointer) limit register. There are two potential outcomes from
-    // this:
-    // 1. We proceed without issue because we have not yet overflowed our stack.
-    // 2. We take an immediate fault.
-    //
-    // Both these outcomes are safe, even if the second one is annoying.
-    #[cfg(armv8m)]
-    unsafe {
-        cortex_m::register::msplim::write(
-            core::ptr::addr_of!(_stack_base) as u32
-        );
-    }
-
     // Safety: this is setting the Process (task) stack pointer, which has no
     // effect _assuming_ this code is running on the Main (kernel) stack.
     unsafe {
@@ -694,41 +492,17 @@ pub fn start_first_task(tick_divisor: u32, task: &mut task::Task) -> ! {
     // use for system calls; the SVC entry sequence (also in this file) has code
     // to detect this condition and do kernel startup rather than processing it
     // as a syscall.
-    cfg_if::cfg_if! {
-        if #[cfg(armv6m)] {
-            unsafe {
-                asm!("
-                    @ restore the callee-save registers
-                    ldm r0!, {{r4-r7}}
-                    ldm r0, {{r0-r3}}
-                    mov r11, r3
-                    mov r10, r2
-                    mov r9, r1
-                    mov r8, r0
-                    @ Trap into the kernel.
-                    svc #0xFF
-                    @ noreturn generates a UDF here in case that should return.
-                    ",
-                    in("r0") &task.save().r4,
-                    options(noreturn),
-                )
-            }
-        } else if #[cfg(any(armv7m, armv8m))] {
-            unsafe {
-                asm!("
-                    @ Restore callee-save registers.
-                    ldm {task}, {{r4-r11}}
-                    @ Trap into the kernel.
-                    svc #0xFF
-                    @ noreturn generates a UDF here in case that should return.
-                    ",
-                    task = in(reg) &task.save().r4,
-                    options(noreturn),
-                )
-            }
-        } else {
-            compile_error!("missing kernel bootstrap sequence for ARM profile");
-        }
+    unsafe {
+        asm!("
+            @ Restore callee-save registers.
+            ldm {task}, {{r4-r11}}
+            @ Trap into the kernel.
+            svc #0xFF
+            @ noreturn generates a UDF here in case that should return.
+            ",
+            task = in(reg) &task.save().r4,
+            options(noreturn),
+        )
     }
 }
 
@@ -758,143 +532,63 @@ pub unsafe extern "C" fn SVCall() {
     // After that, we repeat the same steps in the opposite order to restore
     // task context (possibly for a different task!).
     unsafe {
-        cfg_if::cfg_if! {
-            if #[cfg(armv6m)] {
-                asm!("
-                    @ Inspect LR to figure out the caller's mode.
-                    mov r0, lr
-                    ldr r1, =0xFFFFFFF3
-                    bics r0, r0, r1
-                    @ Is the call coming from thread mode + main stack, i.e.
-                    @ from the kernel startup routine?
-                    cmp r0, #0x8
-                    @ If so, this is startup; jump ahead. The common case falls
-                    @ through because branch-not-taken tends to be faster on small
-                    @ cores.
-                    beq 1f
+        asm!("
+            @ Inspect LR to figure out the caller's mode.
+            mov r0, lr
+            mov r1, #0xFFFFFFF3
+            bic r0, r1
+            @ Is the call coming from thread mode + main stack, i.e.
+            @ from the kernel startup routine?
+            cmp r0, #0x8
+            @ If so, this is startup; jump ahead. The common case falls
+            @ through because branch-not-taken tends to be faster on small
+            @ cores.
+            beq 1f
 
-                    @ store volatile state.
-                    @ first, get a pointer to the current task.
-                    ldr r0, =CURRENT_TASK_PTR
-                    ldr r1, [r0]
-                    @ now, store volatile registers, plus the PSP, plus LR.
-                    movs r2, r1
-                    stm r2!, {{r4-r7}}
-                    mov r4, r8
-                    mov r5, r9
-                    mov r6, r10
-                    mov r7, r11
-                    stm r2!, {{r4-r7}}
-                    mrs r4, PSP
-                    mov r5, lr
-                    stm r2!, {{r4, r5}}
+            @ store volatile state.
+            @ first, get a pointer to the current task.
+            movw r0, #:lower16:CURRENT_TASK_PTR
+            movt r0, #:upper16:CURRENT_TASK_PTR
+            ldr r1, [r0]
+            movs r2, r1
+            @ fetch the process-mode stack pointer.
+            @ fetching into r12 means the order in the stm below is right.
+            mrs r12, PSP
+            @ now, store volatile registers, plus the PSP in r12, plus LR.
+            stm r2!, {{r4-r12, lr}}
+            vstm r2, {{s16-s31}}
 
-                    @ syscall number is passed in r11. Move it into r0 to pass
-                    @ it as an argument to the handler, then call the handler.
-                    mov r0, r11
-                    bl syscall_entry
+            @ syscall number is passed in r11. Move it into r0 to pass it as
+            @ an argument to the handler, then call the handler.
+            movs r0, r11
+            bl syscall_entry
 
-                    @ we're returning back to *some* task, maybe not the same one.
-                    ldr r0, =CURRENT_TASK_PTR
-                    ldr r0, [r0]
-                    @ restore volatile registers, plus PSP. We will do this in
-                    @ slightly reversed order for efficiency. First, do the high
-                    @ ones.
-                    movs r1, r0
-                    adds r1, r1, #(4 * 4)
-                    ldm r1!, {{r4-r7}}
-                    mov r11, r7
-                    mov r10, r6
-                    mov r9, r5
-                    mov r8, r4
-                    ldm r1!, {{r4, r5}}
-                    msr PSP, r4
-                    mov lr, r5
+            @ we're returning back to *some* task, maybe not the same one.
+            movw r0, #:lower16:CURRENT_TASK_PTR
+            movt r0, #:upper16:CURRENT_TASK_PTR
+            ldr r0, [r0]
+            @ restore volatile registers, plus load PSP into r12
+            ldm r0!, {{r4-r12, lr}}
+            vldm r0, {{s16-s31}}
+            msr PSP, r12
 
-                    @ Now that we no longer need r4-r7 as temporary registers,
-                    @ restore them too.
-                    ldm r0!, {{r4-r7}}
+            @ resume
+            bx lr
 
-                    @ resume
-                    bx lr
+        1:  @ starting up the first task.
+            movs r0, #1         @ get bitmask to...
+            msr CONTROL, r0     @ ...shed privs from thread mode.
+                                @ note: now barrier here because exc return
+                                @ serves as barrier
 
-                1:  @ starting up the first task.
-                    @ Drop privilege in Thread mode.
-                    movs r0, #1
-                    msr CONTROL, r0
-                    @ note: no barrier here because exc return serves as barrier
+            mov lr, {exc_return}    @ materialize EXC_RETURN value to
+                                    @ return into thread mode, PSP, FP on
 
-                    @ Manufacture a new EXC_RETURN to change the processor mode
-                    @ when we return.
-                    ldr r0, ={exc_return}
-                    mov lr, r0
-                    bx lr                   @ branch into user mode
-                    ",
-                    exc_return = const EXC_RETURN_CONST as u32,
-                    options(noreturn),
-                )
-            } else if #[cfg(any(armv7m, armv8m))] {
-                asm!("
-                    @ Inspect LR to figure out the caller's mode.
-                    mov r0, lr
-                    mov r1, #0xFFFFFFF3
-                    bic r0, r1
-                    @ Is the call coming from thread mode + main stack, i.e.
-                    @ from the kernel startup routine?
-                    cmp r0, #0x8
-                    @ If so, this is startup; jump ahead. The common case falls
-                    @ through because branch-not-taken tends to be faster on small
-                    @ cores.
-                    beq 1f
-
-                    @ store volatile state.
-                    @ first, get a pointer to the current task.
-                    movw r0, #:lower16:CURRENT_TASK_PTR
-                    movt r0, #:upper16:CURRENT_TASK_PTR
-                    ldr r1, [r0]
-                    movs r2, r1
-                    @ fetch the process-mode stack pointer.
-                    @ fetching into r12 means the order in the stm below is right.
-                    mrs r12, PSP
-                    @ now, store volatile registers, plus the PSP in r12, plus LR.
-                    stm r2!, {{r4-r12, lr}}
-                    vstm r2, {{s16-s31}}
-
-                    @ syscall number is passed in r11. Move it into r0 to pass it as
-                    @ an argument to the handler, then call the handler.
-                    movs r0, r11
-                    bl syscall_entry
-
-                    @ we're returning back to *some* task, maybe not the same one.
-                    movw r0, #:lower16:CURRENT_TASK_PTR
-                    movt r0, #:upper16:CURRENT_TASK_PTR
-                    ldr r0, [r0]
-                    @ restore volatile registers, plus load PSP into r12
-                    ldm r0!, {{r4-r12, lr}}
-                    vldm r0, {{s16-s31}}
-                    msr PSP, r12
-
-                    @ resume
-                    bx lr
-
-                1:  @ starting up the first task.
-                    movs r0, #1         @ get bitmask to...
-                    msr CONTROL, r0     @ ...shed privs from thread mode.
-                                        @ note: now barrier here because exc return
-                                        @ serves as barrier
-
-                    mov lr, {exc_return}    @ materialize EXC_RETURN value to
-                                            @ return into thread mode, PSP, FP on
-
-                    bx lr                   @ branch into user mode
-                    ",
-                    exc_return = const EXC_RETURN_CONST as u32,
-                    options(noreturn),
-                )
-            } else {
-                compile_error!("missing SVCall impl for ARM profile.");
-            }
-        }
+            bx lr                   @ branch into user mode
+            ",
+            exc_return = const EXC_RETURN_CONST as u32,
+            options(noreturn),
+        )
     }
 }
 
@@ -985,88 +679,36 @@ fn pend_context_switch_from_isr() {
 #[no_mangle]
 pub unsafe extern "C" fn PendSV() {
     unsafe {
-        cfg_if::cfg_if! {
-            if #[cfg(armv6m)] {
-                asm!(
-                    "
-                    @ store volatile state.
-                    @ first, get a pointer to the current task.
-                    ldr r0, =CURRENT_TASK_PTR
-                    ldr r1, [r0]
-                    @ now, store volatile registers, plus the PSP, plus LR.
-                    stm r1!, {{r4-r7}}
-                    mov r4, r8
-                    mov r5, r9
-                    mov r6, r10
-                    mov r7, r11
-                    stm r1!, {{r4-r7}}
-                    mrs r4, PSP
-                    mov r5, lr
-                    stm r1!, {{r4, r5}}
+        asm!(
+            "
+            @ store volatile state.
+            @ first, get a pointer to the current task.
+            movw r0, #:lower16:CURRENT_TASK_PTR
+            movt r0, #:upper16:CURRENT_TASK_PTR
+            ldr r1, [r0]
+            @ fetch the process-mode stack pointer.
+            @ fetching into r12 means the order in the stm below is right.
+            mrs r12, PSP
+            @ now, store volatile registers, plus the PSP in r12, plus LR.
+            stm r1!, {{r4-r12, lr}}
+            vstm r1, {{s16-s31}}
 
-                    bl pendsv_entry
+            bl pendsv_entry
 
-                    @ we're returning back to *some* task, maybe not the same one.
-                    ldr r0, =CURRENT_TASK_PTR
-                    ldr r0, [r0]
-                    @ restore volatile registers, plus PSP. We will do this in
-                    @ slightly reversed order for efficiency. First, do the high
-                    @ ones.
-                    movs r1, r0
-                    adds r1, r1, #(4 * 4)
-                    ldm r1!, {{r4-r7}}
-                    mov r11, r7
-                    mov r10, r6
-                    mov r9, r5
-                    mov r8, r4
-                    ldm r1!, {{r4, r5}}
-                    msr PSP, r4
-                    mov lr, r5
+            @ we're returning back to *some* task, maybe not the same one.
+            movw r0, #:lower16:CURRENT_TASK_PTR
+            movt r0, #:upper16:CURRENT_TASK_PTR
+            ldr r0, [r0]
+            @ restore volatile registers, plus load PSP into r12
+            ldm r0!, {{r4-r12, lr}}
+            vldm r0, {{s16-s31}}
+            msr PSP, r12
 
-                    @ Now that we no longer need r4-r7 as temporary registers,
-                    @ restore them too.
-                    ldm r0!, {{r4-r7}}
-
-                    @ resume
-                    bx lr
-                    ",
-                    options(noreturn),
-                );
-            } else if #[cfg(any(armv7m, armv8m))] {
-                asm!(
-                    "
-                    @ store volatile state.
-                    @ first, get a pointer to the current task.
-                    movw r0, #:lower16:CURRENT_TASK_PTR
-                    movt r0, #:upper16:CURRENT_TASK_PTR
-                    ldr r1, [r0]
-                    @ fetch the process-mode stack pointer.
-                    @ fetching into r12 means the order in the stm below is right.
-                    mrs r12, PSP
-                    @ now, store volatile registers, plus the PSP in r12, plus LR.
-                    stm r1!, {{r4-r12, lr}}
-                    vstm r1, {{s16-s31}}
-
-                    bl pendsv_entry
-
-                    @ we're returning back to *some* task, maybe not the same one.
-                    movw r0, #:lower16:CURRENT_TASK_PTR
-                    movt r0, #:upper16:CURRENT_TASK_PTR
-                    ldr r0, [r0]
-                    @ restore volatile registers, plus load PSP into r12
-                    ldm r0!, {{r4-r12, lr}}
-                    vldm r0, {{s16-s31}}
-                    msr PSP, r12
-
-                    @ resume
-                    bx lr
-                    ",
-                    options(noreturn),
-                );
-            } else {
-                compile_error!("missing PendSV impl for ARM profile.");
-            }
-        }
+            @ resume
+            bx lr
+            ",
+            options(noreturn),
+        );
     }
 }
 
@@ -1176,7 +818,6 @@ pub fn enable_irq(n: u32) {
 
 #[repr(u8)]
 #[allow(dead_code)]
-#[cfg(any(armv7m, armv8m))]
 enum FaultType {
     MemoryManagement = 4,
     BusFault = 5,
@@ -1184,7 +825,6 @@ enum FaultType {
 }
 
 #[naked]
-#[cfg(any(armv7m, armv8m))]
 unsafe extern "C" fn configurable_fault() {
     unsafe {
         asm!(
@@ -1246,7 +886,6 @@ unsafe extern "C" fn configurable_fault() {
 #[allow(non_snake_case)]
 #[no_mangle]
 #[naked]
-#[cfg(any(armv7m, armv8m))]
 pub unsafe extern "C" fn MemoryManagement() {
     // Safety: this is merely a call (a tailcall, really) to a different handler
     // -- we're doing it this way simply because the other handler does context
@@ -1258,7 +897,6 @@ pub unsafe extern "C" fn MemoryManagement() {
 #[allow(non_snake_case)]
 #[no_mangle]
 #[naked]
-#[cfg(any(armv7m, armv8m))]
 pub unsafe extern "C" fn BusFault() {
     // Safety: this is merely a call (a tailcall, really) to a different handler
     // -- we're doing it this way simply because the other handler does context
@@ -1270,7 +908,6 @@ pub unsafe extern "C" fn BusFault() {
 #[allow(non_snake_case)]
 #[no_mangle]
 #[naked]
-#[cfg(any(armv7m, armv8m))]
 pub unsafe extern "C" fn UsageFault() {
     // Safety: this is merely a call (a tailcall, really) to a different handler
     // -- we're doing it this way simply because the other handler does context
@@ -1278,66 +915,6 @@ pub unsafe extern "C" fn UsageFault() {
     unsafe { asm!("b {0}", sym configurable_fault, options(noreturn)) }
 }
 
-/// Initial entry point for handling a hard fault (ARMv6).
-#[allow(non_snake_case)]
-#[no_mangle]
-#[naked]
-#[cfg(armv6m)]
-pub unsafe extern "C" fn HardFault() {
-    unsafe {
-        asm!(
-            "
-            @ Read the current task pointer.
-            ldr r0, =CURRENT_TASK_PTR
-            ldr r0, [r0]
-            mrs r12, PSP
-
-            @ Now, to aid those who will debug what induced this fault, save our
-            @ context.  Some of our context (namely, r0-r3, r12, LR, the return
-            @ address and the xPSR) is already on our stack as part of the fault;
-            @ we'll store our remaining registers, plus the PSP, plus exc_return
-            @ (now in LR) into the save region in the current task.
-            mov r2, r0
-            stm r2!, {{r4-r7}}
-            mov r4, r8
-            mov r5, r9
-            mov r6, r10
-            mov r7, r11
-            stm r2!, {{r4-r7}}
-            mrs r4, PSP
-            mov r5, lr
-            stm r2!, {{r4, r5}}
-
-            bl handle_fault
-
-            @ Our task has changed; reload it.
-            ldr r0, =CURRENT_TASK_PTR
-            ldr r0, [r0]
-            @ restore volatile registers, plus PSP. We will do this in
-            @ slightly reversed order for efficiency. First, do the high
-            @ ones.
-            movs r1, r0
-            adds r1, r1, #(4 * 4)
-            ldm r1!, {{r4-r7}}
-            mov r11, r7
-            mov r10, r6
-            mov r9, r5
-            mov r8, r4
-            ldm r1!, {{r4, r5}}
-            msr PSP, r4
-            mov lr, r5
-
-            @ Now that we no longer need r4-r7 as temporary registers,
-            @ restore them too.
-            ldm r0!, {{r4-r7}}
-
-            @ resume
-            bx lr
-            ",
-            options(noreturn),
-        );
-    }
-}
 
 bitflags::bitflags! {
     /// Bits in the Configurable Fault Status Register.
@@ -1380,59 +957,6 @@ bitflags::bitflags! {
     }
 }
 
-/// Rust entry point for fault.
-///
-/// # Safety
-///
-/// In brief: don't call this. This is an implementation factor of the fault
-/// handler assembly code and should not be used for other purposes.
-#[no_mangle]
-#[cfg(armv6m)]
-unsafe extern "C" fn handle_fault(task: *mut task::Task) {
-    // Who faulted?
-    let (from_thread_mode, idx) = {
-        // Safety: we're dereferencing the task pointer, because we trust the
-        // assembly fault handler to pass us a legitimate one. We use it
-        // immediately and discard it because otherwise it would alias the task
-        // table below.
-        let t = unsafe { &(*task) };
-        (
-            t.save().exc_return & 0b1000 != 0,
-            usize::from(t.descriptor().index),
-        )
-    };
-
-    if !from_thread_mode {
-        // Uh. This fault originates from the kernel. We don't get fault
-        // information on ARMv6M, so we're just printing:
-        panic!("Kernel fault");
-    }
-
-    // ARMv6-M, to reduce complexity, does not distinguish fault causes.
-    let fault = FaultInfo::InvalidOperation(0);
-
-    // We are now going to force a fault on our current task and directly
-    // switch to a task to run.
-    with_task_table(|tasks| {
-        let next = match task::force_fault(tasks, idx, fault) {
-            task::NextTask::Specific(i) => i,
-            task::NextTask::Other => task::select(idx, tasks),
-            task::NextTask::Same => idx,
-        };
-
-        if next == idx {
-            panic!("attempt to return to Task #{} after fault", idx);
-        }
-
-        let next = &mut tasks[next];
-        apply_memory_protection(next);
-        // Safety: next comes from the task table and we don't use it again
-        // until next kernel entry, so we meet set_current_task's requirements.
-        unsafe {
-            set_current_task(next);
-        }
-    });
-}
 
 /// Common implementation of fault handling.
 ///
@@ -1446,7 +970,6 @@ unsafe extern "C" fn handle_fault(task: *mut task::Task) {
 ///   task table.
 /// - Ensure that `fpsave` points to that task's floating point save area.
 #[no_mangle]
-#[cfg(any(armv7m, armv8m))]
 unsafe extern "C" fn handle_fault(
     task: *mut task::Task,
     fault_type: FaultType,
@@ -1608,74 +1131,15 @@ unsafe extern "C" fn handle_fault(
     });
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(armv6m)] {
-        // The ARMv6M atomic operations are implemented by disabling interrupts
-        // globally. In a normal configuration the kernel arranges priorities so
-        // that it's never preempted, making this moot. However, it's entirely
-        // possible for an application to adjust interrupt priorities to support
-        // custom low-latency interrupt service routines that don't go through
-        // the kernel; disabling interrupts here ensures that we remain correct
-        // in the presence of such code.
-        //
-        // Note that the routines that take an `ordering` are always used with
-        // constant values -- despite being `inline(never)`, the compiler winds
-        // up specializing these routines to the constant ordering, which is
-        // what we want. The `inline(never)` helps to avoid code explosion,
-        // which on constrained M0s is usually more important than syscall
-        // entry/exit speed.
+impl AtomicExt for AtomicBool {
+    type Primitive = bool;
 
-        impl AtomicExt for AtomicBool {
-            type Primitive = bool;
-
-            #[inline(never)]
-            fn swap_polyfill(&self, value: Self::Primitive, ordering: Ordering)
-                -> Self::Primitive
-            {
-                let (lo, so) = rmw_ordering(ordering);
-                cortex_m::interrupt::free(|_| {
-                    let prev = self.load(lo);
-                    self.store(value, so);
-                    prev
-                })
-            }
-        }
-
-        /// Translates an ordering suppled to a read-modify-write operation into
-        /// the distinct orderings implied for its load and store phases,
-        /// respectively.
-        ///
-        /// This mapping is described using informal language in the docs for
-        /// the `core::sync::atomic::Ordering` type.
-        ///
-        /// This is `inline(always)` because its `o` argument is _basically
-        /// always_ a literal, causing its code to evaporate at compile time.
-        #[inline(always)]
-        fn rmw_ordering(o: Ordering) -> (Ordering, Ordering) {
-            match o {
-                Ordering::AcqRel => (Ordering::Acquire, Ordering::Release),
-                Ordering::Relaxed => (o, o),
-                Ordering::SeqCst => (o, o),
-                Ordering::Acquire => (Ordering::Acquire, Ordering::Relaxed),
-                Ordering::Release => (Ordering::Relaxed, Ordering::Release),
-                // Other orderings are not suitable for RMW operations.
-                _ => panic!(),
-            }
-        }
-    } else {
-        impl AtomicExt for AtomicBool {
-            type Primitive = bool;
-
-            #[inline(always)]
-            fn swap_polyfill(&self, value: Self::Primitive, ordering: Ordering)
-                -> Self::Primitive
-            {
-                self.swap(value, ordering)
-            }
-        }
-
+    #[inline(always)]
+    fn swap_polyfill(&self, value: Self::Primitive, ordering: Ordering)
+        -> Self::Primitive
+    {
+        self.swap(value, ordering)
     }
 }
 
-// Constants that may change depending on configuration
-include!(concat!(env!("OUT_DIR"), "/consts.rs"));
+pub const EXC_RETURN_CONST : u32 = 0xFFFFFFED;  // Hubris non-secure arm-v7
