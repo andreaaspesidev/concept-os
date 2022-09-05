@@ -2,8 +2,8 @@
 #![no_main]
 
 use rcc_api::RCCError;
-use userlib::{hl::Caller, *};
 use uart_channel_api::*;
+use userlib::{hl::Caller, *};
 
 #[cfg(feature = "stm32f303re")]
 use stm32f3::stm32f303 as device;
@@ -67,6 +67,7 @@ fn main() -> ! {
 
     // Main loop
     let mut recv_buff: [u8; 8] = [0x00; 8];
+    let mut frame_recovery: bool = true;
     loop {
         hl::recv(
             &mut recv_buff,
@@ -76,13 +77,10 @@ fn main() -> ! {
                 if bits & TIMEOUT_MASK != 0 {
                     // Timeout for read expired
                     if state_ref.receiver_state.pending_receiver.is_some() {
-                        core::mem::replace(
-                            &mut state_ref.receiver_state.pending_receiver,
-                            None,
-                        )
-                        .unwrap()
-                        .caller
-                        .reply_fail(ChannelError::ReadTimeOut);
+                        core::mem::replace(&mut state_ref.receiver_state.pending_receiver, None)
+                            .unwrap()
+                            .caller
+                            .reply_fail(ChannelError::ReadTimeOut);
                     }
                 }
                 // Check if the irq is valid
@@ -96,10 +94,7 @@ fn main() -> ! {
                     // Transmit the old way
                     if usart_isr.txe().bit_is_set() {
                         // TX register empty. Do we need to send something?
-                        step_transmit(
-                            &usart,
-                            &mut state_ref.pending_transmitter,
-                        );
+                        step_transmit(&usart, &mut state_ref.pending_transmitter);
                     }
 
                     if usart_isr.idle().bit_is_set() {
@@ -119,15 +114,25 @@ fn main() -> ! {
                         usart.icr.modify(|_, w| w.idlecf().set_bit());
                     }
 
-                    // Clear frame error
+                    // Frame error
                     if usart_isr.fe().bit_is_set() {
-                        //panic!("UART Frame Error");
+                        if !frame_recovery {
+                            panic!("UART Frame Error");
+                        }
+                        // For this time, just reset the error.
+                        // This is needed as for some reason it happens to fire
+                        // after the peripheral is configured. Not enough time to
+                        // further investigate at the moment, maybe wait some flag
+                        // will fix it.
                         usart.icr.modify(|_, w| w.fecf().set_bit());
+                        frame_recovery = false;
                     }
+
+                    // Overrun error: happens only if we mess up with the DMA
+                    // otherwise it's impossibile.
                     if usart_isr.ore().bit_is_set() {
                         // Something happened
                         panic!("UART Overrun");
-                        //usart.icr.modify(|_,w| w.orecf().set_bit());
                     }
 
                     // Enable again interrupts
@@ -167,9 +172,7 @@ fn main() -> ! {
             |state_ref, op, msg| match op {
                 Operation::WriteBlock => {
                     // Validate lease count and buffer sizes first.
-                    let ((), caller) = msg
-                        .fixed_with_leases(1)
-                        .ok_or(ChannelError::BadArgument)?;
+                    let ((), caller) = msg.fixed_with_leases(1).ok_or(ChannelError::BadArgument)?;
 
                     // Deny incoming writes if we're already running one.
                     if state_ref.pending_transmitter.is_some() {
@@ -178,11 +181,8 @@ fn main() -> ! {
 
                     // Check borrow
                     let borrow = caller.borrow(0);
-                    let info =
-                        borrow.info().ok_or(ChannelError::BadArgument)?;
-                    if !info.attributes.contains(LeaseAttributes::READ)
-                        || info.len == 0
-                    {
+                    let info = borrow.info().ok_or(ChannelError::BadArgument)?;
+                    if !info.attributes.contains(LeaseAttributes::READ) || info.len == 0 {
                         return Err(ChannelError::BadArgument);
                     }
 
@@ -201,9 +201,7 @@ fn main() -> ! {
                 }
                 Operation::ReadBlock => {
                     // Validate lease count and buffer sizes first.
-                    let ((), caller) = msg
-                        .fixed_with_leases(1)
-                        .ok_or(ChannelError::BadArgument)?;
+                    let ((), caller) = msg.fixed_with_leases(1).ok_or(ChannelError::BadArgument)?;
 
                     setup_read(state_ref, usart, dma1, caller)?;
 
@@ -224,8 +222,7 @@ fn main() -> ! {
                     setup_read(state_ref, usart, dma1, caller)?;
 
                     // Launch timer
-                    let deadline =
-                        sys_get_timer().now + msg.timeout_ticks as u64 + 1;
+                    let deadline = sys_get_timer().now + msg.timeout_ticks as u64 + 1;
                     sys_set_timer(Some(deadline), TIMEOUT_MASK);
 
                     // We'll do the rest as interrupts arrive.
@@ -279,7 +276,7 @@ fn setup_usart(usart: &device::usart2::RegisterBlock) -> Result<(), RCCError> {
     // Work out our baud rate divisor.
     #[cfg(feature = "stm32f303re")]
     {
-        const CLOCK_HZ: u32 = 8_000_000;
+        const CLOCK_HZ: u32 = 36_000_000; // PLCK1
         usart
             .brr
             .write(|w| w.brr().bits((CLOCK_HZ / BAUDRATE) as u16));
@@ -339,10 +336,7 @@ fn setup_dma(
     Ok(())
 }
 
-fn configure_dma_rx(
-    dma1: &device::dma1::RegisterBlock,
-    usart: &device::usart2::RegisterBlock,
-) {
+fn configure_dma_rx(dma1: &device::dma1::RegisterBlock, usart: &device::usart2::RegisterBlock) {
     // Disable the channel (tbs)
     dma1.ch6.cr.modify(|_, w| w.en().clear_bit());
     // Clear all interrupts
@@ -380,10 +374,7 @@ fn configure_dma_rx(
     dma1.ch6.cr.modify(|_, w| w.en().set_bit());
 }
 
-fn dma_receive_to_idle(
-    _: &device::dma1::RegisterBlock,
-    usart: &device::usart2::RegisterBlock,
-) {
+fn dma_receive_to_idle(_: &device::dma1::RegisterBlock, usart: &device::usart2::RegisterBlock) {
     if usart.cr3.read().dmar().bit_is_set() {
         return; // Already active
     }
@@ -429,8 +420,8 @@ fn dma_receive_callback(
             rx_update_caller(
                 &mut rec_state.pending_receiver,
                 unsafe {
-                    &RX_BUFFER[rec_state.current_read_pos
-                        ..rec_state.current_read_pos + received_bytes]
+                    &RX_BUFFER
+                        [rec_state.current_read_pos..rec_state.current_read_pos + received_bytes]
                 },
                 dma1,
                 usart,
@@ -476,6 +467,8 @@ fn rx_update_caller(
         _: &device::usart2::RegisterBlock,
         receiver: &mut Option<Receiver>,
     ) -> hl::Caller<()> {
+        // Cancel timer, or the new settings won't stick.
+        sys_set_timer(None, TIMEOUT_MASK);
         // For now, avoid disabling interrupts. Otherwise we have problems with overrun
         // Return the caller
         core::mem::replace(receiver, None).unwrap().caller
@@ -503,8 +496,7 @@ fn rx_update_caller(
             end_reception(dma1, usart, receiver).reply(());
         }
     } else {
-        end_reception(dma1, usart, receiver)
-            .reply_fail(ChannelError::BadArgument);
+        end_reception(dma1, usart, receiver).reply_fail(ChannelError::BadArgument);
     }
 }
 
@@ -516,10 +508,7 @@ fn min<T: PartialOrd>(a: T, b: T) -> T {
     }
 }
 
-fn step_transmit(
-    usart: &device::usart1::RegisterBlock,
-    transmitter: &mut Option<Transmitter>,
-) {
+fn step_transmit(usart: &device::usart1::RegisterBlock, transmitter: &mut Option<Transmitter>) {
     // Clearer than just using replace:
     fn end_transmission(
         usart: &device::usart1::RegisterBlock,
@@ -548,8 +537,7 @@ fn step_transmit(
             end_transmission(usart, transmitter).reply(());
         }
     } else {
-        end_transmission(usart, transmitter)
-            .reply_fail(ChannelError::BadArgument);
+        end_transmission(usart, transmitter).reply_fail(ChannelError::BadArgument);
     }
 }
 
