@@ -60,7 +60,6 @@ pub fn channel_write_single(
     value: u8,
 ) -> Result<(), MessageError> {
     let buffer: [u8; 1] = [value; 1];
-    sleep_for(100);
     Ok(channel
         .write_block(&buffer)
         .map_err(|_| MessageError::ChannelError)?)
@@ -70,7 +69,6 @@ pub fn channel_write(
     channel: &mut UartChannel,
     buff: &[u8],
 ) -> Result<(), MessageError> {
-    sleep_for(100);
     Ok(channel
         .write_block(&buff)
         .map_err(|_| MessageError::ChannelError)?)

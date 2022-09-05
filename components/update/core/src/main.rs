@@ -38,7 +38,7 @@ fn main() -> ! {
                 hl::sleep_for(500);
                 if usart.write_block(&response.get_raw()).is_ok() {
                     // Process this message
-                    hello_arrived(&msg, &mut usart).unwrap(); // Ignore errors
+                    hello_arrived(&msg, &mut usart); // Ignore errors
                 } else {
                     panic!("Cannot write!");
                 }
