@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-stm32f303re = []
+stm32f303re = ["dep:stm32f303re"]
 
 [dependencies]
 storage-api = {path = "../api"}
@@ -18,6 +18,11 @@ ram_allocator = {path = "../../../libs/ram_allocator"}
 [dependencies.stm32f3]
 version = "0.15.1"
 features = ["stm32f303", "rt"]
+
+# Board list
+[dependencies.stm32f303re]
+path = "../../../boards/stm32f303re"
+optional = true
 
 # This section is here to discourage RLS/rust-analyzer from doing test builds,
 # since test builds don't work for cross compilation.

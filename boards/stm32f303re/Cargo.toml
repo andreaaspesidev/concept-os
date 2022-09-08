@@ -1,0 +1,12 @@
+[package]
+name = "stm32f303re"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+flash_allocator = {path = "../../libs/flash_allocator"}
+static_assertions = "1.1.0"
+
+[dependencies.stm32f3]
+version = "0.15.1"
+features = ["stm32f303", "rt"]

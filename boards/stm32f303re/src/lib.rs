@@ -1,7 +1,27 @@
-use stm32f3::stm32f303 as device;
+#![no_std]
 
-// Flash: 0x0800 0000 - 0x0807 FFFF
-// Size: 512Kb
+use stm32f3::stm32f303 as device;
+use flash_allocator::flash::{page::FlashPage, FlashMethods};
+
+/**
+ * STM32 F303RE
+ * - Flash Constant
+ * 
+ * Flash: 0x0800 0000 - 0x0807 FFFF
+ * Size: 512Kb
+ * 
+ * Notes:
+ * - In order for the system to work correcly, the first part of the flash
+ *   (starting from address 0x0800 0000) must be reserved to the kernel.
+ *   The allocator have two requirements:
+ *   - Must have a base address (FLASH_ALLOCATOR_START_ADDR) aligned with its size (FLASH_ALLOCATOR_SIZE). 
+ *     To alleviate this huge limitation, it's possible to reserve a whole subspace
+ *     at the beginning by selecting a  FLASH_ALLOCATOR_START_SCAN_ADDR > FLASH_ALLOCATOR_START_ADDR
+ *   - The page containing FLASH_ALLOCATOR_START_SCAN_ADDR must not contain important data (like kernel code).
+ *     The allocator will need to erase this page in order to deallocate the first blocks.
+ *     For this reason, let's impose that FLASH_ALLOCATOR_START_SCAN_ADDR points to the 
+ *     beginning of the first free page after the one containing the last kernel code.
+ */
 pub const FLASH_ALLOCATOR_START_ADDR: u32 = 0x0804_0000; // Page 0x0080
 pub const FLASH_ALLOCATOR_END_ADDR: u32 = 0x0807_FFFF;
 pub const FLASH_ALLOCATOR_SIZE: usize =
@@ -24,22 +44,39 @@ pub const FLASH_NUM_SLOTS: usize = 7 + 1; // clog2(NUM_BLOCKS) + 1
 
 pub const FLASH_PAGE_SIZE: u32 = 2048;
 
-// RAM: 0x2000 0000 - 0x2000 FFFF
-// Size: 64Kb
+// Compile time checks
+static_assertions::const_assert_eq!(
+    2 << (FLASH_NUM_SLOTS-2), FLASH_NUM_BLOCKS
+);
+
+/**
+ * STM32 F303RE
+ * - Flash Constant
+ * 
+ * RAM: 0x2000 0000 - 0x2000 FFFF
+ * Size: 64Kb
+ */
 pub const SRAM_START_ADDR: u32 = 0x2000_0000;
 pub const SRAM_END_ADDR: u32 = 0x2000_FFFF;
 pub const SRAM_SIZE: usize = (SRAM_END_ADDR - SRAM_START_ADDR + 1) as usize; // 64Kb
 
-pub const SRAM_RESERVED: u32 = 8192;
+pub const SRAM_RESERVED: u32 = 4096;
 pub const SRAM_BLOCK_SIZE: usize = 512;
 pub const SRAM_NUM_BLOCKS: usize = SRAM_SIZE / SRAM_BLOCK_SIZE as usize; // 128
 pub const SRAM_NUM_SLOTS: usize = 7 + 1; // clog2(NUM_BLOCKS) + 1
 
-use flash_allocator::flash::{page::FlashPage, FlashMethods};
+// Compile time checks
+static_assertions::const_assert_eq!(
+    2 << (SRAM_NUM_SLOTS-2), SRAM_NUM_BLOCKS
+);
 
-/*
-    This flash interface will require kernel-backed syscall support
-*/
+/**
+ * STM32 F303RE
+ * - Flash Interface
+ * 
+ * Provides methods to read, but expecially write and erase
+ * the flash memory.
+ */
 const FLASH_KEY1: u32 = 0x4567_0123;
 const FLASH_KEY2: u32 = 0xCDEF_89AB;
 
