@@ -8,7 +8,7 @@ stm32f303re = ["rcc-api/stm32f303re"]
 
 [dependencies]
 uart-channel-api = {path = "../api"}
-userlib = {path = "../../../sys/userlib"}
+userlib = {path = "../../../sys/userlib", features=["log-itm"]}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
 cfg-if = "1.0.0"
 # Component dependencies
