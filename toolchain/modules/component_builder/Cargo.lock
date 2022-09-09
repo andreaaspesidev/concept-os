@@ -26,6 +26,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "board_config"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "camino"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -99,6 +107,7 @@ dependencies = [
 name = "component_builder"
 version = "0.0.1"
 dependencies = [
+ "board_config",
  "cargo_metadata",
  "clap",
  "hbf_rs",

@@ -6,7 +6,9 @@ description = "A tool to generate HBF from component source and configuration fi
 
 [dependencies]
 clap = {version = "3.1.18", features = ["derive"]}
-hbf_rs = {path = "../../../libs/hbf_rs"}
 cargo_metadata = "0.15.0"
 toml = "0.5.9"
 serde = {version = "1.0.137", features=["derive"]}
+
+hbf_rs = {path = "../../../libs/hbf_rs"}
+board_config = {path = "../../libs/board_config"}
