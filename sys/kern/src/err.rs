@@ -8,9 +8,11 @@
 //! time handling and recording errors, and we ought to be able to separate that
 //! concern using `Result`.
 
-use abi::{FaultInfo, UsageError};
+use abi::{FaultInfo, UsageError, HUBRIS_MAX_SUPPORTED_TASKS};
 
 use crate::task::{self, NextTask, Task};
+
+use heapless::FnvIndexMap;
 
 /// An error committed by user code when interacting with a syscall.
 ///
@@ -81,11 +83,11 @@ impl InteractFault {
     /// perspective, to store the src fault and then deal with dst.
     pub fn apply_to_src(
         self,
-        tasks: &mut [Task],
-        src: usize,
+        tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+        src_id: u16,
     ) -> Result<task::NextTask, FaultInfo> {
         let nt = if let Some(f) = self.src {
-            task::force_fault(tasks, src, f)
+            task::force_fault(tasks, src_id, f)
         } else {
             task::NextTask::Same
         };
@@ -103,11 +105,11 @@ impl InteractFault {
     /// perspective, to store the dst fault and then deal with dst.
     pub fn apply_to_dst(
         self,
-        tasks: &mut [Task],
-        dst: usize,
+        tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+        dst_id: u16,
     ) -> Result<task::NextTask, FaultInfo> {
         let nt = if let Some(f) = self.dst {
-            task::force_fault(tasks, dst, f)
+            task::force_fault(tasks, dst_id, f)
         } else {
             task::NextTask::Same
         };

@@ -15,6 +15,11 @@
 //! For this to work, each architecture support module must define the same set
 //! of names.
 
+#[macro_use]
+pub mod arm_m;
+pub use arm_m::*;
+
+/*
 cfg_if::cfg_if! {
     // Note: cfg_if! is slightly touchy about ordering and expression
     // complexity; this chain seems to be the best compromise.
@@ -29,3 +34,4 @@ cfg_if::cfg_if! {
         compile_error!("support for this architecture not implemented");
     }
 }
+ */

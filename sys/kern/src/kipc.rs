@@ -4,25 +4,27 @@
 
 //! Implementation of IPC operations on the virtual kernel task.
 
-use abi::{FaultInfo, SchedState, TaskState, UsageError};
+use abi::{FaultInfo, SchedState, TaskState, UsageError, HUBRIS_MAX_SUPPORTED_TASKS};
+use unwrap_lite::UnwrapLite;
 
 use crate::err::UserError;
-use crate::task::{current_id, ArchState, NextTask, Task};
+use crate::task::{ArchState, NextTask, Task};
 use crate::umem::USlice;
+use crate::utils::{get_task_mut,get_task};
+use heapless::FnvIndexMap;
 
 /// Message dispatcher.
 pub fn handle_kernel_message(
-    tasks: &mut [Task],
-    caller: usize,
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
 ) -> Result<NextTask, UserError> {
     // Copy out arguments.
-    let args = tasks[caller].save().as_send_args();
+    let args = get_task(tasks, caller_id).save().as_send_args();
 
     match args.operation {
-        1 => read_task_status(tasks, caller, args.message?, args.response?),
-        2 => restart_task(tasks, caller, args.message?),
-        3 => fault_task(tasks, caller, args.message?),
-        4 => read_image_id(tasks, caller, args.response?),
+        1 => read_task_status(tasks, caller_id, args.message?, args.response?),
+        2 => restart_task(tasks, caller_id, args.message?),
+        3 => fault_task(tasks, caller_id, args.message?),
         _ => {
             // Task has sent an unknown message to the kernel. That's bad.
             Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
@@ -65,56 +67,64 @@ where
 }
 
 fn read_task_status(
-    tasks: &mut [Task],
-    caller: usize,
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
     message: USlice<u8>,
     response: USlice<u8>,
 ) -> Result<NextTask, UserError> {
-    let index: u32 = deserialize_message(&tasks[caller], message)?;
-    if index as usize >= tasks.len() {
+    let id: u32 = deserialize_message(get_task(tasks, caller_id), message)?;
+    let id = id as u16;
+
+    let other_task_search = tasks.get_mut(&id);
+
+    if other_task_search.is_none() {
         return Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
-            UsageError::TaskOutOfRange,
+            UsageError::TaskNotFound,
         )));
     }
     // cache other state before taking out a mutable borrow on tasks
-    let other_state = *tasks[index as usize].state();
+    let other_state = *other_task_search.unwrap_lite().state();
 
     let response_len =
-        serialize_response(&mut tasks[caller], response, &other_state)?;
-    tasks[caller]
+        serialize_response(get_task_mut(tasks, caller_id), response, &other_state)?;
+    get_task_mut(tasks, caller_id)
         .save_mut()
         .set_send_response_and_length(0, response_len);
     Ok(NextTask::Same)
 }
 
 fn restart_task(
-    tasks: &mut [Task],
-    caller: usize,
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
     message: USlice<u8>,
 ) -> Result<NextTask, UserError> {
-    let (index, start): (u32, bool) =
-        deserialize_message(&tasks[caller], message)?;
-    let index = index as usize;
-    if index >= tasks.len() {
+    let (target_id, start): (u32, bool) =
+        deserialize_message(get_task(tasks, caller_id), message)?;
+    // Force conversion
+    let target_id = target_id as u16;
+    // Search the task
+    let other_task_search = tasks.get_mut(&target_id);
+    if other_task_search.is_none() {
         return Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
-            UsageError::TaskOutOfRange,
+            UsageError::TaskNotFound,
         )));
     }
-    let old_id = current_id(tasks, index);
-    tasks[index].reinitialize();
+    let other_task = other_task_search.unwrap_lite();
+    let old_identifier = other_task.current_identifier();
+    other_task.reinitialize();
     if start {
-        tasks[index].set_healthy_state(SchedState::Runnable);
+        other_task.set_healthy_state(SchedState::Runnable);
     }
 
     // Restarting a task can have implications for other tasks. We don't want to
     // leave tasks sitting around waiting for a reply that will never come, for
     // example. So, make a pass over the task table and unblock anyone who was
     // expecting useful work from the now-defunct task.
-    for (i, task) in tasks.iter_mut().enumerate() {
+    for (id, task) in tasks.iter_mut() {
         // Just to make this a little easier to think about, don't check either
         // of the tasks involved in the restart operation. Neither should be
         // affected anyway.
-        if i == caller || i == index {
+        if *id == caller_id || *id == target_id {
             continue;
         }
 
@@ -125,7 +135,7 @@ fn restart_task(
                 SchedState::InRecv(Some(peer))
                 | SchedState::InSend(peer)
                 | SchedState::InReply(peer)
-                    if peer == &old_id =>
+                    if peer == &old_identifier =>
                 {
                     // Please accept our sincere condolences on behalf of the
                     // kernel.
@@ -139,7 +149,7 @@ fn restart_task(
         }
     }
 
-    if index == caller {
+    if target_id == caller_id {
         // Welp, they've restarted themselves. Best not return anything then.
         if !start {
             // And they have asked not to be started, so we can't even fast-path
@@ -147,7 +157,7 @@ fn restart_task(
             return Ok(NextTask::Other);
         }
     } else {
-        tasks[caller].save_mut().set_send_response_and_length(0, 0);
+        get_task_mut(tasks, caller_id).save_mut().set_send_response_and_length(0, 0);
     }
     Ok(NextTask::Same)
 }
@@ -162,42 +172,29 @@ fn restart_task(
 /// which the caller should be instead explicitly panicking).
 ///
 fn fault_task(
-    tasks: &mut [Task],
-    caller: usize,
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
     message: USlice<u8>,
 ) -> Result<NextTask, UserError> {
-    let index: u32 = deserialize_message(&tasks[caller], message)?;
-    let index = index as usize;
+    let id: u32 = deserialize_message(get_task(tasks, caller_id), message)?;
+    let id = id as u16;
 
-    if index == 0 || index == caller {
+    if id == 0 || id == caller_id {
         return Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
             UsageError::IllegalTask,
         )));
     }
 
-    if index >= tasks.len() {
+    let target_task_search = tasks.get(&id);
+    if target_task_search.is_none() {
         return Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
-            UsageError::TaskOutOfRange,
+            UsageError::TaskNotFound,
         )));
     }
 
-    let id = current_id(tasks, caller);
-    let _ = crate::task::force_fault(tasks, index, FaultInfo::Injected(id));
-    tasks[caller].save_mut().set_send_response_and_length(0, 0);
+    let identifier = get_task(tasks, caller_id).current_identifier();
+    let _ = crate::task::force_fault(tasks, id, FaultInfo::Injected(identifier));
+    get_task_mut(tasks, caller_id).save_mut().set_send_response_and_length(0, 0);
 
-    Ok(NextTask::Same)
-}
-
-fn read_image_id(
-    tasks: &mut [Task],
-    caller: usize,
-    response: USlice<u8>,
-) -> Result<NextTask, UserError> {
-    let id =
-        unsafe { core::ptr::read_volatile(&crate::startup::HUBRIS_IMAGE_ID) };
-    let response_len = serialize_response(&mut tasks[caller], response, &id)?;
-    tasks[caller]
-        .save_mut()
-        .set_send_response_and_length(0, response_len);
     Ok(NextTask::Same)
 }

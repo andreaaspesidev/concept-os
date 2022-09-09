@@ -9,28 +9,24 @@
 pub mod flash;
 
 use serde::{Deserialize, Serialize};
-use zerocopy::{AsBytes, FromBytes, Unaligned};
-
-/// Magic number that appears at the start of an application header (`App`) to
-/// reassure the kernel that it is not reading uninitialized Flash.
-pub const CURRENT_APP_MAGIC: u32 = 0x1DE_fa7a1;
+use zerocopy::{AsBytes, FromBytes};
 
 /// Number of region slots in a `TaskDesc` record. Needs to be less or equal to
 /// than the number of regions in the MPU; may be less to improve context switch
 /// performance. (Though note that changing this alters the ABI.)
 pub const REGIONS_PER_TASK: usize = 8;
 
-pub const TASK_ID_INDEX_BITS: usize = 10;
+pub const HUBRIS_MAX_SUPPORTED_TASKS: usize = 8;
+pub const HUBRIS_MAX_IRQS: usize = 16;
 
 /// Names a particular incarnation of a task.
 ///
-/// A `TaskId` combines two fields, a task index (which can be predicted at
-/// compile time) and a task generation number. The generation number begins
-/// counting at zero and wraps on overflow. Critically, the generation number of
-/// a task is incremented when it is restarted. Attempts to correspond with a
-/// task using an outdated generation number will return `DEAD`. This helps
-/// provide assurance that your peer has not lost its memory between steps of a
-/// multi-step IPC sequence.
+/// A `TaskId` combines two fields, a component id and a task generation number.
+/// The generation number begins counting at zero and wraps on overflow.
+/// Critically, the generation number of a task is incremented when it is restarted.
+/// Attempts to correspond with a task using an outdated generation number
+/// will return `DEAD`. This helps provide assurance that your peer has not lost
+/// its memory between steps of a multi-step IPC sequence.
 ///
 /// If the IPC can be retried against a fresh instance of the peer, it's
 /// reasonable to simply increment the generation number and try again, using
@@ -46,9 +42,6 @@ impl TaskId {
     /// task."
     pub const KERNEL: Self = Self(!0);
 
-    /// Reserved TaskId for an unbound userlib::task_slot!()
-    pub const UNBOUND: Self = Self(Self::INDEX_MASK - 1);
-
     /// Number of bits in a `TaskId` used to represent task index, rather than
     /// generation number. This must currently be 15 or smaller.
     pub const INDEX_BITS: u32 = 10;
@@ -57,16 +50,13 @@ impl TaskId {
     pub const INDEX_MASK: u16 = (1 << Self::INDEX_BITS) - 1;
 
     /// Fabricates a `TaskId` for a known index and generation number.
-    pub const fn for_index_and_gen(index: usize, gen: Generation) -> Self {
-        TaskId(
-            (index as u16 & Self::INDEX_MASK)
-                | (gen.0 as u16) << Self::INDEX_BITS,
-        )
+    pub const fn for_id_and_gen(component_id: u16, gen: Generation) -> Self {
+        TaskId((component_id & Self::INDEX_MASK) | (gen.0 as u16) << Self::INDEX_BITS)
     }
 
     /// Extracts the index part of this ID.
-    pub fn index(&self) -> usize {
-        usize::from(self.0 & Self::INDEX_MASK)
+    pub fn component_id(&self) -> u16 {
+        u16::from(self.0 & Self::INDEX_MASK)
     }
 
     /// Extracts the generation part of this ID.
@@ -75,7 +65,7 @@ impl TaskId {
     }
 
     pub fn next_generation(self) -> Self {
-        Self::for_index_and_gen(self.index(), self.generation().next())
+        Self::for_id_and_gen(self.component_id(), self.generation().next())
     }
 }
 
@@ -109,11 +99,9 @@ impl From<u8> for Generation {
 /// Note that this type *deliberately* does not implement `PartialOrd`/`Ord`, to
 /// keep us from confusing ourselves on whether `>` means numerically greater /
 /// less important, or more important / numerically smaller.
-#[derive(
-    Copy, Clone, Debug, Eq, PartialEq, FromBytes, AsBytes, Unaligned, Default,
-)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, FromBytes, AsBytes, Default)]
 #[repr(transparent)]
-pub struct Priority(pub u8);
+pub struct Priority(pub u16);
 
 impl Priority {
     /// Checks if `self` is strictly more important than `other`.
@@ -125,57 +113,54 @@ impl Priority {
     }
 }
 
-/// Application header, read by the kernel to load the application.
-///
-/// One copy of this appears in Flash next to the kernel, with the other types
-/// of records following immediately.
-#[derive(Clone, Debug, FromBytes)]
 #[repr(C)]
-pub struct App {
-    /// Reassures the kernel that it is dealing with this kind of an app struct.
-    /// Should have the value `CURRENT_APP_MAGIC`.
-    pub magic: u32,
-    /// Number of tasks. This many `TaskDesc` records will immediately follow
-    /// the `RegionDesc` records that follow the app header.
-    pub task_count: u32,
-    /// Number of memory regions in the address space layout. This many
-    /// `RegionDesc` records will immediately follow the app header.
-    pub region_count: u32,
-    /// Number of interrupt response records that will follow the `RegionDesc`
-    /// records.
-    pub irq_count: u32,
-    /// Bitmask to post to task 0 when any task faults.
-    pub fault_notification: u32,
-
-    /// Reserved expansion space; pads this structure out to 32 bytes. You will
-    /// need to adjust this when you add fields above.
-    pub zeroed_expansion_space: [u8; 32 - (5 * 4)],
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct TaskDescriptor {
+    block_start_address: u32,
 }
 
-/// Record describing a single task.
-#[derive(Clone, Debug, FromBytes, Serialize, Deserialize)]
-#[repr(C)]
-pub struct TaskDesc {
-    /// Identifies memory regions this task has access to, by index in the
-    /// `RegionDesc` table. If the task needs fewer than `REGIONS_PER_TASK`
-    /// regions, it should use remaining entries to name a region that confers
-    /// no access; by convention, this region is usually entry 0 in the table.
-    ///
-    /// Note: because these region indices are 8 bits, this is going to get
-    /// restrictive in applications that approach 128 tasks.
-    pub regions: [u8; REGIONS_PER_TASK],
-    /// Address of the task's entry point. This is the first instruction that
-    /// will be executed whenever the task is (re)started. It must be within one
-    /// of the task's memory regions (the kernel *will* check this).
-    pub entry_point: u32,
-    /// Address of the task's initial stack pointer, to be loaded at (re)start.
-    /// It must be pointing into or *just past* one of the task's memory
-    /// regions (the kernel *will* check this).
-    pub initial_stack: u32,
-    /// Initial priority of this task.
-    pub priority: u32,
-    /// Collection of boolean flags controlling task behavior.
-    pub flags: TaskFlags,
+impl TaskDescriptor {
+    pub fn new(block_start_address: u32) -> Self {
+        Self {
+            block_start_address: block_start_address,
+        }
+    }
+    pub fn component_id(&self) -> u16 {
+        unsafe { u16_from_le_bytes_raw(self.block_start_address + 8 + 0x0A) }
+    }
+    pub fn component_version(&self) -> u32 {
+        unsafe { u32_from_le_bytes_raw(self.block_start_address + 8 + 0x0C) }
+    }
+    pub fn entry_point(&self) -> u32 {
+        unsafe {
+            let hbf_start_addr = self.block_start_address + 8;
+            let main_offset = u16_from_le_bytes_raw(hbf_start_addr + 0x10) as u32;
+            let entry_offset: u32 = u32_from_le_bytes_raw(hbf_start_addr + main_offset + 0x08);
+            let entry_addr = hbf_start_addr + entry_offset;
+            return entry_addr;
+        }
+    }
+    pub fn initial_stack(&self) -> u32 {
+        let sram_base = unsafe { u32_from_le_bytes_raw(self.block_start_address) };
+        let sram_size = unsafe { u32_from_le_bytes_raw(self.block_start_address + 4) };
+        sram_base + sram_size - 8 // Keep some margin from the top, to avoid alignment problems
+    }
+    pub fn priority(&self) -> u16 {
+        unsafe {
+            let hbf_start_addr = self.block_start_address + 8;
+            let main_offset = u16_from_le_bytes_raw(hbf_start_addr + 0x10) as u32;
+            let priority: u16 = u16_from_le_bytes_raw(hbf_start_addr + main_offset);
+            return priority;
+        }
+    }
+    pub fn flags(&self) -> TaskFlags {
+        unsafe {
+            let hbf_start_addr = self.block_start_address + 8;
+            let main_offset = u16_from_le_bytes_raw(hbf_start_addr + 0x10) as u32;
+            let flags = u16_from_le_bytes_raw(hbf_start_addr + main_offset + 0x02) as u32;
+            return TaskFlags::from_bits_unchecked(flags);
+        }
+    }
 }
 
 bitflags::bitflags! {
@@ -187,30 +172,16 @@ bitflags::bitflags! {
     }
 }
 
-/// Description of one memory region.
-///
-/// A memory region can be used by multiple tasks. This is mostly used to have
-/// tasks share a no-access region (often index 0) in unused region slots, but
-/// you could also use it for shared peripheral or RAM access.
-///
-/// Note that regions can overlap. This can be useful: for example, you can have
-/// two regions pointing to the same area of the address space, but one
-/// read-only and the other read-write.
-#[derive(Clone, Debug, FromBytes, Serialize, Deserialize)]
+// This structure cannot be simply pointing to the HBF,
+// as in this case we have to append also the SRAM region
+// of the component, and we will save only a few bytes with a more
+// complex structure
 #[repr(C)]
-pub struct RegionDesc {
-    /// Address of start of region. The platform likely has alignment
-    /// requirements for this; it must meet them. (For example, on ARMv7-M, it
-    /// must be naturally aligned for the size.)
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct RegionDescriptor {
     pub base: u32,
-    /// Size of region, in bytes. The platform likely has alignment requirements
-    /// for this; it must meet them. (For example, on ARMv7-M, it must be a
-    /// power of two greater than 16.)
     pub size: u32,
-    /// Flags describing what can be done with this region.
     pub attributes: RegionAttributes,
-    /// Reserved word, must be zero.
-    pub reserved_zero: u32,
 }
 
 bitflags::bitflags! {
@@ -238,14 +209,11 @@ bitflags::bitflags! {
     }
 }
 
-/// Description of one interrupt response.
-#[derive(Clone, Debug, FromBytes, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(C)]
-pub struct Interrupt {
-    /// Which interrupt number is being hooked.
-    pub irq: u32,
+pub struct InterruptOwner {
     /// Which task to notify, by index.
-    pub task: u32,
+    pub task_id: u16,
     /// Which notification bits to set.
     pub notification: u32,
 }
@@ -460,9 +428,8 @@ pub enum UsageError {
     /// Neither of these conditions is ever legal, so this represents a
     /// malfunction in the caller.
     InvalidSlice,
-    /// A program named a task ID that will never be valid, as it's out of
-    /// range.
-    TaskOutOfRange,
+    /// A program named a task ID that currently does not exists
+    TaskNotFound,
     /// A program named a valid task ID, but attempted to perform an operation
     /// on it that is illegal or otherwise forbidden.
     IllegalTask,
@@ -554,4 +521,14 @@ impl core::convert::TryFrom<u32> for Sysnum {
             _ => Err(()),
         }
     }
+}
+
+pub unsafe fn u16_from_le_bytes_raw(start_address: u32) -> u16 {
+    let bytes = core::slice::from_raw_parts(start_address as *const u8, 2);
+    (bytes[0] as u16) | (bytes[1] as u16) << 8
+}
+
+pub unsafe fn u32_from_le_bytes_raw(start_address: u32) -> u32 {
+    let bytes = core::slice::from_raw_parts(start_address as *const u8, 4);
+    (bytes[0] as u32) | (bytes[1] as u32) << 8 | (bytes[2] as u32) << 16 | (bytes[3] as u32) << 24
 }

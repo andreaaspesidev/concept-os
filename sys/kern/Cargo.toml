@@ -1,7 +1,7 @@
 [package]
 name = "kern"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 abi = {path = "../abi"}
@@ -12,15 +12,15 @@ cfg-if = "1"
 cortex-m = {version = "0.7", features = ["inline-asm"]}
 serde = { version = "1.0.114", default-features = false }
 ssmarshal = { version = "1.0.0", default-features = false }
-unwrap-lite = { path = "../../lib/unwrap-lite" }
-phash = { path = "../../lib/phash" }
+unwrap-lite = { path = "../../libs/unwrap-lite" }
+hbf_lite = { path = "../../libs/hbf_lite" }
+flash_allocator = { path = "../../libs/flash_allocator" }
+heapless = "0.7.16"
 
 [build-dependencies]
-build-util = {path = "../../build/util"}
 serde = "1"
 ron = "0.7"
 abi = {path = "../abi"}
-phash-gen = {path = "../../build/phash-gen"}
 
 [lib]
 test = false

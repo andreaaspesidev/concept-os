@@ -71,7 +71,7 @@
 //! We'll see.
 
 use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
-
+use core::arch::asm;
 use zerocopy::FromBytes;
 
 use crate::atomic::AtomicExt;
@@ -80,7 +80,6 @@ use crate::task;
 use crate::time::Timestamp;
 use crate::umem::USlice;
 use abi::FaultInfo;
-#[cfg(any(armv7m, armv8m))]
 use abi::FaultSource;
 use unwrap_lite::UnwrapLite;
 
@@ -235,7 +234,15 @@ pub unsafe fn set_clock_freq(tick_divisor: u32) {
 
 pub fn reinitialize(task: &mut task::Task) {
     *task.save_mut() = SavedState::default();
-    let initial_stack = task.descriptor().initial_stack;
+    // The initial stack points to the top of the sram available of this component
+    // ---------------------- SRAM HIGH ADDRESSES
+    // |  exception_frame   | <- initial_stack
+    // |       STACK        |
+    // |       ....         |
+    // |       .data        |
+    // ---------------------- SRAM LOW ADDRESSES
+
+    let initial_stack = task.descriptor().initial_stack();
 
     // Modern ARMvX-M machines require 8-byte stack alignment. Make sure that's
     // still true. Note that this carries the risk of panic on task re-init if
@@ -251,37 +258,47 @@ pub fn reinitialize(task: &mut task::Task) {
     // Ok. Generate a uslice for the task's starting stack frame.
     let mut frame_uslice: USlice<ExtendedExceptionFrame> =
         USlice::from_raw(initial_stack as usize - frame_size, 1).unwrap_lite();
+
+    // Get the region, that will always be the first one by construction
+    let sram_region = *task.region_table().first().unwrap_lite();
+
+    let mut stack_uslice: USlice<u32> = USlice::from_raw(
+        sram_region.base as usize,
+        (initial_stack as usize - frame_size - sram_region.base as usize) >> 4, //? >> 2
+    )
+    .unwrap_lite();
+
     // Before we set our frame, find the region that contains our initial stack
     // pointer, and zap the region from the base to the stack pointer with a
     // distinct (and storied) pattern.
-    for region in task.region_table().iter() {
-        if initial_stack < region.base {
-            continue;
-        }
-
-        if initial_stack > region.base + region.size {
-            continue;
-        }
-
-        let mut uslice: USlice<u32> = USlice::from_raw(
-            region.base as usize,
-            (initial_stack as usize - frame_size - region.base as usize) >> 2,
-        )
-        .unwrap_lite();
-
-        let zap = task.try_write(&mut uslice).unwrap_lite();
-        for word in zap.iter_mut() {
-            *word = 0xbaddcafe;
-        }
+    let zap = task.try_write(&mut stack_uslice).unwrap_lite();
+    for word in zap.iter_mut() {
+        *word = 0xbaddcafe;
     }
 
-    let descriptor = task.descriptor();
+    // Now copy the .data section in ram
+    let mut data_uslice: USlice<u8> =
+        USlice::from_raw(sram_region.base as usize, task.data_section().len())
+            .unwrap_lite();
+            
+    let data_section = task.data_section().clone();
+    let data_raw = task.try_write(&mut data_uslice).unwrap_lite();
+    
+
+    // Load .data in SRAM
+    for i in 0..data_raw.len() {
+        data_raw[i] = data_section[i];
+    }
+
+    // Setup frame and pointers
+
+    let descriptor = *task.descriptor();
     let frame = &mut task.try_write(&mut frame_uslice).unwrap_lite()[0];
 
     // Conservatively/defensively zero the entire frame.
     *frame = ExtendedExceptionFrame::default();
     // Now fill in the bits we actually care about.
-    frame.base.pc = descriptor.entry_point | 1; // for thumb
+    frame.base.pc = descriptor.entry_point() | 1; // for thumb
     frame.base.xpsr = INITIAL_PSR;
     frame.base.lr = 0xFFFF_FFFF; // trap on return from main
     frame.fpscr = INITIAL_FPSCR;
@@ -289,6 +306,9 @@ pub fn reinitialize(task: &mut task::Task) {
     // Set the initial stack pointer, *not* to the stack top, but to the base of
     // this frame.
     task.save_mut().psp = frame as *const _ as u32;
+
+    // Set the ram base in R9, as required by ROPI-RWPI
+    task.save_mut().r9 = sram_region.base;
 
     // Finally, record the EXC_RETURN we'll use to enter the task.
     task.save_mut().exc_return = EXC_RETURN_CONST;
@@ -301,7 +321,7 @@ pub fn apply_memory_protection(task: &task::Task) {
     let mpu = unsafe {
         // At least by not taking a &mut we're confident we're not violating
         // aliasing....
-        &*cortex_m::peripheral::MPU::ptr()
+        &*cortex_m::peripheral::MPU::PTR
     };
 
     for (i, region) in task.region_table().iter().enumerate() {
@@ -396,7 +416,7 @@ pub fn start_first_task(tick_divisor: u32, task: &mut task::Task) -> ! {
     // from their defaults, so it can't cause any surprise preemption or
     // anything. But these operations are `unsafe` in the `cortex_m` crate.
     unsafe {
-        let scb = &*cortex_m::peripheral::SCB::ptr();
+        let scb = &*cortex_m::peripheral::SCB::PTR;
         // Faults on, on the processors that distinguish faults. This
         // distinguishes the following faults from HardFault:
         //
@@ -426,7 +446,7 @@ pub fn start_first_task(tick_divisor: u32, task: &mut task::Task) -> ! {
 
         // Configure the priority of all external interrupts so that they can't
         // preempt the kernel.
-        let nvic = &*cortex_m::peripheral::NVIC::ptr();
+        let nvic = &*cortex_m::peripheral::NVIC::PTR;
 
         // How many IRQs have we got on ARMv7+? This information is
         // stored in a separate area of the address space, away from the
@@ -449,7 +469,7 @@ pub fn start_first_task(tick_divisor: u32, task: &mut task::Task) -> ! {
     // Safety: this, too, is safe in practice but unsafe in API.
     unsafe {
         // Configure the timer.
-        let syst = &*cortex_m::peripheral::SYST::ptr();
+        let syst = &*cortex_m::peripheral::SYST::PTR;
         // Program reload value.
         syst.rvr.write(tick_divisor - 1);
         // Clear current value.
@@ -463,7 +483,7 @@ pub fn start_first_task(tick_divisor: u32, task: &mut task::Task) -> ! {
     let mpu = unsafe {
         // At least by not taking a &mut we're confident we're not violating
         // aliasing....
-        &*cortex_m::peripheral::MPU::ptr()
+        &*cortex_m::peripheral::MPU::PTR
     };
 
     const ENABLE: u32 = 0b001;
@@ -723,16 +743,18 @@ unsafe extern "C" fn pendsv_entry() {
 
     // Safety: we're dereferencing the current task pointer, which we're
     // trusting the rest of this module to maintain correctly.
-    let current = usize::from(unsafe { (*current).descriptor().index });
+    let current_id =
+        u16::from(unsafe { (*current).descriptor().component_id() });
 
     with_task_table(|tasks| {
-        let next = task::select(current, tasks);
-        let next = &mut tasks[next];
-        apply_memory_protection(next);
+        let next_id = task::select(current_id, tasks);
+        let next_task =
+            tasks.get_mut(&next_id).expect("Cannot find component ID!");
+        apply_memory_protection(next_task);
         // Safety: next comes from the task table and we don't use it again
         // until next kernel entry, so we meet set_current_task's requirements.
         unsafe {
-            set_current_task(next);
+            set_current_task(next_task);
         }
     });
     crate::profiling::event_secondary_syscall_exit();
@@ -774,8 +796,9 @@ pub unsafe extern "C" fn DefaultHandler() {
         x if x >= 16 => {
             // Hardware interrupt
             let irq_num = exception_num - 16;
-            let owner = crate::startup::HUBRIS_IRQ_TASK_LOOKUP
-                .get(abi::InterruptNum(irq_num))
+            let irq_to_task = unsafe{&crate::startup::IRQ_TO_TASK};
+            let owner = irq_to_task
+                .get(&irq_num)
                 .unwrap_or_else(|| panic!("unhandled IRQ {}", irq_num));
 
             let switch = with_task_table(|tasks| {
@@ -784,7 +807,10 @@ pub unsafe extern "C" fn DefaultHandler() {
                 // Now, post the notification and return the
                 // scheduling hint.
                 let n = task::NotificationSet(owner.notification);
-                tasks[owner.task as usize].post(n)
+                tasks
+                    .get_mut(&owner.task_id)
+                    .expect("Cannot find component ID")
+                    .post(n)
             });
             if switch {
                 pend_context_switch_from_isr()
@@ -798,7 +824,7 @@ pub unsafe extern "C" fn DefaultHandler() {
 
 pub fn disable_irq(n: u32) {
     // Disable the interrupt by poking the Interrupt Clear Enable Register.
-    let nvic = unsafe { &*cortex_m::peripheral::NVIC::ptr() };
+    let nvic = unsafe { &*cortex_m::peripheral::NVIC::PTR };
     let reg_num = (n / 32) as usize;
     let bit_mask = 1 << (n % 32);
     unsafe {
@@ -808,7 +834,7 @@ pub fn disable_irq(n: u32) {
 
 pub fn enable_irq(n: u32) {
     // Enable the interrupt by poking the Interrupt Set Enable Register.
-    let nvic = unsafe { &*cortex_m::peripheral::NVIC::ptr() };
+    let nvic = unsafe { &*cortex_m::peripheral::NVIC::PTR };
     let reg_num = (n / 32) as usize;
     let bit_mask = 1 << (n % 32);
     unsafe {
@@ -915,7 +941,6 @@ pub unsafe extern "C" fn UsageFault() {
     unsafe { asm!("b {0}", sym configurable_fault, options(noreturn)) }
 }
 
-
 bitflags::bitflags! {
     /// Bits in the Configurable Fault Status Register.
     #[repr(transparent)]
@@ -957,7 +982,6 @@ bitflags::bitflags! {
     }
 }
 
-
 /// Common implementation of fault handling.
 ///
 /// # Safety
@@ -984,7 +1008,7 @@ unsafe extern "C" fn handle_fault(
     // reference, so we shouldn't be breaking any rules by doing this. Arguably
     // this should be available as a safe operation in the cortex_m crate, but
     // that crate comes with _ideas_ about peripheral ownership management.
-    let scb = unsafe { &*cortex_m::peripheral::SCB::ptr() };
+    let scb = unsafe { &*cortex_m::peripheral::SCB::PTR };
     let cfsr = Cfsr::from_bits_truncate(scb.cfsr.read());
 
     // Who faulted? Collect some parameters from the task.
@@ -993,12 +1017,12 @@ unsafe extern "C" fn handle_fault(
     // contract requires that it be valid. We immediately throw away the result
     // of dereferencing it, as it would otherwise alias the task table obtained
     // later.
-    let (exc_return, psp, idx) = unsafe {
+    let (exc_return, psp, id) = unsafe {
         let t = &(*task);
         (
             t.save().exc_return,
             t.save().psp,
-            usize::from(t.descriptor().index),
+            t.descriptor().component_id(),
         )
     };
     let from_thread_mode = exc_return & 0b1000 != 0;
@@ -1088,7 +1112,7 @@ unsafe extern "C" fn handle_fault(
         // Context Control register.
         const LSPACT: u32 = 1 << 0;
         unsafe {
-            let fpu = &*cortex_m::peripheral::FPU::ptr();
+            let fpu = &*cortex_m::peripheral::FPU::PTR;
             fpu.fpccr.modify(|x| x & !LSPACT);
         }
     }
@@ -1110,23 +1134,24 @@ unsafe extern "C" fn handle_fault(
     // when returning from an exception with a PSP that generates an MPU
     // fault!)
     with_task_table(|tasks| {
-        let next = match task::force_fault(tasks, idx, fault) {
+        let next_id = match task::force_fault(tasks, id, fault) {
             task::NextTask::Specific(i) => i,
-            task::NextTask::Other => task::select(idx, tasks),
-            task::NextTask::Same => idx,
+            task::NextTask::Other => task::select(id, tasks),
+            task::NextTask::Same => id,
         };
 
-        if next == idx {
-            panic!("attempt to return to Task #{} after fault", idx);
+        if next_id == id {
+            panic!("attempt to return to Task #{} after fault", id);
         }
 
-        let next = &mut tasks[next];
-        apply_memory_protection(next);
+        let next_task =
+            tasks.get_mut(&next_id).expect("Cannot find component ID");
+        apply_memory_protection(next_task);
         // Safety: this leaks a pointer aliasing next into static scope, but
         // we're not going to read it back until the next kernel entry, so we
         // won't be aliasing/racing.
         unsafe {
-            set_current_task(next);
+            set_current_task(next_task);
         }
     });
 }
@@ -1135,11 +1160,16 @@ impl AtomicExt for AtomicBool {
     type Primitive = bool;
 
     #[inline(always)]
-    fn swap_polyfill(&self, value: Self::Primitive, ordering: Ordering)
-        -> Self::Primitive
-    {
+    fn swap_polyfill(
+        &self,
+        value: Self::Primitive,
+        ordering: Ordering,
+    ) -> Self::Primitive {
         self.swap(value, ordering)
     }
 }
 
-pub const EXC_RETURN_CONST : u32 = 0xFFFFFFED;  // Hubris non-secure arm-v7
+pub const EXC_RETURN_CONST: u32 = 0xFFFFFFED; // Unsafe
+
+// Constants that may change depending on configuration
+//include!(concat!(env!("ROOT"), "/consts.rs"));

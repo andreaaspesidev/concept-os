@@ -27,7 +27,8 @@
 //!    most clever algorithms used in kernels wind up requiring `unsafe`.)
 
 #![cfg_attr(target_os = "none", no_std)]
-#![feature(asm)]
+#![feature(asm_const)]
+#![feature(asm_sym)]
 #![feature(naked_functions)]
 // Require an unsafe block even in an unsafe fn, because unsafe fns are about
 // contract, not implementation.
@@ -45,3 +46,5 @@ pub mod syscalls;
 pub mod task;
 pub mod time;
 pub mod umem;
+mod flash;
+mod utils;

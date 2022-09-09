@@ -43,8 +43,6 @@ use core::arch::asm;
 
 pub mod hl;
 pub mod kipc;
-pub mod task_slot;
-pub mod units;
 pub mod util;
 
 #[derive(Debug)]

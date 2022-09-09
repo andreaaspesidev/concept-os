@@ -7,16 +7,32 @@
 use core::convert::TryFrom;
 
 use abi::{
-    FaultInfo, FaultSource, Generation, Priority, RegionAttributes, RegionDesc,
-    ReplyFaultReason, SchedState, TaskDesc, TaskFlags, TaskId, TaskState,
-    ULease, UsageError,
+    FaultInfo, FaultSource, Generation, Priority, RegionAttributes,
+    RegionDescriptor, ReplyFaultReason, SchedState, TaskDescriptor, TaskFlags,
+    TaskId, TaskState, ULease, UsageError,REGIONS_PER_TASK,HUBRIS_MAX_SUPPORTED_TASKS
 };
+use heapless::{FnvIndexMap, Vec};
 use zerocopy::FromBytes;
 
 use crate::err::UserError;
 use crate::startup::HUBRIS_FAULT_NOTIFICATION;
 use crate::time::Timestamp;
 use crate::umem::USlice;
+
+macro_rules! sys_log {
+    ($s:expr) => {
+        unsafe {
+            let stim = &mut (*cortex_m::peripheral::ITM::ptr()).stim[0];
+            cortex_m::iprintln!(stim, $s);
+        }
+    };
+    ($s:expr, $($tt:tt)*) => {
+        unsafe {
+            let stim = &mut (*cortex_m::peripheral::ITM::ptr()).stim[0];
+            cortex_m::iprintln!(stim, $s, $($tt)*);
+        }
+    };
+}
 
 /// Internal representation of a task.
 ///
@@ -30,6 +46,10 @@ pub struct Task {
     /// Saved machine state of the user program.
     save: crate::arch::SavedState,
     // NOTE: it is critical that the above field appear first!
+
+    // ID of the task
+    component_id: u16,
+
     /// Current priority of the task.
     priority: Priority,
     /// State used to make status and scheduling decisions.
@@ -40,40 +60,51 @@ pub struct Task {
     /// the task. The low bits of this become the task's generation number.
     generation: u32,
 
-    /// Static table defining this task's memory regions.
-    region_table: &'static [&'static RegionDesc],
+    /// Vector defining this task's memory regions.
+    region_table: Vec<RegionDescriptor, REGIONS_PER_TASK>,
+
+    // Pointer to task .data section
+    data_section: &'static [u8],
 
     /// Notification status.
     notifications: u32,
 
     /// Pointer to the ROM descriptor used to create this task, so it can be
     /// restarted.
-    descriptor: &'static TaskDesc,
+    descriptor: TaskDescriptor,
 }
 
 impl Task {
     /// Creates a `Task` in its initial state, filling in fields from
     /// `descriptor`.
     pub fn from_descriptor(
-        descriptor: &'static TaskDesc,
-        region_table: &'static [&'static RegionDesc],
+        descriptor: &TaskDescriptor,
+        region_table: &Vec<RegionDescriptor, REGIONS_PER_TASK>,
+        data_section: &'static [u8]
     ) -> Self {
-        Task {
-            priority: abi::Priority(descriptor.priority),
-            state: if descriptor.flags.contains(TaskFlags::START_AT_BOOT) {
+        // Create a new instance
+        let mut task = Task {
+            priority: abi::Priority(descriptor.priority()),
+            state: if descriptor.flags().contains(TaskFlags::START_AT_BOOT) {
                 TaskState::Healthy(SchedState::Runnable)
             } else {
                 TaskState::default()
             },
-
-            descriptor,
-            region_table,
-
+            component_id: descriptor.component_id(),
+            descriptor: descriptor.clone(),
+            region_table: Vec::new(),
             generation: 0,
             notifications: 0,
+            data_section: data_section,
             save: crate::arch::SavedState::default(),
             timer: crate::task::TimerState::default(),
+        };
+        // Append all the regions
+        for r in region_table {
+            task.region_table.push(r.clone()).unwrap();
         }
+        // Return the instance
+        return task;
     }
 
     /// Tests whether this task has read access to `slice` as normal memory.
@@ -286,15 +317,29 @@ impl Task {
         crate::arch::reinitialize(self);
     }
 
+    pub fn data_section(&self) -> &'static [u8] {
+        self.data_section
+    }
+
+    pub fn id(&self) -> u16 {
+        self.component_id
+    }
+
+    pub fn current_identifier(&self) -> TaskId {
+        TaskId::for_id_and_gen(self.component_id, self.generation())
+    }
+
     /// Returns a reference to the `TaskDesc` that was used to initially create
     /// this task.
-    pub fn descriptor(&self) -> &'static TaskDesc {
-        self.descriptor
+    pub fn descriptor(&self) -> &TaskDescriptor {
+        &self.descriptor
     }
 
     /// Returns a reference to the task's memory region descriptor table.
-    pub fn region_table(&self) -> &'static [&'static RegionDesc] {
-        self.region_table
+    pub fn region_table(
+        &self,
+    ) -> &Vec<RegionDescriptor, {abi::REGIONS_PER_TASK}> {
+        &self.region_table
     }
 
     /// Returns this task's current generation number.
@@ -692,7 +737,7 @@ pub enum NextTask {
     Other,
     /// We need to switch tasks, and we already know which one should run next.
     /// This is an optimization available in certain IPC cases.
-    Specific(usize),
+    Specific(u16),
 }
 
 impl NextTask {
@@ -717,14 +762,17 @@ impl NextTask {
 
 /// Processes all enabled timers in the task table, posting notifications for
 /// any that have expired by `current_time` (and disabling them atomically).
-pub fn process_timers(tasks: &mut [Task], current_time: Timestamp) -> NextTask {
+pub fn process_timers(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    current_time: Timestamp,
+) -> NextTask {
     let mut sched_hint = NextTask::Same;
-    for (index, task) in tasks.iter_mut().enumerate() {
+    for (cid, task) in tasks.iter_mut() {
         if let Some(deadline) = task.timer.deadline {
             if deadline <= current_time {
                 task.timer.deadline = None;
                 let task_hint = if task.post(task.timer.to_post) {
-                    NextTask::Specific(index)
+                    NextTask::Specific(*cid)
                 } else {
                     NextTask::Same
                 };
@@ -742,15 +790,19 @@ pub fn process_timers(tasks: &mut [Task], current_time: Timestamp) -> NextTask {
 ///
 /// On failure, indicates the condition by `UserError`.
 pub fn check_task_id_against_table(
-    table: &[Task],
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
     id: TaskId,
-) -> Result<usize, UserError> {
-    if id.index() >= table.len() {
-        return Err(FaultInfo::SyscallUsage(UsageError::TaskOutOfRange).into());
+) -> Result<u16, UserError> {
+    // Check if we actually have this component
+    let task = tasks.get(&id.component_id());
+    if task.is_none() {
+        return Err(FaultInfo::SyscallUsage(UsageError::TaskNotFound).into());
     }
 
-    // Check for dead task ID.
-    let table_generation = table[id.index()].generation();
+    // Check for dead task ID: the id of a task is updated at every
+    // reboot from failure, so we have to avoid serving old requests
+    // to the rebooted component.
+    let table_generation = task.unwrap().generation();
 
     if table_generation != id.generation() {
         let code = abi::dead_response_code(table_generation);
@@ -758,14 +810,17 @@ pub fn check_task_id_against_table(
         return Err(UserError::Recoverable(code, NextTask::Same));
     }
 
-    Ok(id.index())
+    Ok(id.component_id())
 }
 
 /// Selects a new task to run after `previous`. Tries to be fair, kind of.
 ///
 /// If no tasks are runnable, the kernel panics.
-pub fn select(previous: usize, tasks: &[Task]) -> usize {
-    priority_scan(previous, tasks, |t| t.is_runnable())
+pub fn select(
+    previous_id: u16,
+    tasks: &FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+) -> u16 {
+    priority_scan(previous_id, tasks, |t| t.is_runnable())
         .expect("no tasks runnable")
 }
 
@@ -783,27 +838,51 @@ pub fn select(previous: usize, tasks: &[Task]) -> usize {
 ///
 /// If `previous` is not a valid index in `tasks`.
 pub fn priority_scan(
-    previous: usize,
-    tasks: &[Task],
+    previous_id: u16,
+    tasks: &FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
     pred: impl Fn(&Task) -> bool,
-) -> Option<usize> {
-    uassert!(previous < tasks.len());
-    let search_order = (previous + 1..tasks.len()).chain(0..previous + 1);
-    let mut choice = None;
-    for i in search_order {
-        if !pred(&tasks[i]) {
-            continue;
+) -> Option<u16> {
+    fn priority_scan_core(
+        task: &Task,
+        current_id: u16,
+        pred: &impl Fn(&Task) -> bool,
+        choice: &mut Option<(u16, Priority)>,
+    ) {
+        // Check predicate
+        if !pred(task) {
+            return;
         }
-
+        // Do not select a less important task
         if let Some((_, prio)) = choice {
-            if !tasks[i].priority.is_more_important_than(prio) {
-                continue;
+            if !task.priority.is_more_important_than(*prio) {
+                return;
             }
         }
-
-        choice = Some((i, tasks[i].priority));
+        // Select this task
+        *choice = Some((current_id, task.priority));
     }
-
+    let mut choice = None;
+    // The idea is to scan starting from the task next this current one.
+    // The problem is that now we don't have anymore random access to elements, so we have to
+    // iterate from the beginning and skip
+    let mut found_index = tasks.len(); // Out of range value
+    for (index, (cid, task)) in tasks.iter().enumerate() {
+        if *cid == previous_id {
+            found_index = index;
+        }
+        if found_index < tasks.len() {
+            // Finally found the component
+            priority_scan_core(task, *cid, &pred, &mut choice);
+        }
+    }
+    // Now again from the beginning, up to that element
+    for (index, (cid, task)) in tasks.iter().enumerate() {
+        if index > found_index {
+            break;
+        }
+        priority_scan_core(task, *cid, &pred, &mut choice);
+    }
+    // Return the choice
     choice.map(|(idx, _)| idx)
 }
 
@@ -825,11 +904,11 @@ pub fn priority_scan(
 /// makes it harder to forget to request rescheduling. If you're faulting
 /// some other task you can explicitly ignore the result.
 pub fn force_fault(
-    tasks: &mut [Task],
-    index: usize,
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    task_id: u16,
     fault: FaultInfo,
 ) -> NextTask {
-    let task = &mut tasks[index];
+    let task = tasks.get_mut(&task_id).expect("Cannot find the task");
     task.state = match task.state {
         TaskState::Healthy(sched) => TaskState::Faulted {
             original_state: sched,
@@ -844,23 +923,21 @@ pub fn force_fault(
             }
         }
     };
-    let supervisor_awoken =
-        tasks[0].post(NotificationSet(HUBRIS_FAULT_NOTIFICATION));
+    sys_log!("Component {} fault: {:?}", task_id, fault);
+    let supervisor_id: u16 = 1;
+    let supervisor_awoken = tasks
+        .get_mut(&supervisor_id)
+        .expect("Cannot find supervisor")
+        .post(NotificationSet(HUBRIS_FAULT_NOTIFICATION));
     if supervisor_awoken {
-        NextTask::Specific(0)
+        NextTask::Specific(supervisor_id)
     } else {
         NextTask::Other
     }
 }
 
-/// Produces a current `TaskId` (i.e. one with the correct generation) for
-/// `tasks[index]`.
-pub fn current_id(tasks: &[Task], index: usize) -> TaskId {
-    TaskId::for_index_and_gen(index, tasks[index].generation())
-}
-
 /// Tests whether `slice` is fully enclosed by `region`.
-fn region_covers<T>(region: &abi::RegionDesc, slice: &USlice<T>) -> bool {
+fn region_covers<T>(region: &abi::RegionDescriptor, slice: &USlice<T>) -> bool {
     // We don't allow regions to butt up against the end of the address space,
     // so we can compute our off-by-one end address as follows:
     let region_end = region.base.wrapping_add(region.size) as usize;

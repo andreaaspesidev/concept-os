@@ -262,6 +262,7 @@ impl<'a> Message<'a> {
 }
 
 /// A typed handle to a task, used to send a single reply of type `R`.
+#[derive(Clone)]
 pub struct Caller<R> {
     id: TaskId,
     _phantom: PhantomData<fn(R)>,
@@ -595,7 +596,7 @@ where
             }
         } else if let Some(g) = abi::extract_new_generation(code) {
             // Task has rolled over, we will update our records and retry.
-            target.set(TaskId::for_index_and_gen(last_target.index(), g));
+            target.set(TaskId::for_id_and_gen(last_target.component_id(), g));
             continue;
         } else {
             break Err(M::Err::from(code));
