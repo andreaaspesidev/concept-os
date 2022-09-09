@@ -35,7 +35,6 @@ fn main() -> ! {
                 let msg = parsed.unwrap();
                 // Respond to the message
                 let response = HelloResponseMessage::new(msg.get_operation());
-                hl::sleep_for(500);
                 if usart.write_block(&response.get_raw()).is_ok() {
                     // Process this message
                     hello_arrived(&msg, &mut usart); // Ignore errors

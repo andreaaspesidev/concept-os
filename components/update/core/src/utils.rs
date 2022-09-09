@@ -3,7 +3,6 @@ use crate::messages::{MessageError, TIMEOUT_ERROR};
 use hbf_lite::BufferReader;
 use storage_api::*;
 use uart_channel_api::*;
-use userlib::hl::sleep_for;
 
 /**
  * Flash Reader
@@ -34,17 +33,6 @@ impl<'a> BufferReader<'a> for FlashReader {
             return Err(hbf_lite::HbfError::ReadError);
         }
         Ok(())
-    }
-}
-
-/**
- * Minimum
- */
-pub fn min<T: PartialOrd>(a: T, b: T) -> T {
-    if a < b {
-        a
-    } else {
-        b
     }
 }
 
