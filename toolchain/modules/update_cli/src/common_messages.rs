@@ -1,6 +1,6 @@
-use crate::{crc::crc8_update, utils::min};
+use crate::crc::crc8_update;
 
-pub const SERIAL_BAUDRATE: u32 = 115200;
+pub const SERIAL_BAUDRATE: u32 = 115_200;
 const PACKET_BUFFER_SIZE: usize = 64;
 
 #[derive(Debug)]
@@ -138,7 +138,7 @@ impl<'a> FragmentedMessage<'a> for RawPacket<'a> {
             return None;
         }
         // Otherwise extract the new fragment
-        let fragment_size = min(PACKET_BUFFER_SIZE, self.buffer.len() - self.current_pos);
+        let fragment_size = core::cmp::min(PACKET_BUFFER_SIZE, self.buffer.len() - self.current_pos);
         let fragment = &self.buffer[self.current_pos..self.current_pos+fragment_size];
         // Append to buffer
         let mut buffer = Vec::<u8>::new();

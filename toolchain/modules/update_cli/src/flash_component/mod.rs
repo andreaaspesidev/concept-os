@@ -67,7 +67,7 @@ pub fn flash_component(serial_port: String, hbf_file: String, verbose: bool) {
         );
     }
     let mut serial_port = serial_result.unwrap();
-    serial_port.set_timeout(Duration::from_secs(5)).unwrap();
+    serial_port.set_timeout(Duration::from_secs(10)).unwrap();
     // Send hello
     println!("");
     let mut progress = ProgressBar::new((hbf.header_base().total_size() + 4) as u64);

@@ -2,15 +2,19 @@ mod common_messages;
 mod crc;
 mod utils;
 
+mod debug;
 mod erase_component;
 mod flash_component;
+mod flash_system;
 mod info;
 
 use std::io;
 
 use clap::{Parser, Subcommand};
+use debug::debug;
 use erase_component::erase_component;
 use flash_component::flash_component;
+use flash_system::flash_system;
 use info::info;
 
 /**
@@ -21,7 +25,7 @@ use info::info;
 #[clap(name = "Concept-OS Update Client")]
 #[clap(author = "Andrea Aspesi <andrea1.aspesi@mail.polimi.it>")]
 #[clap(version)]
-#[clap(about = "A program to enable update of Concept OS.", long_about = None)]
+#[clap(about = "A tool to enable update of Concept OS.", long_about = None)]
 pub struct Cli {
     #[clap(subcommand)]
     cmd: Commands,
@@ -39,11 +43,19 @@ enum Commands {
         #[clap(short = 's')]
         serial_port: String,
     },
+    Debug {
+        #[clap(short, long, value_parser)]
+        #[clap(short = 'c')]
+        app_config: String,
+    },
     FlashSystem {
         // Flash the whole image
         #[clap(short, long, value_parser)]
-        #[clap(short = 'e')]
-        elf_path: String,
+        #[clap(short = 'c')]
+        app_config: String,
+        #[clap(short, long, value_parser)]
+        #[clap(short = 'p')]
+        image_path: String,
     },
     FlashComponent {
         #[clap(short, long, value_parser)]
@@ -72,12 +84,11 @@ fn main() -> Result<(), io::Error> {
     let verbose = args.verbose.unwrap_or(false);
     // Execute command
     match args.cmd {
-        Commands::Info {serial_port} => {
-            info(serial_port, verbose)
-        }
-        Commands::FlashSystem { elf_path } => {
-            todo!("Not implemented yet")
-        }
+        Commands::Info { serial_port } => info(serial_port, verbose),
+        Commands::FlashSystem {
+            app_config,
+            image_path,
+        } => flash_system(app_config, image_path, verbose),
         Commands::FlashComponent {
             serial_port,
             hbf_file,
@@ -86,12 +97,8 @@ fn main() -> Result<(), io::Error> {
             serial_port,
             component_id,
             component_version,
-        } => erase_component(
-            serial_port,
-            component_id,
-            component_version,
-            verbose,
-        ),
+        } => erase_component(serial_port, component_id, component_version, verbose),
+        Commands::Debug { app_config } => debug(app_config, verbose),
     }
     Ok(())
 }
@@ -100,7 +107,7 @@ fn main() -> Result<(), io::Error> {
 mod test {
     use std::path::PathBuf;
 
-    use crate::{flash_component::flash_component, info::info, erase_component::erase_component};
+    use crate::{erase_component::erase_component, flash_component::flash_component, info::info};
 
     fn get_test_file_path(name: &str) -> String {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
