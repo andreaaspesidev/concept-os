@@ -7,7 +7,7 @@ edition = "2021"
 stm32f303re = []
 
 [dependencies]
-userlib = {path = "../../../sys/userlib"}
+userlib = {path = "../../../sys/userlib", features=["log-itm"]}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
 aes-gcm = {version="0.10.1", default-features = false, features = ["aes", "heapless"] }
 hbf_lite = {path = "../../../libs/hbf_lite"}

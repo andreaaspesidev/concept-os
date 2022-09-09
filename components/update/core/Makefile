@@ -22,7 +22,7 @@ disassemble: build
 	arm-none-eabi-objdump -s -j .rodata build/image.elf > build/rodata.disass
 	arm-none-eabi-objdump -d build/image.elf --visualize-jumps > build/text.asm
 
-dump: build
+dump:
 	arm-none-eabi-objcopy -O binary --only-section=.text build/image.elf build/image.text
 	arm-none-eabi-objcopy -O binary --only-section=.rodata build/image.elf build/image.rodata
 	arm-none-eabi-objcopy -O binary --only-section=.data build/image.elf build/image.data

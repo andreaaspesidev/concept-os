@@ -7,14 +7,13 @@ use uart_channel_api::*;
 
 pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageError> {
     // Ask fixed header
-    channel_write_single(
-        channel,
-        ComponentUpdateCommand::SendComponentFixedHeader as u8,
-    )?;
-    // Read fixed header
     let mut hbf_header_buff: [u8; FixedHeaderMessage::get_size()] =
         [0; FixedHeaderMessage::get_size()];
-    channel_read(channel, &mut hbf_header_buff)?;
+    channel_ask(
+        channel,
+        ComponentUpdateCommand::SendComponentFixedHeader as u8,
+        &mut hbf_header_buff,
+    )?;
     // Validate header
     let fhm = FixedHeaderMessage::from(&mut hbf_header_buff)?;
     // Read hbf
@@ -261,9 +260,11 @@ fn read_bytes(
 
     while bytes_to_read > 0 {
         // Ask for another packet
-        channel_write_single(channel, ComponentUpdateCommand::SendNextFragment as u8)?;
-        // Read another packet
-        channel_read(channel, &mut pkt_buffer[0..min_to_read + 1])?;
+        channel_ask(
+            channel,
+            ComponentUpdateCommand::SendNextFragment as u8,
+            &mut pkt_buffer[0..min_to_read + 1],
+        )?;
         // Validate this packet
         let parsed_pkt = RawPacket::from(&pkt_buffer[0..min_to_read + 1]);
         if parsed_pkt.is_err() {

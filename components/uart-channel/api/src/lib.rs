@@ -1,7 +1,7 @@
 #![no_std]
 
-use userlib::{sys_send, Lease, TaskId, FromPrimitive};
-use zerocopy::{FromBytes,AsBytes};
+use userlib::{sys_send, FromPrimitive, Lease, TaskId};
+use zerocopy::{AsBytes, FromBytes};
 
 /**
  * Constants
@@ -43,13 +43,21 @@ pub enum Operation {
     WriteBlock = 1,
     ReadBlock = 2,
     ReadBlockTimed = 3,
+    TransmitTimed = 4,
 }
 
 // ReadBlockTimed
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
 pub struct ReadBlockTimedRequest {
-    pub timeout_ticks: u32
+    pub timeout_ticks: u32,
+}
+
+// TransmitTimed
+#[derive(FromBytes, AsBytes)]
+#[repr(C)]
+pub struct TransmitTimedRequest {
+    pub timeout_ticks: u32,
 }
 
 /**
@@ -62,9 +70,9 @@ impl UartChannel {
     pub fn new() -> Self {
         Self {}
     }
-    
+
     pub fn write_block(&mut self, data: &[u8]) -> Result<(), ChannelError> {
-        let (code,_) = sys_send(
+        let (code, _) = sys_send(
             UART_CHANNEL_ID,
             Operation::WriteBlock as u16,
             &[],
@@ -78,7 +86,7 @@ impl UartChannel {
         }
     }
     pub fn read_block(&mut self, data: &mut [u8]) -> Result<(), ChannelError> {
-        let (code,_) = sys_send(
+        let (code, _) = sys_send(
             UART_CHANNEL_ID,
             Operation::ReadBlock as u16,
             &[],
@@ -91,16 +99,45 @@ impl UartChannel {
             return Err(ChannelError::from(code));
         }
     }
-    pub fn read_block_timed(&mut self, data: &mut [u8], timeout_ticks: u32) -> Result<(), ChannelError> {
-        let message = &ReadBlockTimedRequest{
-            timeout_ticks: timeout_ticks
+    pub fn read_block_timed(
+        &mut self,
+        data: &mut [u8],
+        timeout_ticks: u32,
+    ) -> Result<(), ChannelError> {
+        let message = &ReadBlockTimedRequest {
+            timeout_ticks: timeout_ticks,
         };
-        let (code,_) = sys_send(
+        let (code, _) = sys_send(
             UART_CHANNEL_ID,
             Operation::ReadBlockTimed as u16,
             message.as_bytes(),
             &mut [],
             &[Lease::write_only(data)],
+        );
+        if code == 0 {
+            Ok(())
+        } else {
+            return Err(ChannelError::from(code));
+        }
+    }
+    /// New method that allow transmitting data while first setting up the system for reception.
+    /// This is especially useful when dealing with quick responses, that could be missed for
+    /// unlucky context switches that delay the setup of the standard reception buffer
+    pub fn transmit_timed(
+        &mut self,
+        data_out: &[u8],
+        data_in: &mut [u8],
+        timeout_ticks: u32,
+    ) -> Result<(), ChannelError> {
+        let message = &TransmitTimedRequest {
+            timeout_ticks: timeout_ticks,
+        };
+        let (code, _) = sys_send(
+            UART_CHANNEL_ID,
+            Operation::TransmitTimed as u16,
+            message.as_bytes(),
+            &mut [],
+            &[Lease::read_only(data_out), Lease::write_only(data_in)],
         );
         if code == 0 {
             Ok(())

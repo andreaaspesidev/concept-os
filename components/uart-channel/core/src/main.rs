@@ -17,11 +17,13 @@ const TIMEOUT_MASK: u32 = 0b1000_0000_0000_0000;
 // Driver state
 struct Transmitter {
     caller: hl::Caller<()>,
+    borrow_num: usize,
     len: usize,
     pos: usize,
 }
 struct Receiver {
     caller: hl::Caller<()>,
+    borrow_num: usize,
     len: usize,
     pos: usize,
 }
@@ -74,6 +76,7 @@ fn main() -> ! {
             USART_IRQ_MASK | DMA1_CH6_IRQ_MASK | TIMEOUT_MASK,
             &mut state,
             |state_ref, bits| {
+                // Timer IRQ
                 if bits & TIMEOUT_MASK != 0 {
                     // Timeout for read expired
                     if state_ref.receiver_state.pending_receiver.is_some() {
@@ -83,7 +86,7 @@ fn main() -> ! {
                             .reply_fail(ChannelError::ReadTimeOut);
                     }
                 }
-                // Check if the irq is valid
+                // UART IRQ
                 if bits & USART_IRQ_MASK != 0 {
                     // Handling an interrupt. To allow for spurious interrupts,
                     // check the individual conditions we care about, and
@@ -94,7 +97,11 @@ fn main() -> ! {
                     // Transmit the old way
                     if usart_isr.txe().bit_is_set() {
                         // TX register empty. Do we need to send something?
-                        step_transmit(&usart, &mut state_ref.pending_transmitter);
+                        step_transmit(
+                            &usart,
+                            &mut state_ref.pending_transmitter,
+                            &mut state_ref.receiver_state.pending_receiver,
+                        );
                     }
 
                     if usart_isr.idle().bit_is_set() {
@@ -137,7 +144,9 @@ fn main() -> ! {
 
                     // Enable again interrupts
                     sys_irq_control(USART_IRQ_MASK, true);
-                } else if bits & DMA1_CH6_IRQ_MASK != 0 {
+                }
+                // DMA IRQ
+                if bits & DMA1_CH6_IRQ_MASK != 0 {
                     // DMA fired interrupt (RX)
                     let ch6_isr = dma1.isr.read();
                     if ch6_isr.htif6().bit_is_set() {
@@ -186,15 +195,8 @@ fn main() -> ! {
                         return Err(ChannelError::BadArgument);
                     }
 
-                    // Prepare for a transfer
-                    state_ref.pending_transmitter = Some(Transmitter {
-                        caller: caller,
-                        pos: 0,
-                        len: info.len,
-                    });
-
-                    // Enable transmit interrupts
-                    usart.cr1.modify(|_, w| w.txeie().enabled());
+                    // Perform setup
+                    setup_transmit(state_ref, usart, caller, info.len, 0)?;
 
                     // We'll do the rest as interrupts arrive.
                     Ok(())
@@ -203,7 +205,19 @@ fn main() -> ! {
                     // Validate lease count and buffer sizes first.
                     let ((), caller) = msg.fixed_with_leases(1).ok_or(ChannelError::BadArgument)?;
 
-                    setup_read(state_ref, usart, dma1, caller)?;
+                    // Deny incoming reads if we're already running too many.
+                    if state_ref.receiver_state.pending_receiver.is_some() {
+                        return Err(ChannelError::ChannelBusy);
+                    }
+                    // Check borrow
+                    let borrow = caller.borrow(0);
+                    let info = borrow.info().ok_or(ChannelError::BadArgument)?;
+                    if !info.attributes.contains(LeaseAttributes::WRITE) || info.len == 0 {
+                        return Err(ChannelError::BadArgument);
+                    }
+
+                    // Perform setup
+                    setup_read(state_ref, usart, dma1, caller, info.len, 0)?;
 
                     // We'll do the rest as interrupts arrive.
                     Ok(())
@@ -214,16 +228,74 @@ fn main() -> ! {
                         .fixed_with_leases::<ReadBlockTimedRequest, ()>(1)
                         .ok_or(ChannelError::BadArgument)?;
 
+                    // Deny incoming reads if we're already running too many.
+                    if state_ref.receiver_state.pending_receiver.is_some() {
+                        return Err(ChannelError::ChannelBusy);
+                    }
+                    // Check borrow
+                    let borrow = caller.borrow(0);
+                    let info = borrow.info().ok_or(ChannelError::BadArgument)?;
+                    if !info.attributes.contains(LeaseAttributes::WRITE) || info.len == 0 {
+                        return Err(ChannelError::BadArgument);
+                    }
+
+                    // Setup
+                    setup_timed_read(
+                        state_ref,
+                        usart,
+                        dma1,
+                        caller,
+                        info.len,
+                        0,
+                        msg.timeout_ticks,
+                    )?;
+
+                    // We'll do the rest as interrupts arrive.
+                    Ok(())
+                }
+                Operation::TransmitTimed => {
+                    // Validate lease count and buffer sizes first.
+                    let (msg, caller) = msg
+                        .fixed_with_leases::<TransmitTimedRequest, ()>(2)
+                        .ok_or(ChannelError::BadArgument)?;
+
+                    // Check both requisites before proceding
+                    if state_ref.receiver_state.pending_receiver.is_some() {
+                        return Err(ChannelError::ChannelBusy);
+                    }
+                    if state_ref.pending_transmitter.is_some() {
+                        return Err(ChannelError::ChannelBusy);
+                    }
                     // Check timeout
                     if msg.timeout_ticks == 0 {
                         return Err(ChannelError::BadArgument);
                     }
+                    // Check leases
+                    // [0] Data out
+                    // [1] Data in
+                    let borrow_out = caller.borrow(0);
+                    let info_out = borrow_out.info().ok_or(ChannelError::BadArgument)?;
+                    if !info_out.attributes.contains(LeaseAttributes::READ) || info_out.len == 0 {
+                        return Err(ChannelError::BadArgument);
+                    }
+                    let borrow_in = caller.borrow(1);
+                    let info_in = borrow_in.info().ok_or(ChannelError::BadArgument)?;
+                    if !info_in.attributes.contains(LeaseAttributes::WRITE) || info_in.len == 0 {
+                        return Err(ChannelError::BadArgument);
+                    }
 
-                    setup_read(state_ref, usart, dma1, caller)?;
-
-                    // Launch timer
-                    let deadline = sys_get_timer().now + msg.timeout_ticks as u64 + 1;
-                    sys_set_timer(Some(deadline), TIMEOUT_MASK);
+                    // First, setup the reception part
+                    setup_timed_read(
+                        state_ref,
+                        usart,
+                        dma1,
+                        caller.clone(),
+                        info_in.len,
+                        1,
+                        msg.timeout_ticks,
+                    )?;
+                    // Then, prepare a transmission
+                    setup_transmit(state_ref, usart, caller.clone(), info_out.len, 0)?;
 
                     // We'll do the rest as interrupts arrive.
                     Ok(())
@@ -233,33 +305,60 @@ fn main() -> ! {
     }
 }
 
+fn setup_timed_read(
+    state_ref: &mut DriverState,
+    usart: &device::usart2::RegisterBlock,
+    dma1: &device::dma1::RegisterBlock,
+    caller: Caller<()>,
+    rx_len: usize,
+    borrow_num: usize,
+    timeout_ticks: u32,
+) -> Result<(), ChannelError> {
+    setup_read(state_ref, usart, dma1, caller, rx_len, borrow_num)?;
+    let deadline = sys_get_timer().now + timeout_ticks as u64 + 1;
+    sys_set_timer(Some(deadline), TIMEOUT_MASK);
+    Ok(())
+}
+
 fn setup_read(
     state_ref: &mut DriverState,
     usart: &device::usart2::RegisterBlock,
     dma1: &device::dma1::RegisterBlock,
     caller: Caller<()>,
+    rx_len: usize,
+    borrow_num: usize,
 ) -> Result<(), ChannelError> {
-    // Deny incoming reads if we're already running too many.
-    if state_ref.receiver_state.pending_receiver.is_some() {
-        return Err(ChannelError::ChannelBusy);
-    }
-    // Check borrow
-    let borrow = caller.borrow(0);
-    let info = borrow.info().ok_or(ChannelError::BadArgument)?;
-    if !info.attributes.contains(LeaseAttributes::WRITE) || info.len == 0 {
-        return Err(ChannelError::BadArgument);
-    }
-
     // Prepare for a transfer
     state_ref.receiver_state.pending_receiver = Some(Receiver {
         caller: caller,
         pos: 0,
-        len: info.len,
+        len: rx_len,
+        borrow_num: borrow_num,
     });
 
     // Enable reception
     dma_receive_to_idle(dma1, usart);
 
+    Ok(())
+}
+
+fn setup_transmit(
+    state_ref: &mut DriverState,
+    usart: &device::usart2::RegisterBlock,
+    caller: Caller<()>,
+    tx_len: usize,
+    borrow_num: usize,
+) -> Result<(), ChannelError> {
+    // Prepare for a transfer
+    state_ref.pending_transmitter = Some(Transmitter {
+        caller: caller,
+        pos: 0,
+        len: tx_len,
+        borrow_num: borrow_num,
+    });
+
+    // Enable transmit interrupts
+    usart.cr1.modify(|_, w| w.txeie().enabled());
     Ok(())
 }
 
@@ -486,7 +585,7 @@ fn rx_update_caller(
     // Try write data
     if rx
         .caller
-        .borrow(0)
+        .borrow(rx.borrow_num)
         .write_fully_at(rx.pos, &data[0..need_bytes])
         .is_some()
     {
@@ -508,7 +607,11 @@ fn min<T: PartialOrd>(a: T, b: T) -> T {
     }
 }
 
-fn step_transmit(usart: &device::usart1::RegisterBlock, transmitter: &mut Option<Transmitter>) {
+fn step_transmit(
+    usart: &device::usart1::RegisterBlock,
+    transmitter: &mut Option<Transmitter>,
+    receiver: &mut Option<Receiver>,
+) {
     // Clearer than just using replace:
     fn end_transmission(
         usart: &device::usart1::RegisterBlock,
@@ -527,18 +630,36 @@ fn step_transmit(usart: &device::usart1::RegisterBlock, transmitter: &mut Option
         return;
     };
 
-    if let Some(byte) = tx.caller.borrow(0).read_at::<u8>(tx.pos) {
+    if let Some(byte) = tx.caller.borrow(tx.borrow_num).read_at::<u8>(tx.pos) {
         // Stuff byte into transmitter.
         #[cfg(feature = "stm32f303re")]
         usart.tdr.write(|w| w.tdr().bits(u16::from(byte)));
 
         tx.pos += 1;
         if tx.pos == tx.len {
-            end_transmission(usart, transmitter).reply(());
+            let caller = end_transmission(usart, transmitter);
+            if !is_transmit_mode(&caller, receiver) {
+                // Otherwise tell the caller the operation is finished
+                caller.reply(());
+            }
         }
     } else {
-        end_transmission(usart, transmitter).reply_fail(ChannelError::BadArgument);
+        let caller = end_transmission(usart, transmitter);
+        if is_transmit_mode(&caller, receiver) {
+            // Cancel also the read operation
+            *receiver = None;
+        }
+        caller.reply_fail(ChannelError::BadArgument);
     }
+}
+
+fn is_transmit_mode(caller: &Caller<()>, receiver: &Option<Receiver>) -> bool {
+    if receiver.is_some() {
+        if caller.task_id() == receiver.as_ref().unwrap().caller.task_id() {
+            return true;
+        }
+    }
+    return false;
 }
 
 /*fn step_receive(

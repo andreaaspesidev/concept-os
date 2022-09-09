@@ -3,4 +3,4 @@ id = 5
 version = 1
 priority = 10
 flags = ['START_AT_BOOT']
-min_ram = 2048
+min_ram = 4096
