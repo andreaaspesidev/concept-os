@@ -1,13 +1,13 @@
 #![no_std]
 
-use core::fmt::{Debug, Formatter, Error};
+use core::fmt::{Debug, Error, Formatter};
 
-use header::{
-    HbfHeaderBase, HbfHeaderInterrupt, HbfHeaderMain, HbfHeaderRegion, HbfHeaderRelocation,
-    HbfVersion, HBF_MAGIC,
+pub use header::{HbfHeaderBase, HbfHeaderMain, HbfHeaderRelocation, HbfVersion, HBF_MAGIC};
+
+pub use header::{
+    HbfHeaderInterrupt, HbfHeaderRegion, FIXED_HEADER_SIZE, HBF_CHECKSUM_OFFSET,
+    HBF_HEADER_MIN_SIZE, INTERRUPT_SIZE, REGION_SIZE, RELOC_SIZE,
 };
-
-pub use header::{HBF_CHECKSUM_OFFSET, HBF_HEADER_MIN_SIZE, FIXED_HEADER_SIZE, REGION_SIZE, INTERRUPT_SIZE, RELOC_SIZE};
 
 mod header;
 mod utils;
@@ -44,18 +44,16 @@ impl<'a> BufferReader<'a> for MockReader {
 
 /// Simple implementation of the BufferReader for a buffer
 pub struct BufferReaderImpl<'a> {
-    buffer: &'a [u8]
+    buffer: &'a [u8],
 }
 
 impl<'a> BufferReaderImpl<'a> {
     pub fn from(buffer: &'a [u8]) -> Self {
-        Self {
-            buffer: buffer
-        }
+        Self { buffer: buffer }
     }
 }
 
-impl <'a> BufferReader<'a> for BufferReaderImpl<'a> {
+impl<'a> BufferReader<'a> for BufferReaderImpl<'a> {
     fn read(&self, offset: u32, dest: &mut [u8]) -> Result<(), HbfError> {
         let off: usize = offset as usize;
         if off >= self.buffer.len() {
@@ -123,7 +121,7 @@ impl<'a> Debug for HbfPayloadSection<'a> {
 impl<'a> HbfFile<'a> {
     pub fn from_reader(reader: &'a dyn BufferReader<'a>) -> Result<Self, HbfError> {
         // Start reading the initial bytes, to check if we find the magic number
-        let mut buffer: [u8; HBF_MAGIC.len()] = [0x00; HBF_MAGIC.len()];
+        let mut buffer: [u8; 4] = [0x00; 4];
         reader.read(0, &mut buffer)?;
         if buffer != HBF_MAGIC {
             return Err(HbfError::InvalidMagic);
@@ -316,10 +314,8 @@ impl<'a> HbfFile<'a> {
     }
 }
 
-
-impl <'a> Debug for HbfFile<'a> {
+impl<'a> Debug for HbfFile<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        f.debug_struct("Hbf File")
-         .finish()
+        f.debug_struct("Hbf File").finish()
     }
 }
