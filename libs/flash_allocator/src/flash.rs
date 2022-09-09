@@ -226,7 +226,7 @@ pub mod walker {
                     self.flash,
                     self.current_offset as u32,
                 );
-                // Skip allocated blocks
+                // Skip deallocated blocks
                 if block_header.is_allocated() && !block_header.is_dismissed() {
                     // Construct result
                     let result = FlashBlock {

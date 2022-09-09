@@ -421,11 +421,13 @@ mod tests {
         // Allocation 1
         let block1 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
         // Allocation 2
-        let block2 = flash_allocator.allocate(2 * BLOCK_SIZE as u32).unwrap();
+        let block2 = flash_allocator.allocate(BLOCK_SIZE as u32).unwrap();
         // Allocation 3
         let block3 = flash_allocator.allocate(3 * BLOCK_SIZE as u32).unwrap();
         // Allocation 4
         let block4 = flash_allocator.allocate(4 * BLOCK_SIZE as u32).unwrap();
+        // Deallocate block 2
+        flash_allocator.deallocate(block3.get_base_address()).unwrap();
         // Create a new iterator
         drop(flash_allocator); // Needed to release the flash interface
         let mut iterator = FlashWalkerImpl::<
@@ -442,9 +444,6 @@ mod tests {
         let b2 = iterator.next();
         assert!(b2.is_some());
         assert_eq!(b2.unwrap(), block2);
-        let b3 = iterator.next();
-        assert!(b3.is_some());
-        assert_eq!(b3.unwrap(), block3);
         let b4 = iterator.next();
         assert!(b4.is_some());
         assert_eq!(b4.unwrap(), block4);
@@ -459,7 +458,7 @@ mod tests {
         let iterator_ref: &mut dyn FlashWalker = &mut iterator;
         assert_eq!(iterator_ref.nth(0).unwrap(), block1);
         assert_eq!(iterator_ref.nth(1).unwrap(), block2);
-        assert_eq!(iterator_ref.next().unwrap(), block3);
+        assert_eq!(iterator_ref.next().unwrap(), block4);
     }
 
     /// Deallocate block 1, keeping the other intact (see vfp_example_1.svg)
