@@ -60,7 +60,7 @@ pub const SRAM_START_ADDR: u32 = 0x2000_0000;
 pub const SRAM_END_ADDR: u32 = 0x2000_FFFF;
 pub const SRAM_SIZE: usize = (SRAM_END_ADDR - SRAM_START_ADDR + 1) as usize; // 64Kb
 
-pub const SRAM_RESERVED: u32 = 4096;
+pub const SRAM_RESERVED: u32 = 8192;
 pub const SRAM_BLOCK_SIZE: usize = 512;
 pub const SRAM_NUM_BLOCKS: usize = SRAM_SIZE / SRAM_BLOCK_SIZE as usize; // 128
 pub const SRAM_NUM_SLOTS: usize = 7 + 1; // clog2(NUM_BLOCKS) + 1

@@ -4,13 +4,17 @@
 
 //! Implementation of IPC operations on the virtual kernel task.
 
-use abi::{FaultInfo, SchedState, TaskState, UsageError, HUBRIS_MAX_SUPPORTED_TASKS};
+use abi::{
+    FaultInfo, SchedState, TaskState, UsageError, HUBRIS_MAX_SUPPORTED_TASKS,
+};
 use unwrap_lite::UnwrapLite;
 
 use crate::err::UserError;
+use crate::startup::with_irq_table;
+use crate::structures::load_component_at;
 use crate::task::{ArchState, NextTask, Task};
 use crate::umem::USlice;
-use crate::utils::{get_task_mut,get_task};
+use crate::utils::{get_task, get_task_mut};
 use heapless::FnvIndexMap;
 
 /// Message dispatcher.
@@ -25,6 +29,10 @@ pub fn handle_kernel_message(
         1 => read_task_status(tasks, caller_id, args.message?, args.response?),
         2 => restart_task(tasks, caller_id, args.message?),
         3 => fault_task(tasks, caller_id, args.message?),
+        4 => set_update_handler(tasks, caller_id, args.message?),
+        5 => get_state_availability(tasks, caller_id),
+        6 => activate_task(tasks, caller_id),
+        7 => load_component(tasks, caller_id, args.message?),
         _ => {
             // Task has sent an unknown message to the kernel. That's bad.
             Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
@@ -85,8 +93,11 @@ fn read_task_status(
     // cache other state before taking out a mutable borrow on tasks
     let other_state = *other_task_search.unwrap_lite().state();
 
-    let response_len =
-        serialize_response(get_task_mut(tasks, caller_id), response, &other_state)?;
+    let response_len = serialize_response(
+        get_task_mut(tasks, caller_id),
+        response,
+        &other_state,
+    )?;
     get_task_mut(tasks, caller_id)
         .save_mut()
         .set_send_response_and_length(0, response_len);
@@ -157,7 +168,9 @@ fn restart_task(
             return Ok(NextTask::Other);
         }
     } else {
-        get_task_mut(tasks, caller_id).save_mut().set_send_response_and_length(0, 0);
+        get_task_mut(tasks, caller_id)
+            .save_mut()
+            .set_send_response_and_length(0, 0);
     }
     Ok(NextTask::Same)
 }
@@ -179,7 +192,7 @@ fn fault_task(
     let id: u32 = deserialize_message(get_task(tasks, caller_id), message)?;
     let id = id as u16;
 
-    if id == 0 || id == caller_id {
+    if id == abi::SUPERVISOR_ID || id == caller_id {
         return Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
             UsageError::IllegalTask,
         )));
@@ -193,8 +206,104 @@ fn fault_task(
     }
 
     let identifier = get_task(tasks, caller_id).current_identifier();
-    let _ = crate::task::force_fault(tasks, id, FaultInfo::Injected(identifier));
-    get_task_mut(tasks, caller_id).save_mut().set_send_response_and_length(0, 0);
+    let _ =
+        crate::task::force_fault(tasks, id, FaultInfo::Injected(identifier));
+    get_task_mut(tasks, caller_id)
+        .save_mut()
+        .set_send_response_and_length(0, 0);
 
+    Ok(NextTask::Same)
+}
+
+fn set_update_handler(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
+    message: USlice<u8>,
+) -> Result<NextTask, UserError> {
+    // Read the handler address
+    let handler_address: u32 =
+        deserialize_message(get_task(tasks, caller_id), message)?;
+    // Set the new handler
+    get_task_mut(tasks, caller_id).set_update_handler(handler_address);
+    // Respond to the task
+    get_task_mut(tasks, caller_id)
+        .save_mut()
+        .set_send_response_and_length(0, 0);
+    // Return to that task
+    Ok(NextTask::Same)
+}
+
+fn get_state_availability(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
+) -> Result<NextTask, UserError> {
+    // The state exists only if we gave this component a temp id
+    get_task_mut(tasks, caller_id)
+        .save_mut()
+        .set_send_response_and_length(
+            (caller_id == abi::UPDATE_TEMP_ID) as u32,
+            0,
+        );
+    return Ok(NextTask::Same);
+}
+
+fn activate_task(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
+) -> Result<NextTask, UserError> {
+    // If the task is mature, just ignore the call.
+    // In this way, components that does not need the state can
+    // just issue this call at the beginning.
+    if caller_id != abi::UPDATE_TEMP_ID {
+        get_task_mut(tasks, caller_id)
+            .save_mut()
+            .set_send_response_and_length(0, 0);
+        return Ok(NextTask::Same);
+    }
+    // Read the nominal id of the task
+    let nominal_id = get_task(tasks, caller_id).descriptor().component_id();
+
+    // Here we just removed IRQs from the old task, just delete it and change the ID
+    // to the new task
+    tasks.remove(&nominal_id).unwrap_lite();
+
+    let mut task = tasks.remove(&abi::UPDATE_TEMP_ID).unwrap_lite();
+    // Add again the task
+    task.set_nominal_id();
+    tasks.insert(nominal_id, task).unwrap_lite();
+    // Redirect all IRQs
+    with_irq_table(|irq_map| {
+        let task = get_task(tasks, nominal_id);
+        let tot_irqs = task.descriptor().num_interrupts();
+        for interrupt_num in 0..tot_irqs {
+            let interrupt = task.descriptor().interrupt_nth(interrupt_num);
+            let entry = irq_map.get_mut(&interrupt.irq_num).unwrap_lite();
+            entry.task_id = nominal_id;
+        }
+    });
+    // Alert the task
+    get_task_mut(tasks, nominal_id)
+        .save_mut()
+        .set_send_response_and_length(0, 0);
+    // To be sure, schedule another task after this.
+    // In fact, the CURRENT_TASK_PTR is now pointing to a wrong memory area
+    Ok(NextTask::Other)
+}
+
+fn load_component(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
+    message: USlice<u8>,
+) -> Result<NextTask, UserError> {
+    // Read the block address
+    let block_base_address: u32 =
+        deserialize_message(get_task(tasks, caller_id), message)?;
+    // Try to load the component
+    let load_result = with_irq_table(|irq_map| {
+        load_component_at(tasks, irq_map, block_base_address)
+    });
+    get_task_mut(tasks, caller_id)
+        .save_mut()
+        .set_send_response_and_length(load_result.is_err() as u32, 0);
     Ok(NextTask::Same)
 }

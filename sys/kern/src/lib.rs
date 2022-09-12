@@ -46,5 +46,7 @@ pub mod syscalls;
 pub mod task;
 pub mod time;
 pub mod umem;
-mod flash;
+pub mod flash;
+pub mod structures;
+#[macro_use]
 mod utils;

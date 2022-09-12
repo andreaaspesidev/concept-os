@@ -291,14 +291,13 @@ pub fn reinitialize(task: &mut task::Task) {
     }
 
     // Setup frame and pointers
-
-    let descriptor = *task.descriptor();
+    let entry_point = task.descriptor().entry_point();
     let frame = &mut task.try_write(&mut frame_uslice).unwrap_lite()[0];
 
     // Conservatively/defensively zero the entire frame.
     *frame = ExtendedExceptionFrame::default();
     // Now fill in the bits we actually care about.
-    frame.base.pc = descriptor.entry_point() | 1; // for thumb
+    frame.base.pc = entry_point | 1; // for thumb
     frame.base.xpsr = INITIAL_PSR;
     frame.base.lr = 0xFFFF_FFFF; // trap on return from main
     frame.fpscr = INITIAL_FPSCR;
@@ -312,6 +311,24 @@ pub fn reinitialize(task: &mut task::Task) {
 
     // Finally, record the EXC_RETURN we'll use to enter the task.
     task.save_mut().exc_return = EXC_RETURN_CONST;
+}
+
+pub fn force_task_update_handler(task: &mut task::Task) {
+    // In order to force the task to execute the update handler,
+    // we have to overwrite the PC saved in the exception frame saved on the stack
+    let update_handler = task.get_update_handler().unwrap_lite();
+    // Get the current task stack
+    let current_stack = task.save().psp;
+    // The frame will be on top of the current stack pointer
+    let frame_address = current_stack as usize;
+    let mut frame_uslice: USlice<ExtendedExceptionFrame> = USlice::from_raw(frame_address, 1).unwrap_lite();
+    // Let's write the new pc
+    let frame = &mut task.try_write(&mut frame_uslice).unwrap_lite()[0];
+    frame.base.pc = update_handler;
+}
+
+pub fn mark_task_dying(task: &mut task::Task) {
+    task.set_dying_at(now());
 }
 
 pub fn apply_memory_protection(task: &task::Task) {

@@ -13,9 +13,8 @@ use core::marker::PhantomData;
 use zerocopy::{AsBytes, FromBytes, LayoutVerified};
 
 use crate::{
-    sys_borrow_info, sys_borrow_read, sys_borrow_write, sys_get_timer,
-    sys_recv, sys_recv_closed, sys_recv_open, sys_reply, sys_send,
-    sys_set_timer, BorrowInfo, ClosedRecvError, FromPrimitive,
+    sys_borrow_info, sys_borrow_read, sys_borrow_write, sys_get_timer, sys_recv, sys_recv_closed,
+    sys_recv_open, sys_reply, sys_send, sys_set_timer, BorrowInfo, ClosedRecvError, FromPrimitive,
 };
 
 const INTERNAL_TIMER_NOTIFICATION: u32 = 1 << 31;
@@ -145,8 +144,7 @@ where
     O: FromPrimitive,
     E: Into<u32>,
 {
-    let rm =
-        sys_recv(buffer, mask, source).map_err(|_| ClosedRecvError::Dead)?;
+    let rm = sys_recv(buffer, mask, source).map_err(|_| ClosedRecvError::Dead)?;
     let sender = rm.sender;
     if rm.sender == TaskId::KERNEL {
         notify(state, rm.operation);
@@ -379,8 +377,7 @@ impl Borrow<'_> {
         // NOTE: the default requirement could be lifted if we do some unsafe
         // uninitialized buffer shenanigans.
         let mut dest = T::default();
-        let (rc, n) =
-            sys_borrow_read(self.id, self.index, offset, dest.as_bytes_mut());
+        let (rc, n) = sys_borrow_read(self.id, self.index, offset, dest.as_bytes_mut());
         if rc != 0 {
             None
         } else if n != core::mem::size_of::<T>() {
@@ -405,8 +402,7 @@ impl Borrow<'_> {
     where
         T: AsBytes,
     {
-        let (rc, n) =
-            sys_borrow_write(self.id, self.index, offset, value.as_bytes());
+        let (rc, n) = sys_borrow_write(self.id, self.index, offset, value.as_bytes());
         if rc != 0 {
             None
         } else if n != core::mem::size_of::<T>() {
@@ -559,10 +555,7 @@ where
 /// If the server sends back a successful response that is the wrong size for
 /// `M::Response`. This indicates a serious bug, so it's not something we would
 /// make every client handle every time by returning an `Err`.
-pub fn send_with_retry<M>(
-    target: &Cell<TaskId>,
-    message: &M,
-) -> Result<M::Response, M::Err>
+pub fn send_with_retry<M>(target: &Cell<TaskId>, message: &M) -> Result<M::Response, M::Err>
 where
     M: Call,
 {
@@ -581,8 +574,7 @@ where
 
     loop {
         let last_target = target.get();
-        let (code, rlen) =
-            sys_send(last_target, M::OP, message.as_bytes(), rslice, &[]);
+        let (code, rlen) = sys_send(last_target, M::OP, message.as_bytes(), rslice, &[]);
 
         if code == 0 {
             if rlen == core::mem::size_of_val(&response) {
@@ -604,6 +596,42 @@ where
     }
 }
 
+pub fn get_state<'a, S, M>(
+    buffer: &'a mut [u8],
+    state: S,
+    handler: impl FnOnce(S, &'a M),
+) -> Result<(), ()>
+where
+    M: FromBytes + 'a,
+{
+    // Check if state exists
+    if !crate::kipc::get_state_availability() {
+        return Err(());
+    }
+    // Launch the timer
+    sys_set_timer(Some(30000), INTERNAL_TIMER_NOTIFICATION);
+    // Receive the message
+    let rm = sys_recv(buffer, INTERNAL_TIMER_NOTIFICATION, None).map_err(|_| ())?;
+    if rm.sender == TaskId::KERNEL {
+        // It's the timer, abort
+        return Err(());
+    } else {
+        // Cancel the timer
+        sys_set_timer(None, INTERNAL_TIMER_NOTIFICATION);
+        // Read the message
+        let m = Message {
+            buffer: &buffer[..rm.message_len],
+            sender: rm.sender,
+            response_capacity: rm.response_capacity,
+            lease_count: rm.lease_count,
+        };
+        // Parse as requested
+        let (data, _caller) = m.fixed::<M, ()>().ok_or(())?;
+        handler(state, data);
+        Ok(())
+    }
+}
+
 /// Suspends the calling task until the kernel time is `>= time`.
 ///
 /// TODO: once we figure out how to convert between ticks and seconds here, this
@@ -611,11 +639,7 @@ where
 pub fn sleep_until(time: u64) {
     sys_set_timer(Some(time), INTERNAL_TIMER_NOTIFICATION);
     loop {
-        let _ = sys_recv_closed(
-            &mut [],
-            INTERNAL_TIMER_NOTIFICATION,
-            TaskId::KERNEL,
-        );
+        let _ = sys_recv_closed(&mut [], INTERNAL_TIMER_NOTIFICATION, TaskId::KERNEL);
         // We don't actually need to check the results:
         // - The kernel cannot die.
         // - We only agreed to accept notification messages with our timer bit set.

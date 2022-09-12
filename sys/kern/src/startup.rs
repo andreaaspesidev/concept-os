@@ -4,21 +4,16 @@
 
 //! Kernel startup.
 
-use abi::flash::BlockType;
-use abi::{
-    u32_from_le_bytes_raw, InterruptOwner, RegionAttributes, RegionDescriptor,
-    TaskDescriptor, HUBRIS_MAX_IRQS, HUBRIS_MAX_SUPPORTED_TASKS,
-    REGIONS_PER_TASK,
-};
-use flash_allocator::flash::walker::FlashWalkerImpl;
-use hbf_lite::{BufferReaderImpl, HbfFile};
-use heapless::{FnvIndexMap, Vec};
+use heapless::FnvIndexMap;
 use unwrap_lite::UnwrapLite;
 
-use crate::atomic::AtomicExt;
-use crate::flash::FlashReader;
+use crate::{atomic::AtomicExt, utils::log_task};
+use crate::structures::populate_kernel_structures;
+use crate::sys_log;
 use crate::task::Task;
 use core::sync::atomic::{AtomicBool, Ordering};
+
+use abi::{InterruptOwner, HUBRIS_MAX_IRQS, HUBRIS_MAX_SUPPORTED_TASKS};
 
 /// Tracks when a mutable reference to the task table is floating around in
 /// kernel code, to prevent production of a second one. This forms a sort of
@@ -44,21 +39,6 @@ pub static mut IRQ_TO_TASK: FnvIndexMap<
     InterruptOwner, // Task
     HUBRIS_MAX_IRQS,
 > = FnvIndexMap::new();
-
-macro_rules! sys_log {
-    ($s:expr) => {
-        unsafe {
-            let stim = &mut (*cortex_m::peripheral::ITM::ptr()).stim[0];
-            cortex_m::iprintln!(stim, $s);
-        }
-    };
-    ($s:expr, $($tt:tt)*) => {
-        unsafe {
-            let stim = &mut (*cortex_m::peripheral::ITM::ptr()).stim[0];
-            cortex_m::iprintln!(stim, $s, $($tt)*);
-        }
-    };
-}
 
 /// The main kernel entry point.
 ///
@@ -87,7 +67,9 @@ pub unsafe fn start_kernel(tick_divisor: u32) -> ! {
     }
 
     // Load structures from flash
-    sync_kernel_structures();
+    populate_kernel_structures(unsafe { &mut TASK_MAP }, unsafe {
+        &mut IRQ_TO_TASK
+    });
 
     // Get a safe reference
     let task_map = unsafe { &mut TASK_MAP };
@@ -95,15 +77,8 @@ pub unsafe fn start_kernel(tick_divisor: u32) -> ! {
     // Debug!
     sys_log!("--------- Kernel Start ----------");
     // Print components
-    for (cid, task) in task_map.iter() {
-        sys_log!("- Component with ID: {}", cid);
-        // Print component regions
-        sys_log!("  Regions:");
-        for r in task.region_table() {
-            sys_log!("  -Addr: {:#010x}", r.base);
-            sys_log!("   Size: {}", r.size);
-            sys_log!("   Attr: {:?}", r.attributes);
-        }
+    for (_cid, task) in task_map.iter() {
+        log_task(task);
     }
     // Print interrupts
     let interr_map = unsafe { &mut IRQ_TO_TASK };
@@ -128,7 +103,7 @@ pub unsafe fn start_kernel(tick_divisor: u32) -> ! {
         &task_map,
     );
 
-    let first_task = task_map.get_mut(&first_task_id).expect("Wrong task id");
+    let first_task = task_map.get_mut(&first_task_id).unwrap_lite();
 
     // Setup memory protection for this task
     crate::arch::apply_memory_protection(first_task);
@@ -137,149 +112,6 @@ pub unsafe fn start_kernel(tick_divisor: u32) -> ! {
     TASK_TABLE_IN_USE.store(false, Ordering::Release);
 
     crate::arch::start_first_task(tick_divisor, first_task)
-}
-
-fn sync_kernel_structures() {
-    // For now, create a mock flash interface
-    let mut flash_methods =
-        FlashReader::<FLASH_ALLOCATOR_START_SCAN_ADDR, FLASH_END_ADDR>::new();
-    // Get an iterator for the flash
-    let flash_walker = FlashWalkerImpl::<
-        FLASH_START_ADDR,
-        FLASH_END_ADDR,
-        FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
-        FLASH_FLAG_SIZE,
-    >::new(&mut flash_methods);
-    // Iterate, to find HBFs
-    for b in flash_walker {
-        if !b.is_finalized() {
-            panic!("Non finalized block found at: {}", b.get_base_address());
-        }
-        if b.get_type() != BlockType::COMPONENT {
-            panic!("Non component block found at: {}", b.get_base_address());
-        }
-        // Look into only finalized blocks of components
-        if b.is_finalized() && b.get_type() == BlockType::COMPONENT {
-            // Let's create an abstraction to read its bytes
-            let raw_block_bytes = unsafe {
-                core::slice::from_raw_parts(
-                    (b.get_base_address() + 8) as *const u8,
-                    b.get_size() as usize,
-                )
-            };
-            let block_reader = BufferReaderImpl::from(raw_block_bytes);
-            // Let's read the hbf
-            let hbf_parse = hbf_lite::HbfFile::from_reader(&block_reader);
-            if hbf_parse.is_err() {
-                panic!("Malformed HBF at {:#010x}", b.get_base_address());
-                continue; // Skip
-            }
-            let hbf = hbf_parse.unwrap();
-            // Validate this hbf
-            let hbf_valid = hbf.validate().unwrap_or(false);
-            if !hbf_valid {
-                panic!("Malformed HBF at {:#010x}", b.get_base_address());
-                continue; // Skip malformed hbf
-            }
-            // Process hbf
-            update_with_hbf(&hbf, b.get_base_address(), b.get_size() + 12 + 8);
-        }
-    }
-}
-
-fn update_with_hbf(hbf: &HbfFile, block_base_address: u32, block_size: u32) {
-    // Create a new instance of Task
-    let task_desc = TaskDescriptor::new(block_base_address);
-    let mut regions: Vec<RegionDescriptor, REGIONS_PER_TASK> = Vec::new();
-    // Create a region for the SRAM
-    let sram_base: u32 = unsafe { u32_from_le_bytes_raw(block_base_address) };
-    let sram_size: u32 =
-        unsafe { u32_from_le_bytes_raw(block_base_address + 4) };
-    let sram_region = RegionDescriptor {
-        base: sram_base,
-        size: sram_size,
-        attributes: RegionAttributes::READ | RegionAttributes::WRITE | RegionAttributes::EXECUTE,
-    };
-    regions.push(sram_region).unwrap();
-    // Create a sregion for the FLASH
-    let flash_region = RegionDescriptor {
-        base: block_base_address - 12,
-        size: block_size,
-        attributes: RegionAttributes::READ | RegionAttributes::WRITE | RegionAttributes::EXECUTE,
-    };
-    regions.push(flash_region).unwrap();
-    let hbf_base = hbf.header_base().unwrap();
-    // Append all the other regions
-    for region_num in 0..hbf_base.num_regions() {
-        let region = hbf.region_nth(region_num).unwrap();
-        regions
-            .push(RegionDescriptor {
-                base: region.base_address(),
-                size: region.size(),
-                attributes: unsafe {
-                    RegionAttributes::from_bits_unchecked(
-                        region.attributes().bits(),
-                    )
-                },
-            })
-            .unwrap();
-    }
-    // Append the task
-    let data_section = hbf.get_data_payload().unwrap_lite();
-    let mut data_section_slice: &'static [u8] = &[];
-    if data_section.is_some() {
-        let ds = data_section.unwrap_lite();
-        let data_address = block_base_address + 8 + ds.get_offset();
-        data_section_slice = unsafe {
-            core::slice::from_raw_parts(
-                data_address as *const u8,
-                ds.size() as usize,
-            )
-        };
-    }
-    let task = Task::from_descriptor(&task_desc, &regions, data_section_slice);
-    // Add the IRQs managed by this component
-    for interrupt_num in 0..hbf_base.num_interrupts() {
-        let interrupt = hbf.interrupt_nth(interrupt_num).unwrap();
-        // Append the IRQ
-        unsafe {
-            let insert_result = IRQ_TO_TASK.insert(
-                interrupt.irq_number(),
-                InterruptOwner {
-                    task_id: task_desc.component_id(),
-                    notification: interrupt.notification_mask(),
-                },
-            );
-            if insert_result.is_ok() {
-                if insert_result.unwrap().is_some() {
-                    // Another component registered this IRQ, panic!
-                    panic!("Duplicated IRQ: {}", interrupt.irq_number());
-                }
-            } else {
-                // No more space for IRQs
-                panic!("Cannot add more IRQs!");
-            }
-        }
-    }
-    // Finally add the component
-    unsafe {
-        let insert_result = TASK_MAP.insert(task_desc.component_id(), task);
-        if insert_result.is_ok() {
-            if insert_result.unwrap().is_some() {
-                // Another component with the same ID.
-                // Ask to terminate, for now panic
-                panic!(
-                    "Duplicated component found: {}",
-                    task_desc.component_id()
-                );
-            }
-        } else {
-            // No more space to store components, panic!
-            panic!("Cannot add more components!");
-        }
-    }
 }
 
 /// Runs `body` with a reference to the task table.
@@ -308,10 +140,10 @@ pub(crate) fn with_task_table<R>(
     r
 }
 
-pub const FLASH_ALLOCATOR_START_SCAN_ADDR: u32 = 0x0804_0000;
-pub const FLASH_START_ADDR: u32 = 0x0804_0000;
-pub const FLASH_END_ADDR: u32 = 0x0807_FFFF;
-pub const FLASH_BLOCK_SIZE: usize = 2048;
-pub const FLASH_FLAG_SIZE: usize = 2; // 2 bytes
-pub const FLASH_NUM_SLOTS: usize = 7 + 1; // clog2(NUM_BLOCKS) + 1
-pub const FLASH_PAGE_SIZE: u32 = 2048;
+pub(crate) fn with_irq_table<R>(
+    body: impl FnOnce(&mut FnvIndexMap<u32, InterruptOwner, HUBRIS_MAX_IRQS>) -> R,
+) -> R {
+    let irq_map_ptr = unsafe { &mut IRQ_TO_TASK };
+    let r = body(irq_map_ptr);
+    r
+}

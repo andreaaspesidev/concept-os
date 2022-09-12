@@ -16,23 +16,10 @@ use zerocopy::FromBytes;
 
 use crate::err::UserError;
 use crate::startup::HUBRIS_FAULT_NOTIFICATION;
+use crate::structures::revert_update;
+use crate::sys_log;
 use crate::time::Timestamp;
 use crate::umem::USlice;
-
-macro_rules! sys_log {
-    ($s:expr) => {
-        unsafe {
-            let stim = &mut (*cortex_m::peripheral::ITM::ptr()).stim[0];
-            cortex_m::iprintln!(stim, $s);
-        }
-    };
-    ($s:expr, $($tt:tt)*) => {
-        unsafe {
-            let stim = &mut (*cortex_m::peripheral::ITM::ptr()).stim[0];
-            cortex_m::iprintln!(stim, $s, $($tt)*);
-        }
-    };
-}
 
 /// Internal representation of a task.
 ///
@@ -72,6 +59,12 @@ pub struct Task {
     /// Pointer to the ROM descriptor used to create this task, so it can be
     /// restarted.
     descriptor: TaskDescriptor,
+
+    /// Optional handler to be called upon component update
+    /// in order to allow state transfer.
+    update_handler: Option<u32>,
+
+    dying_since: Option<Timestamp>
 }
 
 impl Task {
@@ -98,6 +91,8 @@ impl Task {
             data_section: data_section,
             save: crate::arch::SavedState::default(),
             timer: crate::task::TimerState::default(),
+            update_handler: None,
+            dying_since: None
         };
         // Append all the regions
         for r in region_table {
@@ -238,7 +233,7 @@ impl Task {
                 // A bit the task is interested in has newly become set!
                 // Interrupt it.
                 self.save.set_recv_result(TaskId::KERNEL, firing, 0, 0, 0);
-                self.state = TaskState::Healthy(SchedState::Runnable);
+                self.set_healthy_state(SchedState::Runnable);
                 return true;
             }
         }
@@ -313,6 +308,7 @@ impl Task {
         self.timer = TimerState::default();
         self.notifications = 0;
         self.state = TaskState::default();
+        self.dying_since = None;
 
         crate::arch::reinitialize(self);
     }
@@ -327,6 +323,45 @@ impl Task {
 
     pub fn current_identifier(&self) -> TaskId {
         TaskId::for_id_and_gen(self.component_id, self.generation())
+    }
+
+    pub fn set_temp_id(&mut self) {
+        self.component_id = abi::UPDATE_TEMP_ID;
+        self.generation = 0;
+    }
+
+    pub fn set_nominal_id(&mut self) {
+        self.component_id = self.descriptor.component_id();
+        // To be sure, also invalidate syscalls
+        self.generation = self.generation.wrapping_add(1);
+    }
+
+    pub fn set_update_handler(&mut self, update_handler: u32) {
+        self.update_handler = Some(update_handler);
+    }
+
+    pub fn get_update_handler(&self) -> Option<u32> {
+        self.update_handler
+    }
+
+    pub fn set_dying_at(&mut self, time: Timestamp) {
+        self.dying_since = Some(time);
+    }
+
+    pub fn is_dying(&self) -> &Option<Timestamp> {
+        &self.dying_since
+    }
+
+    pub fn begin_state_transfer(&mut self) -> bool {
+        // Mark the task as dying
+        crate::arch::mark_task_dying(self);
+        // Regardless on the state of the component, enter the update handler.
+        // We could panic instead of the if under here
+        if self.update_handler.is_some() {
+            crate::arch::force_task_update_handler(self);
+            return true;
+        }
+        return false;
     }
 
     /// Returns a reference to the `TaskDesc` that was used to initially create
@@ -767,7 +802,22 @@ pub fn process_timers(
     current_time: Timestamp,
 ) -> NextTask {
     let mut sched_hint = NextTask::Same;
+    let mut task_revert: bool = false;
     for (cid, task) in tasks.iter_mut() {
+        // Check for dying tasks
+        if !task_revert {
+            match task.is_dying() {
+                Some(at) => {
+                    if current_time - *at > Timestamp::from(abi::REVERT_UPDATE_TIMEOUT) {
+                        task_revert = true;
+                        sched_hint = NextTask::Other;
+                        continue; // Do not process deadlines for this task
+                    }
+                },
+                _ => {}
+            }
+        }
+        // Check for deadlines
         if let Some(deadline) = task.timer.deadline {
             if deadline <= current_time {
                 task.timer.deadline = None;
@@ -779,6 +829,10 @@ pub fn process_timers(
                 sched_hint = sched_hint.combine(task_hint)
             }
         }
+    }
+    // Actually revert if needed
+    if task_revert {
+        revert_update(tasks);
     }
     sched_hint
 }
@@ -908,7 +962,8 @@ pub fn force_fault(
     task_id: u16,
     fault: FaultInfo,
 ) -> NextTask {
-    let task = tasks.get_mut(&task_id).expect("Cannot find the task");
+    sys_log!("Component {} fault: {:?}", task_id, fault);
+    let task = tasks.get_mut(&task_id).expect("Cannot find component");
     task.state = match task.state {
         TaskState::Healthy(sched) => TaskState::Faulted {
             original_state: sched,
@@ -923,7 +978,6 @@ pub fn force_fault(
             }
         }
     };
-    sys_log!("Component {} fault: {:?}", task_id, fault);
     let supervisor_id: u16 = 1;
     let supervisor_awoken = tasks
         .get_mut(&supervisor_id)

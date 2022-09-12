@@ -19,6 +19,10 @@ pub const REGIONS_PER_TASK: usize = 8;
 pub const HUBRIS_MAX_SUPPORTED_TASKS: usize = 8;
 pub const HUBRIS_MAX_IRQS: usize = 16;
 
+pub const SUPERVISOR_ID: u16 = 0;
+pub const UPDATE_TEMP_ID: u16 = 1023;
+pub const REVERT_UPDATE_TIMEOUT: u64 = 30_000;
+
 /// Names a particular incarnation of a task.
 ///
 /// A `TaskId` combines two fields, a component id and a task generation number.
@@ -161,6 +165,22 @@ impl TaskDescriptor {
             return TaskFlags::from_bits_unchecked(flags);
         }
     }
+    pub fn num_interrupts(&self) -> u16 {
+        unsafe { u16_from_le_bytes_raw(self.block_start_address + 8 + 0x18) }
+    }
+    pub fn interrupt_nth(&self, interrupt_num: u16) -> InterruptDescriptor {
+        unsafe {
+            let hbf_start_addr = self.block_start_address + 8;
+            let interr_offset = u16_from_le_bytes_raw(hbf_start_addr + 0x16) as u32;
+            let interrupt_ptr = hbf_start_addr + interr_offset + interrupt_num as u32 * 8;
+            let irq = u32_from_le_bytes_raw(interrupt_ptr);
+            let mask = u32_from_le_bytes_raw(interrupt_ptr + 4);
+            InterruptDescriptor {
+                irq_num: irq,
+                notification: mask,
+            }
+        }
+    }
 }
 
 bitflags::bitflags! {
@@ -212,8 +232,17 @@ bitflags::bitflags! {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(C)]
 pub struct InterruptOwner {
-    /// Which task to notify, by index.
+    /// Which task to notify, by id.
     pub task_id: u16,
+    /// Which notification bits to set.
+    pub notification: u32,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(C)]
+pub struct InterruptDescriptor {
+    /// Which irq is associated to.
+    pub irq_num: u32,
     /// Which notification bits to set.
     pub notification: u32,
 }

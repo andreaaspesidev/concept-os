@@ -1,20 +1,5 @@
 use flash_allocator::flash::FlashMethods;
 
-macro_rules! sys_log {
-    ($s:expr) => {
-        unsafe {
-            let stim = &mut (*cortex_m::peripheral::ITM::ptr()).stim[0];
-            cortex_m::iprintln!(stim, $s);
-        }
-    };
-    ($s:expr, $($tt:tt)*) => {
-        unsafe {
-            let stim = &mut (*cortex_m::peripheral::ITM::ptr()).stim[0];
-            cortex_m::iprintln!(stim, $s, $($tt)*);
-        }
-    };
-}
-
 pub struct FlashReader<
     const ALLOCATED_FLASH_START: u32,
     const ALLOCATED_FLASH_END: u32,

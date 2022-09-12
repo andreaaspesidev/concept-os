@@ -4,6 +4,8 @@
 
 //! Implementation of kernel time.
 
+use core::ops::Sub;
+
 /// In-kernel timestamp representation.
 ///
 /// This is currently measured in an arbitrary "tick" unit.
@@ -26,5 +28,14 @@ impl From<[u32; 2]> for Timestamp {
 impl From<Timestamp> for u64 {
     fn from(v: Timestamp) -> Self {
         v.0
+    }
+}
+
+impl Sub<Timestamp> for Timestamp {
+    type Output = Timestamp;
+    fn sub(self, other: Timestamp) -> Timestamp {
+        Self {
+            0: self.0 - other.0
+        }
     }
 }
