@@ -4,6 +4,7 @@ use crate::utils::*;
 use hbf_lite::{BufferReaderImpl, HbfFile};
 use storage_api::*;
 use uart_channel_api::*;
+use userlib::sys_log;
 
 pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageError> {
     // Ask fixed header
@@ -107,6 +108,8 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
         channel,
     )?;
 
+    sys_log!("Waiting for variable header");
+
     wrap_error(
         read_bytes(
             to_read,
@@ -125,6 +128,8 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
     // Now, with the whole header intact, let's generate a version of the hbf that is actually
     // able to read all its data
     let flash_reader = FlashReader::from(allocation.flash_base_address, allocation.flash_size);
+
+    sys_log!("Reading HBF from flash");
 
     let flash_hbf = wrap_error(
         wrap_hbf_error(HbfFile::from_reader(&flash_reader)),
@@ -150,6 +155,8 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
     let mut reloc_buffer: [u32; RELOC_BUFFER_LEN] = [0; RELOC_BUFFER_LEN];
     let mut used_relocs: usize = 0;
     let mut usable_relocs: usize = 0;
+    let mut total_usable_relocs: usize =
+        wrap_hbf_error(flash_hbf.header_base())?.num_relocations() as usize;
     let mut current_reloc_pos: usize = 0;
 
     wrap_error(
@@ -158,6 +165,8 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
         allocation.flash_base_address,
         channel,
     )?;
+
+    sys_log!("Waiting for payload");
 
     wrap_error(
         read_bytes(
@@ -177,6 +186,7 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
                     &mut used_relocs,
                     &mut usable_relocs,
                     &mut current_reloc_pos,
+                    &mut total_usable_relocs,
                     &flash_hbf,
                 )?;
                 // After fixes, compute also the new checksum
@@ -188,6 +198,9 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
         allocation.flash_base_address,
         channel,
     )?;
+
+    sys_log!("Checksum validation");
+
     // Checksum validation
     let new_checksum_bytes = new_checksum.to_le_bytes();
     if validation_checksum != original_checksum
@@ -225,7 +238,11 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
         return Err(MessageError::FailedHBFValidation);
     }
     // TODO: Start component, do stuff ...
-
+    sys_log!("Try to start component");
+    let start_result = userlib::kipc::load_component(allocation.flash_base_address);
+    if start_result {
+        sys_log!("Component started!");
+    }
     // TODO: Finalize block
 
     // Respond
@@ -247,12 +264,26 @@ fn wrap_error<T>(
     r.map_err(|e| {
         // Deallocate the space
         if storage.deallocate_block(block_base_address).is_err() {
+            sys_log!("Block deallocation failed!");
             if channel_write_single(channel, ComponentUpdateResponse::GenericFailure as u8).is_err()
             {
                 return MessageError::ChannelError;
             }
             return MessageError::FlashError;
         } else {
+            match e {
+                MessageError::InvalidSize => sys_log!("IS"),
+                MessageError::InvalidCRC => sys_log!("IC"),
+                MessageError::InvalidOperation => sys_log!("IO"),
+                MessageError::InvalidHBF => sys_log!("IH"),
+                MessageError::NotEnoughSpace => sys_log!("NE"),
+                MessageError::FlashError => sys_log!("FE"),
+                MessageError::ChannelError => sys_log!("CE"),
+                MessageError::TimeoutError => sys_log!("TE"),
+                MessageError::FailedHBFValidation => sys_log!("VF"),
+                MessageError::CannotFindComponent => sys_log!("CC"),
+                MessageError::CannotFindVersion => sys_log!("CV"),
+            }
             if channel_write_single(channel, ComponentUpdateResponse::GenericFailure as u8).is_err()
             {
                 return MessageError::ChannelError;
@@ -335,11 +366,11 @@ fn read_next_relocs(
     reloc_buffer: &mut [u32; RELOC_BUFFER_LEN],
     usable_relocs: &mut usize,
     current_reloc_pos: &mut usize,
+    total_usable_relocs: &mut usize,
     hbf: &HbfFile,
 ) -> Result<(), MessageError> {
-    // Get the total number of relocations
-    let reloc_total = wrap_hbf_error(hbf.header_base())?.num_relocations();
-    let missing_reloc = core::cmp::min(RELOC_BUFFER_LEN, reloc_total as usize - RELOC_BUFFER_LEN);
+    // Get the missing relocations
+    let missing_reloc = core::cmp::min(RELOC_BUFFER_LEN, *total_usable_relocs);
     for i in 0..missing_reloc {
         // Read relocation info
         let reloc_num = (*current_reloc_pos + i) as u32;
@@ -349,6 +380,7 @@ fn read_next_relocs(
     }
     // Update the pointers
     *usable_relocs = missing_reloc;
+    *total_usable_relocs -= missing_reloc;
     *current_reloc_pos += missing_reloc;
     Ok(())
 }
@@ -361,15 +393,31 @@ fn apply_relocs(
     used_relocs: &mut usize,
     usable_relocs: &mut usize,
     current_reloc_pos: &mut usize,
+    total_usable_relocs: &mut usize,
     hbf: &HbfFile,
 ) -> Result<(), MessageError> {
+    // If we have no relocation still available, ignore
+    if *total_usable_relocs == 0usize {
+        return Ok(());
+    }
     let mut pos: usize = 0usize;
     while pos < buffer.len() - 4usize {
         // --> Check the status of the relocs buffer
         if *used_relocs == *usable_relocs {
             // Populate again the buffer
-            read_next_relocs(reloc_buffer, usable_relocs, current_reloc_pos, hbf)?;
+            read_next_relocs(
+                reloc_buffer,
+                usable_relocs,
+                current_reloc_pos,
+                total_usable_relocs,
+                hbf,
+            )?;
             *used_relocs = 0usize;
+            // Check if we have more relocs
+            if *usable_relocs == 0 {
+                assert_eq!(*total_usable_relocs, 0);
+                break;
+            }
         }
         // --> Search for a relocation for this position
         let hbf_rel_pos = last_written_offset + pos as u32;
