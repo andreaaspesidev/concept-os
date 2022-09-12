@@ -11,6 +11,9 @@ flash:
 debug:
 	../../toolchain/modules/update_cli/update-cli debug --app-config $(current_dir)/App.toml
 
+gdb:
+	../../toolchain/modules/update_cli/update-cli gdb --app-config $(current_dir)/App.toml
+
 disassemble: build
 	arm-none-eabi-readelf -l build/kernel.elf > build/headers.disass
 	arm-none-eabi-objdump -h build/kernel.elf > build/sections.disass
