@@ -3,6 +3,7 @@ mod crc;
 mod utils;
 
 mod debug;
+mod gdb;
 mod erase_component;
 mod flash_component;
 mod flash_system;
@@ -46,6 +47,11 @@ enum Commands {
     Debug {
         #[clap(short, long, value_parser)]
         #[clap(short = 'c')]
+        app_config: String,
+    },
+    Gdb {
+        #[clap(short, long, value_parser)]
+        #[clap(short = 'g')]
         app_config: String,
     },
     FlashSystem {
@@ -99,6 +105,7 @@ fn main() -> Result<(), io::Error> {
             component_version,
         } => erase_component(serial_port, component_id, component_version, verbose),
         Commands::Debug { app_config } => debug(app_config, verbose),
+        Commands::Gdb { app_config } => gdb::gdb(app_config, verbose),
     }
     Ok(())
 }
