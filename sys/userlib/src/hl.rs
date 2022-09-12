@@ -596,25 +596,37 @@ where
     }
 }
 
+#[derive(Debug)]
+pub enum StateError {
+    NotAvailable,
+    Timeout,
+    BufferTooSmall,
+    RecvError,
+}
+
 pub fn get_state<'a, S, M>(
     buffer: &'a mut [u8],
     state: S,
     handler: impl FnOnce(S, &'a M),
-) -> Result<(), ()>
+) -> Result<(), StateError>
 where
     M: FromBytes + 'a,
 {
     // Check if state exists
     if !crate::kipc::get_state_availability() {
-        return Err(());
+        return Err(StateError::NotAvailable);
     }
     // Launch the timer
-    sys_set_timer(Some(30000), INTERNAL_TIMER_NOTIFICATION);
+    sys_set_timer(
+        Some(sys_get_timer().now + 10000),
+        INTERNAL_TIMER_NOTIFICATION,
+    );
     // Receive the message
-    let rm = sys_recv(buffer, INTERNAL_TIMER_NOTIFICATION, None).map_err(|_| ())?;
+    let rm =
+        sys_recv(buffer, INTERNAL_TIMER_NOTIFICATION, None).map_err(|_| StateError::RecvError)?;
     if rm.sender == TaskId::KERNEL {
         // It's the timer, abort
-        return Err(());
+        return Err(StateError::Timeout);
     } else {
         // Cancel the timer
         sys_set_timer(None, INTERNAL_TIMER_NOTIFICATION);
@@ -626,10 +638,24 @@ where
             lease_count: rm.lease_count,
         };
         // Parse as requested
-        let (data, _caller) = m.fixed::<M, ()>().ok_or(())?;
+        let (data, _caller) = m.fixed::<M, ()>().ok_or(StateError::BufferTooSmall)?;
         handler(state, data);
         Ok(())
     }
+}
+
+pub fn transfer_state<M>(state: M) -> !
+where
+    M: AsBytes,
+{
+    sys_send(
+        TaskId(crate::UPDATE_TEMP_ID),
+        0u16,
+        state.as_bytes(),
+        &mut [],
+        &[],
+    );
+    panic!();
 }
 
 /// Suspends the calling task until the kernel time is `>= time`.

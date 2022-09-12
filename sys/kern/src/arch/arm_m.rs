@@ -327,8 +327,8 @@ pub fn force_task_update_handler(task: &mut task::Task) {
     frame.base.pc = update_handler;
 }
 
-pub fn mark_task_dying(task: &mut task::Task) {
-    task.set_dying_at(now());
+pub fn mark_task_update(task: &mut task::Task) {
+    task.set_update_since(now());
 }
 
 pub fn apply_memory_protection(task: &task::Task) {

@@ -1,11 +1,14 @@
 use crate::{
-    flash::FlashReader, startup::with_irq_table, sys_log, task::Task,
+    flash::FlashReader,
+    startup::with_irq_table,
+    sys_log,
+    task::Task,
     utils::{get_task, get_task_mut},
 };
 use abi::{
     flash::BlockType, u32_from_le_bytes_raw, InterruptOwner, RegionAttributes,
-    RegionDescriptor, TaskDescriptor, HUBRIS_MAX_IRQS,
-    HUBRIS_MAX_SUPPORTED_TASKS, REGIONS_PER_TASK, TaskFlags,
+    RegionDescriptor, TaskDescriptor, TaskFlags, HUBRIS_MAX_IRQS,
+    HUBRIS_MAX_SUPPORTED_TASKS, REGIONS_PER_TASK,
 };
 use flash_allocator::flash::{walker::FlashWalkerImpl, FlashBlock};
 use hbf_lite::{BufferReaderImpl, HbfFile};
@@ -242,20 +245,14 @@ pub fn load_component_at(
             let interrupt = old_task.descriptor().interrupt_nth(interrupt_num);
             irq_map.remove(&interrupt.irq_num).unwrap();
         }
-        // Check if it can support state transfer
-        //can_state_transfer = old_task.begin_state_transfer();
+        // If the old component support it, now it can state transfer.
+        // Otherwise is simply stopped.
         old_task.begin_state_transfer();
     }
-    let new_id = abi::UPDATE_TEMP_ID;
-    //if !can_state_transfer {
-        // Kill the old component, if exists
-    //    task_map.remove(&nominal_id);
-    //    new_id = nominal_id;
-    //} else {
-    //    task.set_temp_id();
-    //}
-    task.set_temp_id();
+    // Initialize the task for update
+    task.begin_update();
     // Actually add the component to the map
+    let new_id = abi::UPDATE_TEMP_ID;
     let res = add_task_to_system(task_map, irq_map, task, new_id);
     if res.is_ok() {
         // Initialize task
@@ -285,7 +282,7 @@ pub fn revert_update(
     });
     // Cancel the new one
     task_map.remove(&abi::UPDATE_TEMP_ID).unwrap_lite();
-    
+
     // Get the old one
     let old_task = task_map.get_mut(&nominal_id);
     if old_task.is_none() {
@@ -310,7 +307,11 @@ pub fn revert_update(
     // Reset the old one
     let old_task = get_task_mut(task_map, nominal_id);
     old_task.reinitialize();
-    if old_task.descriptor().flags().contains(TaskFlags::START_AT_BOOT) {
+    if old_task
+        .descriptor()
+        .flags()
+        .contains(TaskFlags::START_AT_BOOT)
+    {
         old_task.set_healthy_state(abi::SchedState::Runnable);
     }
 }

@@ -9,7 +9,8 @@ use core::convert::TryFrom;
 use abi::{
     FaultInfo, FaultSource, Generation, Priority, RegionAttributes,
     RegionDescriptor, ReplyFaultReason, SchedState, TaskDescriptor, TaskFlags,
-    TaskId, TaskState, ULease, UsageError,REGIONS_PER_TASK,HUBRIS_MAX_SUPPORTED_TASKS
+    TaskId, TaskState, ULease, UsageError, HUBRIS_MAX_SUPPORTED_TASKS,
+    REGIONS_PER_TASK,
 };
 use heapless::{FnvIndexMap, Vec};
 use zerocopy::FromBytes;
@@ -64,7 +65,7 @@ pub struct Task {
     /// in order to allow state transfer.
     update_handler: Option<u32>,
 
-    dying_since: Option<Timestamp>
+    update_since: Option<Timestamp>,
 }
 
 impl Task {
@@ -73,7 +74,7 @@ impl Task {
     pub fn from_descriptor(
         descriptor: &TaskDescriptor,
         region_table: &Vec<RegionDescriptor, REGIONS_PER_TASK>,
-        data_section: &'static [u8]
+        data_section: &'static [u8],
     ) -> Self {
         // Create a new instance
         let mut task = Task {
@@ -92,7 +93,7 @@ impl Task {
             save: crate::arch::SavedState::default(),
             timer: crate::task::TimerState::default(),
             update_handler: None,
-            dying_since: None
+            update_since: None,
         };
         // Append all the regions
         for r in region_table {
@@ -308,7 +309,7 @@ impl Task {
         self.timer = TimerState::default();
         self.notifications = 0;
         self.state = TaskState::default();
-        self.dying_since = None;
+        self.update_since = None;
 
         crate::arch::reinitialize(self);
     }
@@ -325,17 +326,6 @@ impl Task {
         TaskId::for_id_and_gen(self.component_id, self.generation())
     }
 
-    pub fn set_temp_id(&mut self) {
-        self.component_id = abi::UPDATE_TEMP_ID;
-        self.generation = 0;
-    }
-
-    pub fn set_nominal_id(&mut self) {
-        self.component_id = self.descriptor.component_id();
-        // To be sure, also invalidate syscalls
-        self.generation = self.generation.wrapping_add(1);
-    }
-
     pub fn set_update_handler(&mut self, update_handler: u32) {
         self.update_handler = Some(update_handler);
     }
@@ -344,24 +334,43 @@ impl Task {
         self.update_handler
     }
 
-    pub fn set_dying_at(&mut self, time: Timestamp) {
-        self.dying_since = Some(time);
-    }
-
-    pub fn is_dying(&self) -> &Option<Timestamp> {
-        &self.dying_since
-    }
-
-    pub fn begin_state_transfer(&mut self) -> bool {
-        // Mark the task as dying
-        crate::arch::mark_task_dying(self);
-        // Regardless on the state of the component, enter the update handler.
-        // We could panic instead of the if under here
+    pub fn begin_state_transfer(&mut self) {
+        // Enter the update handler if one exists
         if self.update_handler.is_some() {
+            self.timer = TimerState::default();
             crate::arch::force_task_update_handler(self);
-            return true;
+            // Immediately enter in run, if not faulted
+            match self.state {
+                TaskState::Healthy(_) => self.state = TaskState::Healthy(SchedState::Runnable),
+                _ => {}
+            }
+        } else {
+            // Stop the component otherwise
+            self.state = TaskState::Faulted {
+                fault: FaultInfo::Injected(abi::TaskId(0)),
+                original_state: SchedState::Runnable,
+            }
         }
-        return false;
+    }
+
+    pub fn begin_update(&mut self) {
+        self.component_id = abi::UPDATE_TEMP_ID;
+        self.generation = 0;
+        crate::arch::mark_task_update(self);
+    }
+
+    pub fn set_update_since(&mut self, time: Timestamp) {
+        self.update_since = Some(time);
+    }
+
+    pub fn is_still_update(&self) -> &Option<Timestamp> {
+        &self.update_since
+    }
+
+    pub fn end_update(&mut self) {
+        self.component_id = self.descriptor.component_id();
+        self.generation = 0; // For now, we may want to change it later
+        self.update_since = None;
     }
 
     /// Returns a reference to the `TaskDesc` that was used to initially create
@@ -373,7 +382,7 @@ impl Task {
     /// Returns a reference to the task's memory region descriptor table.
     pub fn region_table(
         &self,
-    ) -> &Vec<RegionDescriptor, {abi::REGIONS_PER_TASK}> {
+    ) -> &Vec<RegionDescriptor, { abi::REGIONS_PER_TASK }> {
         &self.region_table
     }
 
@@ -806,14 +815,16 @@ pub fn process_timers(
     for (cid, task) in tasks.iter_mut() {
         // Check for dying tasks
         if !task_revert {
-            match task.is_dying() {
+            match task.is_still_update() {
                 Some(at) => {
-                    if current_time - *at > Timestamp::from(abi::REVERT_UPDATE_TIMEOUT) {
+                    if current_time - *at
+                        > Timestamp::from(abi::REVERT_UPDATE_TIMEOUT)
+                    {
                         task_revert = true;
                         sched_hint = NextTask::Other;
                         continue; // Do not process deadlines for this task
                     }
-                },
+                }
                 _ => {}
             }
         }

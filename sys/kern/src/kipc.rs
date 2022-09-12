@@ -12,6 +12,7 @@ use unwrap_lite::UnwrapLite;
 use crate::err::UserError;
 use crate::startup::with_irq_table;
 use crate::structures::load_component_at;
+use crate::sys_log;
 use crate::task::{ArchState, NextTask, Task};
 use crate::umem::USlice;
 use crate::utils::{get_task, get_task_mut};
@@ -223,6 +224,7 @@ fn set_update_handler(
     // Read the handler address
     let handler_address: u32 =
         deserialize_message(get_task(tasks, caller_id), message)?;
+    sys_log!("Set update handler for {}", caller_id);
     // Set the new handler
     get_task_mut(tasks, caller_id).set_update_handler(handler_address);
     // Respond to the task
@@ -237,11 +239,20 @@ fn get_state_availability(
     tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
     caller_id: u16,
 ) -> Result<NextTask, UserError> {
+    let mut state_available: bool = false;
+    let nominal_id = get_task(tasks, caller_id).descriptor().component_id();
+    // Search for the nominal component ID
+    let task = tasks.get(&nominal_id);
+    if task.is_some() {
+        if task.unwrap_lite().get_update_handler().is_some() {
+            state_available = true;
+        }
+    }
     // The state exists only if we gave this component a temp id
     get_task_mut(tasks, caller_id)
         .save_mut()
         .set_send_response_and_length(
-            (caller_id == abi::UPDATE_TEMP_ID) as u32,
+            state_available as u32,
             0,
         );
     return Ok(NextTask::Same);
@@ -263,13 +274,17 @@ fn activate_task(
     // Read the nominal id of the task
     let nominal_id = get_task(tasks, caller_id).descriptor().component_id();
 
-    // Here we just removed IRQs from the old task, just delete it and change the ID
-    // to the new task
-    tasks.remove(&nominal_id).unwrap_lite();
-
+    let old_task = tasks.get(&nominal_id);
+    if old_task.is_some() {
+        // Here we just removed IRQs from the old task, just delete it and use the ID
+        // for the new task
+        tasks.remove(&nominal_id).unwrap_lite();
+    }
+    
     let mut task = tasks.remove(&abi::UPDATE_TEMP_ID).unwrap_lite();
+    // Switch the mode on the task
+    task.end_update();
     // Add again the task
-    task.set_nominal_id();
     tasks.insert(nominal_id, task).unwrap_lite();
     // Redirect all IRQs
     with_irq_table(|irq_map| {
