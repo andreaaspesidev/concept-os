@@ -25,6 +25,7 @@ use abi::{InterruptOwner, HUBRIS_MAX_IRQS, HUBRIS_MAX_SUPPORTED_TASKS};
 static TASK_TABLE_IN_USE: AtomicBool = AtomicBool::new(true);
 
 pub const HUBRIS_FAULT_NOTIFICATION: u32 = 1;
+pub const HUBRIS_STORAGE_ANALYZE_NOTIFICATION: u32 = 1;
 
 // These new structures becomes defined in the kernel, instead of being
 // generated during build process.

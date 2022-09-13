@@ -1236,7 +1236,14 @@ pub fn finalize_block(block_base_address: u32) -> Result<(), ()> {
     >(flash_methods, block)
 }
 
-pub unsafe fn dismiss_block(block: FlashBlock) -> Result<(),()> {
+pub unsafe fn dismiss_block(block_base_address: u32) -> Result<(), ()> {
+    // Get the block
+    let block = get_flash_block(
+        block_base_address,
+        false,
+    )
+    .unwrap_lite();
+    // Mark the block
     let flash_methods = get_flash_interface();
     unsafe {
         flash_allocator::flash::utils::mark_block_dismissed::<

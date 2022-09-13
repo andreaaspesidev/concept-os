@@ -11,10 +11,10 @@ use abi::{
 use unwrap_lite::UnwrapLite;
 
 use crate::err::UserError;
-use crate::startup::with_irq_table;
+use crate::startup::{with_irq_table, HUBRIS_STORAGE_ANALYZE_NOTIFICATION};
 use crate::structures::load_component_at;
 use crate::sys_log;
-use crate::task::{ArchState, NextTask, Task};
+use crate::task::{ArchState, NextTask, NotificationSet, Task};
 use crate::umem::USlice;
 use crate::utils::{get_task, get_task_mut};
 use heapless::FnvIndexMap;
@@ -276,6 +276,7 @@ fn activate_task(
             .set_send_response_and_length(0, 0);
         return Ok(NextTask::Same);
     }
+    let mut next_hint = NextTask::Other;
     // Read the nominal id of the task
     let nominal_id = get_task(tasks, caller_id).descriptor().component_id();
 
@@ -286,7 +287,19 @@ fn activate_task(
         old_generation = Some(old_task.unwrap_lite().generation().next());
         // Here we just removed IRQs from the old task, just delete it and use the ID
         // for the new task
-        tasks.remove(&nominal_id).unwrap_lite();
+        let old_task = tasks.remove(&nominal_id).unwrap_lite();
+        // Mark the corresponding block for removal
+        unsafe {
+            crate::arch::dismiss_block(
+                old_task.descriptor().get_descriptor_block(),
+            ).unwrap_lite();
+        }
+        // Immediately schedule the block for removal
+        let storage_awoken = get_task_mut(tasks, abi::STORAGE_ID)
+            .post(NotificationSet(HUBRIS_STORAGE_ANALYZE_NOTIFICATION));
+        if storage_awoken {
+            next_hint = NextTask::Specific(abi::STORAGE_ID);
+        }
     }
 
     let mut task = tasks.remove(&abi::UPDATE_TEMP_ID).unwrap_lite();
@@ -312,7 +325,7 @@ fn activate_task(
         .unwrap_lite();
     // To be sure, schedule another task after this.
     // In fact, the CURRENT_TASK_PTR is now pointing to a wrong memory area
-    Ok(NextTask::Other)
+    Ok(next_hint)
 }
 
 fn load_component(

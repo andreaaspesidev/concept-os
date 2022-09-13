@@ -26,11 +26,17 @@ pub fn populate_kernel_structures(
             // Mark as dismissed, will be cleaned from the storage component
             // when it starts
             unsafe {
-                if crate::arch::dismiss_block(b).is_err() {
-                    panic!("Cannot dismiss non finalized block at: {}", b.get_base_address());
+                if crate::arch::dismiss_block(b.get_base_address()).is_err() {
+                    panic!(
+                        "Cannot dismiss non finalized block at: {}",
+                        b.get_base_address()
+                    );
                 }
             }
-            sys_log!("Dismissed non finalized block found at: {}", b.get_base_address());
+            sys_log!(
+                "Dismissed non finalized block found at: {}",
+                b.get_base_address()
+            );
             continue;
         }
         // Look into only finalized blocks of components
@@ -173,12 +179,14 @@ fn add_task_to_system(
     if search_result.is_some() {
         // Check the versions, if this is newer let's override everything
         let other_task = search_result.unwrap_lite();
-        if task.descriptor().component_version() > other_task.descriptor().component_version() {
+        if task.descriptor().component_version()
+            > other_task.descriptor().component_version()
+        {
             // Delete the old task
             remove_task_from_system(task_map, irq_map, use_id);
         } else {
             // Ignore this task
-            return Ok(());  // TODO: maybe an error is better here?
+            return Ok(()); // TODO: maybe an error is better here?
         }
     }
     // Add the IRQs managed by this component
@@ -228,7 +236,8 @@ pub fn load_component_at(
     block_base_address: u32,
 ) -> Result<(), LoadError> {
     // Try to read this header (already checked for addresses)
-    let block_header_search = crate::arch::get_flash_block(block_base_address, false);
+    let block_header_search =
+        crate::arch::get_flash_block(block_base_address, false);
     if block_header_search.is_none() {
         return Err(LoadError::InvalidBlock);
     }

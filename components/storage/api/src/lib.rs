@@ -2,13 +2,8 @@
 
 use core::cell::Cell;
 
-use userlib::{flash::BlockType, hl, FromPrimitive, Lease, TaskId};
+use userlib::{flash::BlockType, hl, FromPrimitive, Lease, TaskId, STORAGE_ID};
 use zerocopy::{AsBytes, FromBytes};
-
-/**
- * Constants
- */
-const STORAGE_TASK_ID: TaskId = TaskId(4);
 
 /**
  * Error Type
@@ -204,7 +199,7 @@ pub struct Storage(Cell<TaskId>);
 impl Storage {
     pub fn new() -> Self {
         Self {
-            0: Cell::new(STORAGE_TASK_ID),
+            0: Cell::new(TaskId(STORAGE_ID)),
         }
     }
     pub fn allocate_component(

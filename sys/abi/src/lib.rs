@@ -20,6 +20,7 @@ pub const HUBRIS_MAX_SUPPORTED_TASKS: usize = 8;
 pub const HUBRIS_MAX_IRQS: usize = 16;
 
 pub const SUPERVISOR_ID: u16 = 0;
+pub const STORAGE_ID: u16 = 4;
 pub const UPDATE_TEMP_ID: u16 = 1023;
 pub const REVERT_UPDATE_TIMEOUT: u64 = 30_000;
 

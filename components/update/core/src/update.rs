@@ -20,7 +20,9 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
     // Read hbf
     let hbf_reader = BufferReaderImpl::from(fhm.get_raw());
     let hbf = hbf_lite::HbfFile::from_reader(&hbf_reader).unwrap(); // Already validated
-                                                                    // Get needed space
+    // Validate versions
+
+    // Get needed space
     let needed_flash = wrap_hbf_error(hbf.header_base())?.total_size();
     let needed_ram = wrap_hbf_error(hbf.header_main())?.component_min_ram();
     // Request the allocation
@@ -346,6 +348,20 @@ where
     }
 
     Ok(())
+}
+
+fn validate_update_version(component_id: u16, update_version: u32, storage: &mut Storage) -> bool {
+    // Start by searching this component
+    // We are sure only one version exists, because we erase old versions!
+    let search_result = search_component(component_id, None, &storage);
+    if search_result.is_err() {
+        return true;
+    }
+    let result = search_result.unwrap();
+    if result.component_version >= update_version {
+        return false;
+    }
+    return true;
 }
 
 /**

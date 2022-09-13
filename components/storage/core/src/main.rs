@@ -20,12 +20,16 @@ use storage_api::{
 };
 use userlib::{flash::BlockType, hl::Borrow, *};
 
+const STORAGE_ANALYZE_MASK: u32 = 0x0000_0000_0000_0001;
+
 #[export_name = "main"]
 fn main() -> ! {
     // Activate task
     kipc::activate_task();
+    // Always analyze storage on start-up
+    analyze_storage();
     // Message handler
-    let recv_handler = |op: Operation, msg: hl::Message| -> Result<(), StorageError> {
+    let recv_handler = |_s: (), op: Operation, msg: hl::Message| -> Result<(), StorageError> {
         match op {
             Operation::AllocateComponent => {
                 // Parse message
@@ -154,9 +158,29 @@ fn main() -> ! {
     // Main loop
     loop {
         // Wait for a command
-        // TODO: implement notification as it could be a message from the OS
-        hl::recv_without_notification(&mut buffer, recv_handler);
+        hl::recv(&mut buffer, STORAGE_ANALYZE_MASK, (), |_s, bits| {
+            // Check we got the right one
+            if bits & STORAGE_ANALYZE_MASK > 0 {
+                // The kernel indirectly asks to erase a block or validate storage
+                analyze_storage();
+            }
+        },recv_handler);
     }
+}
+
+fn analyze_storage() {
+    // Instantiate the flash operators
+    let mut flash = Flash::<FLASH_START_ADDR, FLASH_PAGE_SIZE, FLASH_END_ADDR>::new();
+    // Perform storage analysis
+    FlashAllocatorImpl::<
+        FLASH_ALLOCATOR_START_ADDR,
+        FLASH_ALLOCATOR_END_ADDR,
+        FLASH_ALLOCATOR_START_SCAN_ADDR,
+        FLASH_BLOCK_SIZE,
+        FLASH_NUM_BLOCKS,
+        FLASH_NUM_SLOTS,
+        FLASH_FLAG_SIZE,
+    >::analyze_storage(&mut flash);
 }
 
 fn generate_status() -> Result<ReportStatusResponse, StorageError> {
@@ -379,7 +403,7 @@ fn flash_allocate(requested_size: u32) -> Result<(u32, u32), StorageError> {
         FLASH_NUM_BLOCKS,
         FLASH_NUM_SLOTS,
         FLASH_FLAG_SIZE,
-    >::from_flash(&mut flash);
+    >::from_flash(&mut flash, true);
     // Get the address
     let result = allocator.allocate(requested_size);
     if result.is_ok() {
@@ -403,7 +427,7 @@ fn flash_deallocate(base_address: u32) -> Result<(), StorageError> {
         FLASH_NUM_BLOCKS,
         FLASH_NUM_SLOTS,
         FLASH_FLAG_SIZE,
-    >::from_flash(&mut flash);
+    >::from_flash(&mut flash, true);
     // Get the address
     if allocator.deallocate(base_address).is_ok() {
         Ok(())
