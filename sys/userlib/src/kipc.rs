@@ -41,9 +41,9 @@ pub fn set_update_handler(handler: fn()) {
     assert_eq!(rc, 0);
 }
 
-pub fn get_state_availability() -> bool {
+pub fn get_state_availability() -> u16 {
     let (rc, _len) = sys_send(TaskId::KERNEL, 5, &[], &mut [], &[]);
-    return rc == 1;
+    return rc as u16;
 }
 
 pub fn activate_task() {

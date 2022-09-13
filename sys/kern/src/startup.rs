@@ -64,6 +64,7 @@ pub unsafe fn start_kernel(tick_divisor: u32) -> ! {
     // Safety: TODO it is not clear that this operation needs to be unsafe.
     unsafe {
         crate::arch::set_clock_freq(tick_divisor);
+        crate::arch::initialize_native();
     }
 
     // Load structures from flash

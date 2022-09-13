@@ -1,5 +1,4 @@
 use crate::{
-    flash::FlashReader,
     startup::with_irq_table,
     sys_log,
     task::Task,
@@ -10,7 +9,7 @@ use abi::{
     RegionDescriptor, TaskDescriptor, TaskFlags, HUBRIS_MAX_IRQS,
     HUBRIS_MAX_SUPPORTED_TASKS, REGIONS_PER_TASK,
 };
-use flash_allocator::flash::{walker::FlashWalkerImpl, FlashBlock};
+use flash_allocator::flash::FlashBlock;
 use hbf_lite::{BufferReaderImpl, HbfFile};
 use heapless::{FnvIndexMap, Vec};
 use unwrap_lite::UnwrapLite;
@@ -19,25 +18,20 @@ pub fn populate_kernel_structures(
     task_map: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
     irq_map: &mut FnvIndexMap<u32, InterruptOwner, HUBRIS_MAX_IRQS>,
 ) {
-    // For now, create a mock flash interface
-    let mut flash_methods =
-        FlashReader::<FLASH_ALLOCATOR_START_SCAN_ADDR, FLASH_END_ADDR>::new();
     // Get an iterator for the flash
-    let flash_walker = FlashWalkerImpl::<
-        FLASH_START_ADDR,
-        FLASH_END_ADDR,
-        FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
-        FLASH_FLAG_SIZE,
-    >::new(&mut flash_methods);
+    let flash_walker = crate::arch::get_flash_walker();
     // Iterate, to find HBFs
     for b in flash_walker {
         if !b.is_finalized() {
-            panic!("Non finalized block found at: {}", b.get_base_address());
-        }
-        if b.get_type() != BlockType::COMPONENT {
-            panic!("Non component block found at: {}", b.get_base_address());
+            // Mark as dismissed, will be cleaned from the storage component
+            // when it starts
+            unsafe {
+                if crate::arch::dismiss_block(b).is_err() {
+                    panic!("Cannot dismiss non finalized block at: {}", b.get_base_address());
+                }
+            }
+            sys_log!("Dismissed non finalized block found at: {}", b.get_base_address());
+            continue;
         }
         // Look into only finalized blocks of components
         if b.is_finalized() && b.get_type() == BlockType::COMPONENT {
@@ -149,15 +143,46 @@ fn process_hbf(
     Task::from_descriptor(&task_desc, &regions, data_section_slice)
 }
 
+fn remove_task_from_system(
+    task_map: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    irq_map: &mut FnvIndexMap<u32, InterruptOwner, HUBRIS_MAX_IRQS>,
+    task_id: u16,
+) {
+    // Start by flushing IRQs
+    let task_search = task_map.get(&task_id);
+    if task_search.is_none() {
+        return; // Simply ignore
+    }
+    let task = task_search.unwrap_lite();
+    for interrupt_num in 0..task.descriptor().num_interrupts() {
+        let interrupt = task.descriptor().interrupt_nth(interrupt_num);
+        irq_map.remove(&interrupt.irq_num).unwrap_lite();
+    }
+    // Remove the task
+    task_map.remove(&task_id).unwrap_lite();
+}
+
 fn add_task_to_system(
     task_map: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
     irq_map: &mut FnvIndexMap<u32, InterruptOwner, HUBRIS_MAX_IRQS>,
     task: Task,
     use_id: u16,
 ) -> Result<(), LoadError> {
+    // First, check if this component already exists
+    let search_result = task_map.get(&use_id);
+    if search_result.is_some() {
+        // Check the versions, if this is newer let's override everything
+        let other_task = search_result.unwrap_lite();
+        if task.descriptor().component_version() > other_task.descriptor().component_version() {
+            // Delete the old task
+            remove_task_from_system(task_map, irq_map, use_id);
+        } else {
+            // Ignore this task
+            return Ok(());  // TODO: maybe an error is better here?
+        }
+    }
     // Add the IRQs managed by this component
     let num_irqs = task.descriptor().num_interrupts();
-
     for interrupt_num in 0..num_irqs {
         let interrupt = task.descriptor().interrupt_nth(interrupt_num);
         // Append the IRQ
@@ -184,6 +209,7 @@ fn add_task_to_system(
     match task_map.insert(use_id, task) {
         Ok(old_val) => {
             if old_val.is_some() {
+                // Should be impossible, still
                 panic!("The specified ID already exists");
             }
         }
@@ -201,24 +227,8 @@ pub fn load_component_at(
     irq_map: &mut FnvIndexMap<u32, InterruptOwner, HUBRIS_MAX_IRQS>,
     block_base_address: u32,
 ) -> Result<(), LoadError> {
-    // Check if at this address we can find a valid block
-    if block_base_address < FLASH_ALLOCATOR_START_SCAN_ADDR
-        || block_base_address > FLASH_END_ADDR
-    {
-        return Err(LoadError::InvalidBlockPointer);
-    }
-    // For now, create a mock flash interface
-    let flash_methods =
-        FlashReader::<FLASH_ALLOCATOR_START_SCAN_ADDR, FLASH_END_ADDR>::new();
-    // Try to read this header
-    let block_header_search = flash_allocator::flash::utils::get_flash_block::<
-        FLASH_START_ADDR,
-        FLASH_END_ADDR,
-        FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
-        FLASH_FLAG_SIZE,
-    >(&flash_methods, block_base_address, false);
+    // Try to read this header (already checked for addresses)
+    let block_header_search = crate::arch::get_flash_block(block_base_address, false);
     if block_header_search.is_none() {
         return Err(LoadError::InvalidBlock);
     }
@@ -272,17 +282,10 @@ pub fn revert_update(
         return; // Ignore
     }
     let nominal_id = task_new.unwrap_lite().descriptor().component_id();
-    // Cancel all irqs of the new one
+    // Delete the new task
     with_irq_table(|irq_map| {
-        let task = get_task(task_map, abi::UPDATE_TEMP_ID);
-        for interrupt_num in 0..task.descriptor().num_interrupts() {
-            let interrupt = task.descriptor().interrupt_nth(interrupt_num);
-            irq_map.remove(&interrupt.irq_num).unwrap_lite();
-        }
+        remove_task_from_system(task_map, irq_map, abi::UPDATE_TEMP_ID);
     });
-    // Cancel the new one
-    task_map.remove(&abi::UPDATE_TEMP_ID).unwrap_lite();
-
     // Get the old one
     let old_task = task_map.get_mut(&nominal_id);
     if old_task.is_none() {
@@ -315,11 +318,3 @@ pub fn revert_update(
         old_task.set_healthy_state(abi::SchedState::Runnable);
     }
 }
-
-pub const FLASH_ALLOCATOR_START_SCAN_ADDR: u32 = 0x0804_0000;
-pub const FLASH_START_ADDR: u32 = 0x0804_0000;
-pub const FLASH_END_ADDR: u32 = 0x0807_FFFF;
-pub const FLASH_BLOCK_SIZE: usize = 2048;
-pub const FLASH_FLAG_SIZE: usize = 2; // 2 bytes
-pub const FLASH_NUM_SLOTS: usize = 7 + 1; // clog2(NUM_BLOCKS) + 1
-pub const FLASH_PAGE_SIZE: u32 = 2048;

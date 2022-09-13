@@ -5,7 +5,8 @@
 //! Implementation of IPC operations on the virtual kernel task.
 
 use abi::{
-    FaultInfo, SchedState, TaskState, UsageError, HUBRIS_MAX_SUPPORTED_TASKS,
+    FaultInfo, Generation, SchedState, TaskState, UsageError,
+    HUBRIS_MAX_SUPPORTED_TASKS,
 };
 use unwrap_lite::UnwrapLite;
 
@@ -239,20 +240,24 @@ fn get_state_availability(
     tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
     caller_id: u16,
 ) -> Result<NextTask, UserError> {
-    let mut state_available: bool = false;
+    let mut state_available: Option<u16> = None;
     let nominal_id = get_task(tasks, caller_id).descriptor().component_id();
     // Search for the nominal component ID
     let task = tasks.get(&nominal_id);
     if task.is_some() {
-        if task.unwrap_lite().get_update_handler().is_some() {
-            state_available = true;
+        let task_data = task.unwrap_lite();
+        if task_data.get_update_handler().is_some() {
+            state_available = Some(task_data.current_identifier().0);
         }
     }
-    // The state exists only if we gave this component a temp id
+    // Respond to the task
     get_task_mut(tasks, caller_id)
         .save_mut()
         .set_send_response_and_length(
-            state_available as u32,
+            match state_available {
+                Some(id) => id as u32,
+                None => 0,
+            },
             0,
         );
     return Ok(NextTask::Same);
@@ -275,15 +280,18 @@ fn activate_task(
     let nominal_id = get_task(tasks, caller_id).descriptor().component_id();
 
     let old_task = tasks.get(&nominal_id);
+    let mut old_generation: Option<Generation> = None;
     if old_task.is_some() {
+        // Before removing, save the generation
+        old_generation = Some(old_task.unwrap_lite().generation().next());
         // Here we just removed IRQs from the old task, just delete it and use the ID
         // for the new task
         tasks.remove(&nominal_id).unwrap_lite();
     }
-    
+
     let mut task = tasks.remove(&abi::UPDATE_TEMP_ID).unwrap_lite();
     // Switch the mode on the task
-    task.end_update();
+    task.end_update(old_generation);
     // Add again the task
     tasks.insert(nominal_id, task).unwrap_lite();
     // Redirect all IRQs
@@ -297,9 +305,11 @@ fn activate_task(
         }
     });
     // Alert the task
-    get_task_mut(tasks, nominal_id)
-        .save_mut()
-        .set_send_response_and_length(0, 0);
+    let task = get_task_mut(tasks, nominal_id);
+    task.save_mut().set_send_response_and_length(0, 0);
+    // Finalize block
+    crate::arch::finalize_block(task.descriptor().get_descriptor_block())
+        .unwrap_lite();
     // To be sure, schedule another task after this.
     // In fact, the CURRENT_TASK_PTR is now pointing to a wrong memory area
     Ok(NextTask::Other)

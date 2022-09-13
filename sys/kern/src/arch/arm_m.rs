@@ -70,8 +70,12 @@
 //! context switches, and just always do full save/restore, eliminating PendSV.
 //! We'll see.
 
-use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
 use core::arch::asm;
+use core::mem::MaybeUninit;
+use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
+use flash_allocator::flash::walker::FlashWalker;
+use flash_allocator::flash::{FlashBlock, FlashMethods};
+use stm32f303re::*;
 use zerocopy::FromBytes;
 
 use crate::atomic::AtomicExt;
@@ -280,10 +284,9 @@ pub fn reinitialize(task: &mut task::Task) {
     let mut data_uslice: USlice<u8> =
         USlice::from_raw(sram_region.base as usize, task.data_section().len())
             .unwrap_lite();
-            
+
     let data_section = task.data_section().clone();
     let data_raw = task.try_write(&mut data_uslice).unwrap_lite();
-    
 
     // Load .data in SRAM
     for i in 0..data_raw.len() {
@@ -321,7 +324,8 @@ pub fn force_task_update_handler(task: &mut task::Task) {
     let current_stack = task.save().psp;
     // The frame will be on top of the current stack pointer
     let frame_address = current_stack as usize;
-    let mut frame_uslice: USlice<ExtendedExceptionFrame> = USlice::from_raw(frame_address, 1).unwrap_lite();
+    let mut frame_uslice: USlice<ExtendedExceptionFrame> =
+        USlice::from_raw(frame_address, 1).unwrap_lite();
     // Let's write the new pc
     let frame = &mut task.try_write(&mut frame_uslice).unwrap_lite()[0];
     frame.base.pc = update_handler;
@@ -813,7 +817,7 @@ pub unsafe extern "C" fn DefaultHandler() {
         x if x >= 16 => {
             // Hardware interrupt
             let irq_num = exception_num - 16;
-            let irq_to_task = unsafe{&crate::startup::IRQ_TO_TASK};
+            let irq_to_task = unsafe { &crate::startup::IRQ_TO_TASK };
             let owner = irq_to_task
                 .get(&irq_num)
                 .unwrap_or_else(|| panic!("unhandled IRQ {}", irq_num));
@@ -1185,6 +1189,109 @@ impl AtomicExt for AtomicBool {
         self.swap(value, ordering)
     }
 }
+
+/**
+ * Flash methods.
+ * Masks the generics and the implementation details from the main kernel
+ * procedures.
+ */
+static mut FLASH_INTERFACE: MaybeUninit<
+    Flash<FLASH_START_ADDR, FLASH_PAGE_SIZE, FLASH_END_ADDR>,
+> = MaybeUninit::uninit();
+
+pub unsafe fn initialize_native() {
+    unsafe {
+        FLASH_INTERFACE.write(Flash::new());
+    }
+}
+
+pub fn get_flash_interface() -> &'static mut dyn FlashMethods<'static> {
+    unsafe { FLASH_INTERFACE.assume_init_mut() }
+}
+
+pub fn get_flash_block(
+    base_address: u32,
+    is_base_exact: bool,
+) -> Option<FlashBlock> {
+    let flash_methods = get_flash_interface();
+    flash_allocator::flash::utils::get_flash_block::<
+        FLASH_ALLOCATOR_START_ADDR,
+        FLASH_ALLOCATOR_END_ADDR,
+        FLASH_ALLOCATOR_START_SCAN_ADDR,
+        FLASH_NUM_SLOTS,
+        FLASH_BLOCK_SIZE,
+        FLASH_FLAG_SIZE,
+    >(flash_methods, base_address, is_base_exact)
+}
+
+pub fn finalize_block(block_base_address: u32) -> Result<(), ()> {
+    // First, try to get this block
+    let block = get_flash_block(block_base_address, false).ok_or(())?;
+    // Then, use the native utility
+    let flash_methods = get_flash_interface();
+    flash_allocator::flash::utils::finalize_block::<
+        FLASH_ALLOCATOR_START_ADDR,
+        FLASH_NUM_SLOTS,
+        FLASH_FLAG_SIZE,
+    >(flash_methods, block)
+}
+
+pub unsafe fn dismiss_block(block: FlashBlock) -> Result<(),()> {
+    let flash_methods = get_flash_interface();
+    unsafe {
+        flash_allocator::flash::utils::mark_block_dismissed::<
+            FLASH_ALLOCATOR_START_ADDR,
+            FLASH_NUM_SLOTS,
+            FLASH_FLAG_SIZE,
+        >(flash_methods, block)
+    }
+}
+
+pub struct FlashWalkerFacade {
+    native_walker: flash_allocator::flash::walker::FlashWalkerImpl<
+        'static,
+        'static,
+        FLASH_ALLOCATOR_START_ADDR,
+        FLASH_ALLOCATOR_END_ADDR,
+        FLASH_ALLOCATOR_START_SCAN_ADDR,
+        FLASH_NUM_SLOTS,
+        FLASH_BLOCK_SIZE,
+        FLASH_FLAG_SIZE,
+    >,
+}
+
+impl Iterator for FlashWalkerFacade {
+    type Item = FlashBlock;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.native_walker.next()
+    }
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.native_walker.nth(n)
+    }
+}
+
+impl FlashWalker for FlashWalkerFacade {
+    fn reset(&mut self) {
+        self.native_walker.reset();
+    }
+}
+
+pub fn get_flash_walker() -> FlashWalkerFacade {
+    let flash_methods = get_flash_interface();
+    let naive_walker = flash_allocator::flash::walker::FlashWalkerImpl::<
+        FLASH_ALLOCATOR_START_ADDR,
+        FLASH_ALLOCATOR_END_ADDR,
+        FLASH_ALLOCATOR_START_SCAN_ADDR,
+        FLASH_NUM_SLOTS,
+        FLASH_BLOCK_SIZE,
+        FLASH_FLAG_SIZE,
+    >::new(flash_methods);
+    FlashWalkerFacade {
+        native_walker: naive_walker,
+    }
+}
+
+// Other constant
 
 pub const EXC_RETURN_CONST: u32 = 0xFFFFFFED; // Unsafe
 

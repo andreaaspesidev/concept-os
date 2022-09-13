@@ -367,9 +367,15 @@ impl Task {
         &self.update_since
     }
 
-    pub fn end_update(&mut self) {
+    pub fn end_update(&mut self, generation: Option<Generation>) {
         self.component_id = self.descriptor.component_id();
-        self.generation = 0; // For now, we may want to change it later
+        match generation {
+            Some(gen) => {
+                let gen_number: u8 = gen.into();
+                self.generation = gen_number as u32
+            }, // We may want to inform that something has changed
+            None => self.generation = 0
+        }
         self.update_since = None;
     }
 

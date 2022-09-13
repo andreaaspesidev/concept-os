@@ -14,7 +14,7 @@ use zerocopy::{AsBytes, FromBytes, LayoutVerified};
 
 use crate::{
     sys_borrow_info, sys_borrow_read, sys_borrow_write, sys_get_timer, sys_recv, sys_recv_closed,
-    sys_recv_open, sys_reply, sys_send, sys_set_timer, BorrowInfo, ClosedRecvError, FromPrimitive,
+    sys_recv_open, sys_reply, sys_send, sys_set_timer, BorrowInfo, ClosedRecvError, FromPrimitive, Lease,
 };
 
 const INTERNAL_TIMER_NOTIFICATION: u32 = 1 << 31;
@@ -555,7 +555,7 @@ where
 /// If the server sends back a successful response that is the wrong size for
 /// `M::Response`. This indicates a serious bug, so it's not something we would
 /// make every client handle every time by returning an `Err`.
-pub fn send_with_retry<M>(target: &Cell<TaskId>, message: &M) -> Result<M::Response, M::Err>
+pub fn send_with_retry<M>(target: &Cell<TaskId>, message: &M, leases: &[Lease]) -> Result<M::Response, M::Err>
 where
     M: Call,
 {
@@ -574,7 +574,7 @@ where
 
     loop {
         let last_target = target.get();
-        let (code, rlen) = sys_send(last_target, M::OP, message.as_bytes(), rslice, &[]);
+        let (code, rlen) = sys_send(last_target, M::OP, message.as_bytes(), rslice, leases);
 
         if code == 0 {
             if rlen == core::mem::size_of_val(&response) {
@@ -613,7 +613,8 @@ where
     M: FromBytes + 'a,
 {
     // Check if state exists
-    if !crate::kipc::get_state_availability() {
+    let origin = crate::kipc::get_state_availability();
+    if origin == 0 {
         return Err(StateError::NotAvailable);
     }
     // Launch the timer
@@ -622,8 +623,8 @@ where
         INTERNAL_TIMER_NOTIFICATION,
     );
     // Receive the message
-    let rm =
-        sys_recv(buffer, INTERNAL_TIMER_NOTIFICATION, None).map_err(|_| StateError::RecvError)?;
+    let rm = sys_recv(buffer, INTERNAL_TIMER_NOTIFICATION, Some(TaskId(origin)))
+        .map_err(|_| StateError::RecvError)?;
     if rm.sender == TaskId::KERNEL {
         // It's the timer, abort
         return Err(StateError::Timeout);

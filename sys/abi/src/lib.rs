@@ -93,6 +93,12 @@ impl From<u8> for Generation {
     }
 }
 
+impl Into<u8> for Generation {
+    fn into(self) -> u8 {
+        self.0
+    }
+}
+
 /// Indicates priority of a task.
 ///
 /// Priorities are small numbers starting from zero. Numerically lower
@@ -128,6 +134,9 @@ impl TaskDescriptor {
         Self {
             block_start_address: block_start_address,
         }
+    }
+    pub fn get_descriptor_block(&self) -> u32 {
+        self.block_start_address
     }
     pub fn component_id(&self) -> u16 {
         unsafe { u16_from_le_bytes_raw(self.block_start_address + 8 + 0x0A) }
