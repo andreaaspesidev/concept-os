@@ -532,6 +532,45 @@ pub mod utils {
 
         Ok(())
     }
+
+    /// Sets the flag on a flash block
+    pub unsafe fn mark_block_dismissed<'a, const START_ADDR: u32, const NUM_SLOTS: usize, const FLAG_BYTES: usize>(
+        flash: &mut dyn FlashMethods<'a>,
+        block: FlashBlock
+    ) -> Result<(), ()>
+    where
+        [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
+    {
+        // Read again the header to be safe
+        let block_base_addr =
+            block.get_base_address() - BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32;
+        let curr_header = self::read_block_header::<FLAG_BYTES, START_ADDR, NUM_SLOTS>(
+            flash,
+            block_base_addr - START_ADDR,
+        );
+
+        // Check if this operation is possible
+        if !curr_header.is_allocated() || curr_header.is_dismissed() {
+            return Err(());
+        }
+
+        // Generating the new header
+        let header = BlockHeader::<FLAG_BYTES>::write_buffer(
+            true,
+            true,
+            curr_header.is_finalized(),
+            curr_header.block_level(),
+            curr_header.block_type(),
+        );
+        // Writing new header
+        for i in 0..header.len() {
+            flash.write(block_base_addr + i as u32, header[i]).unwrap();
+        }
+        // Always flush after an header or flag
+        flash.flush_write_buffer().unwrap();
+
+        Ok(())
+    }
 }
 /// Interface for interacting with flash memory.
 pub trait FlashMethods<'a> {
