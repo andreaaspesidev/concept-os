@@ -1,6 +1,11 @@
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
 #![no_std]
 
-use stm32f3::stm32f303 as device;
+mod generic;
+pub use self::generic::*;
+pub mod device;
+
 use flash_allocator::flash::{page::FlashPage, FlashMethods};
 
 /**

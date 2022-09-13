@@ -3,10 +3,16 @@ name = "stm32f303re"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+rt = ["cortex-m-rt/device"]
+
 [dependencies]
 flash_allocator = {path = "../../libs/flash_allocator"}
 static_assertions = "1.1.0"
+bare-metal = "1.0.0"
+cortex-m = "0.7.2"
+vcell = "0.1.3"
 
-[dependencies.stm32f3]
-version = "0.15.1"
-features = ["stm32f303", "rt"]
+[dependencies.cortex-m-rt]
+version = ">=0.6.15,<0.8"
+optional = true
