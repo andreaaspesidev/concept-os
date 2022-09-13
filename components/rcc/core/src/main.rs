@@ -5,7 +5,7 @@ use rcc_api::*;
 
 // STM32F3
 #[cfg(feature = "stm32f303re")]
-use stm32f3::stm32f303 as device;
+use stm32f303re::device as device;
 
 use userlib::*;
 use zerocopy::AsBytes;
@@ -30,6 +30,8 @@ macro_rules! clear_bits {
 
 #[export_name = "main"]
 fn main() -> ! {
+    // Activate task
+    kipc::activate_task();
     // From thin air, pluck a pointer to the RCC register block.
     //
     // Safety: this is needlessly unsafe in the API. The RCC is essentially a

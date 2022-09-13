@@ -7,7 +7,7 @@
 
 // We have to do this if we don't otherwise use it to ensure its vector table
 // gets linked in.
-extern crate stm32f3;
+extern crate stm32f303re;
 extern crate panic_itm;
 
 use cortex_m_rt::entry;
@@ -17,8 +17,8 @@ fn main() -> ! {
     const CYCLES_PER_MS: u32 = 72_000; //8_000;
 
     // Turn up clock speed to maximum allowed
-    let rcc = unsafe { &*stm32f3::stm32f303::RCC::ptr() };
-    let flash = unsafe { &*stm32f3::stm32f303::FLASH::ptr() };
+    let rcc = unsafe { &*stm32f303re::device::RCC::ptr() };
+    let flash = unsafe { &*stm32f303re::device::FLASH::ptr() };
 
     // --> Configure oscillators
     rcc.cr.modify(|_, w| w.hsion().set_bit()); // Turn on internal oscillator (should be already on)

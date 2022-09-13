@@ -1,6 +1,8 @@
 #![no_std]
 
-use userlib::{sys_send, FromPrimitive, Lease, TaskId};
+use core::cell::Cell;
+
+use userlib::{hl, FromPrimitive, Lease, TaskId};
 use zerocopy::{AsBytes, FromBytes};
 
 /**
@@ -46,11 +48,36 @@ pub enum Operation {
     TransmitTimed = 4,
 }
 
+#[derive(FromBytes, AsBytes)]
+#[repr(C)]
+pub struct WriteBlockRequest {}
+
+impl hl::Call for WriteBlockRequest {
+    const OP: u16 = Operation::WriteBlock as u16;
+    type Response = ();
+    type Err = ChannelError;
+}
+
+#[derive(FromBytes, AsBytes)]
+#[repr(C)]
+pub struct ReadBlockRequest {}
+
+impl hl::Call for ReadBlockRequest {
+    const OP: u16 = Operation::ReadBlock as u16;
+    type Response = ();
+    type Err = ChannelError;
+}
+
 // ReadBlockTimed
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
 pub struct ReadBlockTimedRequest {
     pub timeout_ticks: u32,
+}
+impl hl::Call for ReadBlockTimedRequest {
+    const OP: u16 = Operation::ReadBlockTimed as u16;
+    type Response = ();
+    type Err = ChannelError;
 }
 
 // TransmitTimed
@@ -59,66 +86,43 @@ pub struct ReadBlockTimedRequest {
 pub struct TransmitTimedRequest {
     pub timeout_ticks: u32,
 }
+impl hl::Call for TransmitTimedRequest {
+    const OP: u16 = Operation::TransmitTimed as u16;
+    type Response = ();
+    type Err = ChannelError;
+}
 
 /**
  * Single transmitter - Receiver interface
  * for USART2
  */
-pub struct UartChannel();
+pub struct UartChannel(Cell<TaskId>);
 
 impl UartChannel {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            0: Cell::new(UART_CHANNEL_ID),
+        }
     }
 
     pub fn write_block(&mut self, data: &[u8]) -> Result<(), ChannelError> {
-        let (code, _) = sys_send(
-            UART_CHANNEL_ID,
-            Operation::WriteBlock as u16,
-            &[],
-            &mut [],
-            &[Lease::read_only(data)],
-        );
-        if code == 0 {
-            Ok(())
-        } else {
-            return Err(ChannelError::from(code));
-        }
+        hl::send_with_retry(&self.0, &WriteBlockRequest {}, &[Lease::read_only(data)])
     }
     pub fn read_block(&mut self, data: &mut [u8]) -> Result<(), ChannelError> {
-        let (code, _) = sys_send(
-            UART_CHANNEL_ID,
-            Operation::ReadBlock as u16,
-            &[],
-            &mut [],
-            &[Lease::write_only(data)],
-        );
-        if code == 0 {
-            Ok(())
-        } else {
-            return Err(ChannelError::from(code));
-        }
+        hl::send_with_retry(&self.0, &ReadBlockRequest {}, &[Lease::write_only(data)])
     }
     pub fn read_block_timed(
         &mut self,
         data: &mut [u8],
         timeout_ticks: u32,
     ) -> Result<(), ChannelError> {
-        let message = &ReadBlockTimedRequest {
-            timeout_ticks: timeout_ticks,
-        };
-        let (code, _) = sys_send(
-            UART_CHANNEL_ID,
-            Operation::ReadBlockTimed as u16,
-            message.as_bytes(),
-            &mut [],
+        hl::send_with_retry(
+            &self.0,
+            &ReadBlockTimedRequest {
+                timeout_ticks: timeout_ticks,
+            },
             &[Lease::write_only(data)],
-        );
-        if code == 0 {
-            Ok(())
-        } else {
-            return Err(ChannelError::from(code));
-        }
+        )
     }
     /// New method that allow transmitting data while first setting up the system for reception.
     /// This is especially useful when dealing with quick responses, that could be missed for
@@ -129,20 +133,12 @@ impl UartChannel {
         data_in: &mut [u8],
         timeout_ticks: u32,
     ) -> Result<(), ChannelError> {
-        let message = &TransmitTimedRequest {
-            timeout_ticks: timeout_ticks,
-        };
-        let (code, _) = sys_send(
-            UART_CHANNEL_ID,
-            Operation::TransmitTimed as u16,
-            message.as_bytes(),
-            &mut [],
+        hl::send_with_retry(
+            &self.0,
+            &TransmitTimedRequest {
+                timeout_ticks: timeout_ticks,
+            },
             &[Lease::read_only(data_out), Lease::write_only(data_in)],
-        );
-        if code == 0 {
-            Ok(())
-        } else {
-            return Err(ChannelError::from(code));
-        }
+        )
     }
 }

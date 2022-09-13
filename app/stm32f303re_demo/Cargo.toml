@@ -8,9 +8,9 @@ cortex-m = {version = "0.7", features = ["inline-asm"]}
 cortex-m-rt = "0.6.12"
 panic-itm = { version = "0.4.1" }
 
-[dependencies.stm32f3]
-features = ["stm32f303", "rt"]
-version = "0.13.0"
+[dependencies.stm32f303re]
+features = ["rt"]
+path = "../../boards/stm32f303re"
 
 [dependencies.kern]
 path = "../../sys/kern"

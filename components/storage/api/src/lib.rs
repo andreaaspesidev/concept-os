@@ -1,7 +1,9 @@
 #![no_std]
 
-use userlib::{hl, TaskId, FromPrimitive, sys_send, Lease, flash::BlockType};
-use zerocopy::{AsBytes,FromBytes};
+use core::cell::Cell;
+
+use userlib::{flash::BlockType, hl, FromPrimitive, Lease, TaskId};
+use zerocopy::{AsBytes, FromBytes};
 
 /**
  * Constants
@@ -22,7 +24,7 @@ pub enum StorageError {
     FlashError = 6,
     BadArgument = 7,
     NoBlockAvailable = 8,
-    ComponentUnavailable = 9
+    ComponentUnavailable = 9,
 }
 impl From<u32> for StorageError {
     fn from(x: u32) -> Self {
@@ -35,7 +37,7 @@ impl From<u32> for StorageError {
             6 => StorageError::FlashError,
             7 => StorageError::BadArgument,
             8 => StorageError::NoBlockAvailable,
-            _ => StorageError::ComponentUnavailable
+            _ => StorageError::ComponentUnavailable,
         }
     }
 }
@@ -69,7 +71,7 @@ pub enum Operation {
 #[repr(C)]
 pub struct AllocateComponentRequest {
     pub flash_size: u32,
-    pub ram_size: u32
+    pub ram_size: u32,
 }
 #[derive(Debug, FromBytes, AsBytes)]
 #[repr(C)]
@@ -77,7 +79,7 @@ pub struct AllocateComponentResponse {
     pub flash_base_address: u32,
     pub flash_size: u32,
     pub ram_base_address: u32,
-    pub ram_size: u32
+    pub ram_size: u32,
 }
 impl hl::Call for AllocateComponentRequest {
     const OP: u16 = Operation::AllocateComponent as u16;
@@ -89,7 +91,7 @@ impl hl::Call for AllocateComponentRequest {
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
 pub struct AllocateGenericRequest {
-    pub flash_size: u32
+    pub flash_size: u32,
 }
 #[derive(Debug, FromBytes, AsBytes)]
 #[repr(C)]
@@ -107,7 +109,7 @@ impl hl::Call for AllocateGenericRequest {
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
 pub struct DeallocateBlockRequest {
-    pub block_base_address: u32
+    pub block_base_address: u32,
 }
 impl hl::Call for DeallocateBlockRequest {
     const OP: u16 = Operation::DeallocateBlock as u16;
@@ -119,23 +121,33 @@ impl hl::Call for DeallocateBlockRequest {
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
 pub struct WriteStreamRequest {
-    pub block_base_address: u32,  // Data must be in a readable buffer at lease 0
+    pub block_base_address: u32, // Data must be in a readable buffer at lease 0
     pub offset: u32,
+}
+impl hl::Call for WriteStreamRequest {
+    const OP: u16 = Operation::WriteStream as u16;
+    type Response = ();
+    type Err = StorageError;
 }
 
 /// Read Stream
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
 pub struct ReadStreamRequest {
-    pub block_base_address: u32,  // Data will be put in a writable lease 0
-    pub offset: u32
+    pub block_base_address: u32, // Data will be put in a writable lease 0
+    pub offset: u32,
+}
+impl hl::Call for ReadStreamRequest {
+    const OP: u16 = Operation::ReadStream as u16;
+    type Response = ();
+    type Err = StorageError;
 }
 
 /// Finalize Block
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
 pub struct FinalizeBlockRequest {
-    pub block_base_address: u32
+    pub block_base_address: u32,
 }
 impl hl::Call for FinalizeBlockRequest {
     const OP: u16 = Operation::FinalizeBlock as u16;
@@ -146,8 +158,7 @@ impl hl::Call for FinalizeBlockRequest {
 /// Status
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
-pub struct ReportStatusRequest {
-}
+pub struct ReportStatusRequest {}
 #[derive(Debug, FromBytes, AsBytes)]
 #[repr(C)]
 pub struct ReportStatusResponse {
@@ -157,7 +168,7 @@ pub struct ReportStatusResponse {
     pub flash_used: u32,
     pub flash_total: u32,
     pub ram_used: u32,
-    pub ram_total: u32
+    pub ram_total: u32,
 }
 
 impl hl::Call for ReportStatusRequest {
@@ -170,14 +181,14 @@ impl hl::Call for ReportStatusRequest {
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
 pub struct GetNthBlockRequest {
-    pub block_number: u32
+    pub block_number: u32,
 }
 #[derive(Debug, FromBytes, AsBytes)]
 #[repr(C)]
 pub struct GetNthBlockResponse {
     pub block_base_address: u32,
     pub block_size: u32,
-    pub block_type: BlockType
+    pub block_type: BlockType,
 }
 impl hl::Call for GetNthBlockRequest {
     const OP: u16 = Operation::GetNthBlock as u16;
@@ -188,81 +199,104 @@ impl hl::Call for GetNthBlockRequest {
 /**
  * Component Interface
  */
-pub struct Storage();
+pub struct Storage(Cell<TaskId>);
 
 impl Storage {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            0: Cell::new(STORAGE_TASK_ID),
+        }
     }
-    pub fn allocate_component(&mut self, flash_size: u32, ram_size: u32) -> Result<AllocateComponentResponse, StorageError> {
-        hl::send(STORAGE_TASK_ID, &AllocateComponentRequest{
-            flash_size: flash_size,
-            ram_size: ram_size
-        })
+    pub fn allocate_component(
+        &mut self,
+        flash_size: u32,
+        ram_size: u32,
+    ) -> Result<AllocateComponentResponse, StorageError> {
+        hl::send_with_retry(
+            &self.0,
+            &AllocateComponentRequest {
+                flash_size: flash_size,
+                ram_size: ram_size,
+            },
+            &[],
+        )
     }
-    pub fn allocate_generic(&mut self, flash_size: u32) -> Result<AllocateGenericResponse, StorageError> {
-        hl::send(STORAGE_TASK_ID, &AllocateGenericRequest {
-            flash_size: flash_size
-        })
+    pub fn allocate_generic(
+        &mut self,
+        flash_size: u32,
+    ) -> Result<AllocateGenericResponse, StorageError> {
+        hl::send_with_retry(
+            &self.0,
+            &AllocateGenericRequest {
+                flash_size: flash_size,
+            },
+            &[],
+        )
     }
 
     pub fn deallocate_block(&mut self, block_base_address: u32) -> Result<(), StorageError> {
-        hl::send(STORAGE_TASK_ID, &DeallocateBlockRequest {
-            block_base_address: block_base_address
-        })
+        hl::send_with_retry(
+            &self.0,
+            &DeallocateBlockRequest {
+                block_base_address: block_base_address,
+            },
+            &[],
+        )
     }
 
-    pub fn write_stream(&mut self, block_base_address: u32, offset: u32, data: &[u8]) -> Result<(), StorageError> {
-        // Missing an appropriate hl function for using leases. Maybe will be introduced in the future
-        let message = &WriteStreamRequest{
-            block_base_address: block_base_address,
-            offset: offset
-        };
-        let (code, _) = sys_send(STORAGE_TASK_ID, 
-            Operation::WriteStream as u16, 
-            message.as_bytes(), 
-            &mut [],
-            &[Lease::read_only(data)]
-        );
-        if code == 0 {
-            Ok(())
-        } else {
-            return Err(StorageError::from(code));
-        }
+    pub fn write_stream(
+        &mut self,
+        block_base_address: u32,
+        offset: u32,
+        data: &[u8],
+    ) -> Result<(), StorageError> {
+        hl::send_with_retry(
+            &self.0,
+            &WriteStreamRequest {
+                block_base_address: block_base_address,
+                offset: offset,
+            },
+            &[Lease::read_only(data)],
+        )
     }
 
-    pub fn read_stream(&self, block_base_address: u32, offset: u32, buffer: &mut [u8]) -> Result<(), StorageError> {
-        // Missing an appropriate hl function for using leases. Maybe will be introduced in the future
-        let message = &ReadStreamRequest{
-            block_base_address: block_base_address,
-            offset: offset
-        };
-        let (code, _) = sys_send(STORAGE_TASK_ID, 
-            Operation::ReadStream as u16, 
-            message.as_bytes(), 
-            &mut [],
-            &[Lease::write_only(buffer)]
-        );
-        if code == 0 {
-            Ok(())
-        } else {
-            return Err(StorageError::from(code));
-        }
+    pub fn read_stream(
+        &self,
+        block_base_address: u32,
+        offset: u32,
+        buffer: &mut [u8],
+    ) -> Result<(), StorageError> {
+        hl::send_with_retry(
+            &self.0,
+            &ReadStreamRequest {
+                block_base_address: block_base_address,
+                offset: offset,
+            },
+            &[Lease::write_only(buffer)],
+        )
     }
 
     pub fn finalize_block(&mut self, block_base_address: u32) -> Result<(), StorageError> {
-        hl::send(STORAGE_TASK_ID, &FinalizeBlockRequest {
-            block_base_address: block_base_address
-        })
+        hl::send_with_retry(
+            &self.0,
+            &FinalizeBlockRequest {
+                block_base_address: block_base_address,
+            },
+            &[],
+        )
     }
 
     pub fn report_status(&self) -> Result<ReportStatusResponse, StorageError> {
-        hl::send(STORAGE_TASK_ID, &ReportStatusRequest {})
+        hl::send_with_retry(&self.0, &ReportStatusRequest {}, &[])
     }
 
     pub fn get_nth_block(&self, block_number: u32) -> Result<GetNthBlockResponse, StorageError> {
-        hl::send(STORAGE_TASK_ID, &GetNthBlockRequest{
-            block_number: block_number
-        })
+        hl::send_with_retry(
+            &self.0,
+            &GetNthBlockRequest {
+                block_number: block_number,
+            },
+            &[],
+        )
     }
 }

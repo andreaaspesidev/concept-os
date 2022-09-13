@@ -22,6 +22,8 @@ use userlib::{flash::BlockType, hl::Borrow, *};
 
 #[export_name = "main"]
 fn main() -> ! {
+    // Activate task
+    kipc::activate_task();
     // Message handler
     let recv_handler = |op: Operation, msg: hl::Message| -> Result<(), StorageError> {
         match op {

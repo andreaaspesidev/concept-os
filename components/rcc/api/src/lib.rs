@@ -8,6 +8,8 @@
 
 #![no_std]
 
+use core::cell::Cell;
+
 use userlib::{hl, TaskId, FromPrimitive};
 use zerocopy::{AsBytes,FromBytes};
 
@@ -168,38 +170,40 @@ pub enum Bus {
 }
 
 // API Class
-pub struct RCC();
+pub struct RCC(Cell<TaskId>);
 
 impl RCC {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            0: Cell::new(RCC_TASK_ID)
+        }
     }
     pub fn enable_clock(&mut self, peripheral: Peripheral) -> Result<(),RCCError> {
         let (bus, bit) = clock_mapping(peripheral)?;
-        hl::send(RCC_TASK_ID, &EnableClockRequest{
+        hl::send_with_retry(&self.0, &EnableClockRequest{
             bus: bus as u32,
             bit: bit
-        })
+        }, &[])
     }
     pub fn disable_clock(&mut self, peripheral: Peripheral) -> Result<(),RCCError> {
         let (bus, bit) = clock_mapping(peripheral)?;
-        hl::send(RCC_TASK_ID, &DisableClockRequest{
+        hl::send_with_retry(&self.0, &DisableClockRequest{
             bus: bus as u32,
             bit: bit
-        })
+        }, &[])
     }
     pub fn enter_reset(&mut self, peripheral: Peripheral) -> Result<(),RCCError> {
         let (bus, bit) = reset_mapping(peripheral)?;
-        hl::send(RCC_TASK_ID, &EnterResetRequest{
+        hl::send_with_retry(&self.0, &EnterResetRequest{
             bus: bus as u32,
             bit: bit
-        })
+        }, &[])
     }
     pub fn leave_reset(&mut self, peripheral: Peripheral) -> Result<(),RCCError> {
         let (bus, bit) = reset_mapping(peripheral)?;
-        hl::send(RCC_TASK_ID, &LeaveResetRequest{
+        hl::send_with_retry(&self.0, &LeaveResetRequest{
             bus: bus as u32,
             bit: bit
-        })
+        }, &[])
     }
 }

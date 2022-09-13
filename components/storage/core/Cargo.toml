@@ -15,10 +15,6 @@ cfg-if = "1.0.0"
 flash_allocator = {path = "../../../libs/flash_allocator"}
 ram_allocator = {path = "../../../libs/ram_allocator"}
 
-[dependencies.stm32f3]
-version = "0.15.1"
-features = ["stm32f303", "rt"]
-
 # Board list
 [dependencies.stm32f303re]
 path = "../../../boards/stm32f303re"

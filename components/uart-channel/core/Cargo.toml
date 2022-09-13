@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-stm32f303re = ["rcc-api/stm32f303re"]
+stm32f303re = ["rcc-api/stm32f303re", "dep:stm32f303re"]
 
 [dependencies]
 uart-channel-api = {path = "../api"}
@@ -16,9 +16,10 @@ rcc-api = {path = "../../rcc/api"}
 
 # Device-specific dependencies.
 # Each board supported will have its section below
-[dependencies.stm32f3]
-version = "0.15.1"
-features = ["stm32f303", "rt"]
+[dependencies.stm32f303re]
+path = "../../../boards/stm32f303re"
+features = ["rt"]
+optional = true
 
 # This section is here to discourage RLS/rust-analyzer from doing test builds,
 # since test builds don't work for cross compilation.

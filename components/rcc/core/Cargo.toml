@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-stm32f303re = ["rcc-api/stm32f303re"]
+stm32f303re = ["rcc-api/stm32f303re", "dep:stm32f303re"]
 
 [dependencies]
 rcc-api = {path = "../api"}
@@ -13,9 +13,9 @@ userlib = {path = "../../../sys/userlib"}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
 zerocopy = "0.6.1"
 
-[dependencies.stm32f3]
-version = "0.15.1"
-features = ["stm32f303", "rt"]
+[dependencies.stm32f303re]
+path = "../../../boards/stm32f303re"
+optional = true
 
 # This section is here to discourage RLS/rust-analyzer from doing test builds,
 # since test builds don't work for cross compilation.

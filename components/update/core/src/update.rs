@@ -243,15 +243,8 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
     if start_result {
         sys_log!("Component started!");
     }
-    // TODO: Finalize block
-
-    // Respond
-    wrap_error(
-        channel_write_single(channel, ComponentUpdateResponse::Success as u8),
-        &mut storage,
-        allocation.flash_base_address,
-        channel,
-    )?;
+    // Respond (at this point, do not delete the component if we just fail to send the end byte)
+    channel_write_single(channel, ComponentUpdateResponse::Success as u8)?;
     Ok(())
 }
 

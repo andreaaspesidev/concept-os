@@ -16,9 +16,19 @@ use messages::*;
 use update::component_add_update;
 use erase::component_erase;
 use info::system_info;
+use utils::channel_write_single;
 
 #[export_name = "main"]
 fn main() -> ! {
+    // Wait for state to give time to the old version to terminate cleanly
+    let mut state_buff: [u8; 4] = [0; 4];
+    hl::get_state(&mut state_buff, (), |s, m: &u32| {
+        sys_log!("Got state!");
+    });
+    // Then activate
+    kipc::activate_task();
+    // Immediately set the handler
+    kipc::set_update_handler(update_handler);
     // Listen for the initial packet on serial
     let mut usart = UartChannel::new();
 
@@ -55,4 +65,14 @@ fn hello_arrived(
         OperationType::SystemInfo => system_info(usart),
         OperationType::ComponentErase => component_erase(usart),
     }
+}
+
+fn update_handler() {
+    // If we are here, then we are updating ourselves.
+    // Just signal we completed the update
+    let mut usart = UartChannel::new();
+    channel_write_single(&mut usart, ComponentUpdateResponse::Success as u8);
+    // Now transfer some state just to signal we are working correctly
+    let mock_state: u32 = 1;
+    hl::transfer_state(mock_state);
 }

@@ -6,7 +6,7 @@ use uart_channel_api::*;
 use userlib::{hl::Caller, *};
 
 #[cfg(feature = "stm32f303re")]
-use stm32f3::stm32f303 as device;
+use stm32f303re::device as device;
 
 // Baudrate used during communication
 const BAUDRATE: u32 = 115_200;
@@ -38,8 +38,26 @@ struct ReceiverState {
     pub current_read_pos: usize,
 }
 
+fn update_handler() {
+    // Deconfigure everything, especially DMA
+    let usart = unsafe { &*device::USART2::ptr() };
+    let dma1 = unsafe { &*device::DMA1::ptr() };
+    dma_stop_receive(dma1, usart);
+    hl::transfer_state(1u32);
+}
+
 #[export_name = "main"]
 fn main() -> ! {
+    // Wait for the old component to terminate (if any)
+    let mut state_buff: [u8; 4] = [0; 4];
+    if hl::get_state(&mut state_buff, (), |_s,_d: &u32| {}).is_err() {
+        sys_log!("[UART] State transfer failed");
+    };
+    // For this component, it makes little sense and a lot of effort to transfer the state
+    // In fact, reconfiguration of peripherals is still needed for DMA.
+    kipc::activate_task();
+    kipc::set_update_handler(update_handler);
+
     // From thin air, pluck a pointer to the USART register block.
     //
     // Safety: this is needlessly unsafe in the API. The USART is essentially a
@@ -487,7 +505,7 @@ fn dma_receive_to_idle(_: &device::dma1::RegisterBlock, usart: &device::usart2::
     usart.cr1.modify(|_, w| w.idleie().set_bit());
 }
 
-/*
+
 fn dma_stop_receive(
     dma1: &device::dma1::RegisterBlock,
     usart: &device::usart2::RegisterBlock,
@@ -500,7 +518,9 @@ fn dma_stop_receive(
     usart.cr3.modify(|_, w| w.dmar().clear_bit());
     // Turn off IDLE interrupt
     usart.cr1.modify(|_, w| w.idleie().clear_bit());
-} */
+    // Disable DMA channel
+    dma1.ch6.cr.modify(|_, w| w.en().clear_bit());
+}
 
 fn dma_receive_callback(
     rec_state: &mut ReceiverState,
@@ -581,7 +601,7 @@ fn rx_update_caller(
     };
 
     // Copy data in the buffer of caller
-    let need_bytes = min(rx.len - rx.pos, data.len());
+    let need_bytes = core::cmp::min(rx.len - rx.pos, data.len());
     // Try write data
     if rx
         .caller
@@ -599,13 +619,6 @@ fn rx_update_caller(
     }
 }
 
-fn min<T: PartialOrd>(a: T, b: T) -> T {
-    if a < b {
-        return a;
-    } else {
-        return b;
-    }
-}
 
 fn step_transmit(
     usart: &device::usart1::RegisterBlock,
