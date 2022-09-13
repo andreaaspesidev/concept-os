@@ -118,7 +118,7 @@ mod tests {
             NUM_BLOCKS,
             NUM_SLOTS,
             FLAG_SIZE,
-        >::from_flash(flash);
+        >::from_flash(flash, false);
         println!(
             "Required memory bytes: {}",
             core::mem::size_of::<
@@ -235,7 +235,7 @@ mod tests {
             NUM_BLOCKS,
             NUM_SLOTS,
             FLAG_SIZE,
-        >::from_flash(&mut flash);
+        >::from_flash(&mut flash, false);
         // Safely color the prev. space
         fill_block_region(
             &mut shadow_copy,

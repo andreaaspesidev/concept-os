@@ -532,6 +532,48 @@ pub mod utils {
 
         Ok(())
     }
+
+    /// Sets the flag on a flash block
+    pub unsafe fn mark_block_dismissed<'a, const START_ADDR: u32, const NUM_SLOTS: usize, const FLAG_BYTES: usize>(
+        flash: &mut dyn FlashMethods<'a>,
+        block: FlashBlock
+    ) -> Result<(), ()>
+    where
+        [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
+    {
+        // Read again the header to be safe
+        let block_base_addr =
+            block.get_base_address() - BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32;
+        let curr_header = self::read_block_header::<FLAG_BYTES, START_ADDR, NUM_SLOTS>(
+            flash,
+            block_base_addr - START_ADDR,
+        );
+
+        // Check if this operation is possible
+        if !curr_header.is_allocated() {
+            return Err(());
+        }
+        if curr_header.is_dismissed() {
+            return Ok(()); // Already done
+        }
+
+        // Generating the new header
+        let header = BlockHeader::<FLAG_BYTES>::write_buffer(
+            true,
+            true,
+            curr_header.is_finalized(),
+            curr_header.block_level(),
+            curr_header.block_type(),
+        );
+        // Writing new header
+        for i in 0..header.len() {
+            flash.write(block_base_addr + i as u32, header[i]).unwrap();
+        }
+        // Always flush after an header or flag
+        flash.flush_write_buffer().unwrap();
+
+        Ok(())
+    }
 }
 /// Interface for interacting with flash memory.
 pub trait FlashMethods<'a> {
@@ -661,7 +703,7 @@ impl<
     const ALLOCATOR_SIZE: usize = (END_ADDR - START_ADDR + 1) as usize;
     const START_SCAN_OFFSET: usize = (START_SCAN_ADDR - START_ADDR) as usize;
 
-    fn check_for_recovery(flash: &mut dyn FlashMethods<'a>)
+    pub fn analyze_storage(flash: &mut dyn FlashMethods<'a>)
     where
         [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
     {
@@ -674,7 +716,8 @@ impl<
             );
             // Allocated blocks
             if block_header.is_allocated() {
-                // Check if a freed_block exits
+                let block_size = Self::ALLOCATOR_SIZE >> block_header.block_level();
+                // Check if a freed_block exists
                 if block_header.is_dismissed() {
                     // Launch the erase again
                     let mut block_level_out: u16 = 0;
@@ -683,10 +726,8 @@ impl<
                         START_ADDR + process_index as u32,
                         &mut block_level_out,
                     );
-                    return;
                 }
-                // Otherwise continue scanning
-                let block_size = Self::ALLOCATOR_SIZE >> block_header.block_level();
+                // Continue scanning
                 process_index += block_size;
                 continue;
             } else {
@@ -712,7 +753,7 @@ impl<
         let header = BlockHeader::<FLAG_BYTES>::write_buffer(
             true,
             true,
-            false,
+            block_header.is_finalized(),
             block_level,
             block_header.block_type(),
         );
@@ -921,7 +962,7 @@ impl<
         return Ok(());
     }
 
-    pub fn from_flash(flash: &'a mut dyn FlashMethods<'a>) -> Self
+    pub fn from_flash(flash: &'a mut dyn FlashMethods<'a>, skip_storage_analysis: bool) -> Self
     where
         [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
     {
@@ -933,7 +974,9 @@ impl<
                 true,
             );
         // Check for recovery
-        Self::check_for_recovery(flash);
+        if !skip_storage_analysis {
+            Self::analyze_storage(flash);
+        }
         // Scan to reconstruct state
         // Steps of 1 blocks
         let mut process_index: usize = Self::START_SCAN_OFFSET;
