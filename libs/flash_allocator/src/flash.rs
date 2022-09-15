@@ -906,12 +906,13 @@ impl<
         [(); FLAG_BYTES * 4 + 2 + 2]: Sized,
     {
         // Get block
-        let addr_result = self.buddy_allocator.alloc(size as usize);
+        let actual_size = size + BlockHeader::<FLAG_BYTES>::HEADER_SIZE as u32;
+        let addr_result = self.buddy_allocator.alloc(actual_size as usize);
         if addr_result.is_none() {
             return Err(());
         }
         let addr = addr_result.unwrap();
-        let level: u16 = self.buddy_allocator.size_to_level(size as usize).unwrap() as u16;
+        let level: u16 = self.buddy_allocator.size_to_level(actual_size as usize).unwrap() as u16;
         // Generate header
         let header =
             BlockHeader::<FLAG_BYTES>::write_buffer(true, false, false, level, BlockType::NONE);
