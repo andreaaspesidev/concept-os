@@ -1,4 +1,4 @@
-COMPONENT_NAME:=test
+COMPONENT_NAME:=test_a
 current_dir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 root_dir := $(shell dirname $(realpath ../../.))
 

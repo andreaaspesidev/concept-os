@@ -6,7 +6,7 @@ use uart_channel_api::*;
 use userlib::{hl::Caller, *};
 
 #[cfg(feature = "stm32f303re")]
-use stm32f303re::device as device;
+use stm32f303re::device;
 
 // Baudrate used during communication
 const BAUDRATE: u32 = 115_200;
@@ -40,9 +40,15 @@ struct ReceiverState {
 
 fn update_handler() {
     // Deconfigure everything, especially DMA
-    let usart = unsafe { &*device::USART2::ptr() };
-    let dma1 = unsafe { &*device::DMA1::ptr() };
-    dma_stop_receive(dma1, usart);
+    //let usart = unsafe { &*device::USART2::ptr() };
+    //let dma1 = unsafe { &*device::DMA1::ptr() };
+    //dma_stop_receive(dma1, usart);
+    // Power down and reset everything
+    let mut rcc = rcc_api::RCC::new();
+    rcc.enter_reset(rcc_api::Peripheral::DMA1);
+    rcc.enter_reset(rcc_api::Peripheral::USART2);
+    rcc.disable_clock(rcc_api::Peripheral::DMA1);
+    rcc.disable_clock(rcc_api::Peripheral::USART2);
     hl::transfer_state(1u32);
 }
 
@@ -50,9 +56,7 @@ fn update_handler() {
 fn main() -> ! {
     // Wait for the old component to terminate (if any)
     let mut state_buff: [u8; 4] = [0; 4];
-    if hl::get_state(&mut state_buff, (), |_s,_d: &u32| {}).is_err() {
-        sys_log!("[UART] State transfer failed");
-    };
+    let got_state = hl::get_state(&mut state_buff, (), |_s,_d: &u32| {}).is_ok();
     // For this component, it makes little sense and a lot of effort to transfer the state
     // In fact, reconfiguration of peripherals is still needed for DMA.
     kipc::activate_task();
@@ -80,12 +84,16 @@ fn main() -> ! {
     let mut state = DriverState {
         receiver_state: ReceiverState {
             pending_receiver: None,
-            current_read_pos: 1, // Ask for some reason, the first byte we read is 0x00
+            current_read_pos: match got_state {
+                true => 0,
+                false => 1
+            }, // Ask for some reason, the first byte we read is 0x00
         },
         pending_transmitter: None,
     };
 
     // Main loop
+    sys_log!("[UARTv3] Online!");
     let mut recv_buff: [u8; 8] = [0x00; 8];
     let mut frame_recovery: bool = true;
     loop {
@@ -142,7 +150,8 @@ fn main() -> ! {
                     // Frame error
                     if usart_isr.fe().bit_is_set() {
                         if !frame_recovery {
-                            panic!("UART Frame Error");
+                            sys_log!("UART Frame Error");
+                            panic!();
                         }
                         // For this time, just reset the error.
                         // This is needed as for some reason it happens to fire
@@ -157,7 +166,8 @@ fn main() -> ! {
                     // otherwise it's impossibile.
                     if usart_isr.ore().bit_is_set() {
                         // Something happened
-                        panic!("UART Overrun");
+                        sys_log!("UART Overrun");
+                        panic!();
                     }
 
                     // Enable again interrupts
@@ -189,7 +199,8 @@ fn main() -> ! {
                         );
                     } else if ch6_isr.teif6().bit_is_set() {
                         // Error
-                        panic!("Got error on DMA");
+                        sys_log!("Got error on DMA");
+                        panic!();
                     }
 
                     // Enable again interrupt
@@ -505,11 +516,9 @@ fn dma_receive_to_idle(_: &device::dma1::RegisterBlock, usart: &device::usart2::
     usart.cr1.modify(|_, w| w.idleie().set_bit());
 }
 
-
-fn dma_stop_receive(
-    dma1: &device::dma1::RegisterBlock,
-    usart: &device::usart2::RegisterBlock,
-) {
+/*fn dma_stop_receive(dma1: &device::dma1::RegisterBlock, usart: &device::usart2::RegisterBlock) {
+    // Disable DMA channel
+    dma1.ch6.cr.modify(|_, w| w.en().clear_bit());
     // Disable UART parity error interrupt (even if we don't use it now)
     usart.cr1.modify(|_, w| w.peie().clear_bit());
     // Disable UART error interrupt (frame error, noise error, overrun error)
@@ -518,9 +527,7 @@ fn dma_stop_receive(
     usart.cr3.modify(|_, w| w.dmar().clear_bit());
     // Turn off IDLE interrupt
     usart.cr1.modify(|_, w| w.idleie().clear_bit());
-    // Disable DMA channel
-    dma1.ch6.cr.modify(|_, w| w.en().clear_bit());
-}
+}*/
 
 fn dma_receive_callback(
     rec_state: &mut ReceiverState,
@@ -618,7 +625,6 @@ fn rx_update_caller(
         end_reception(dma1, usart, receiver).reply_fail(ChannelError::BadArgument);
     }
 }
-
 
 fn step_transmit(
     usart: &device::usart1::RegisterBlock,

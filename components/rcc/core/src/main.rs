@@ -41,6 +41,7 @@ fn main() -> ! {
 
     // Message handler
     let recv_handler = |op: Operation, msg: hl::Message| -> Result<(), RCCError> {
+        sys_log!("[RCC] Got message!");
         match op {
             Operation::EnableClock => {
                 // Parse message (the same for all)
@@ -55,6 +56,7 @@ fn main() -> ! {
                     Bus::AHB1 => set_bits!(rcc.ahbenr, pmask),
                     #[cfg(feature = "stm32f303re")]
                     Bus::AHB2 | Bus::AHB3 => {
+                        sys_log!("Wrong bus for f303re!");
                         panic!(); // The function of mapping should be correct
                     },
                     Bus::APB1 => set_bits!(rcc.apb1enr, pmask),
@@ -78,6 +80,7 @@ fn main() -> ! {
                     Bus::AHB1 => clear_bits!(rcc.ahbenr, pmask),
                     #[cfg(feature = "stm32f303re")]
                     Bus::AHB2 | Bus::AHB3 => {
+                        sys_log!("Wrong bus for f303re!");
                         panic!(); // The function of mapping should be correct
                     },
                     Bus::APB1 => clear_bits!(rcc.apb1enr, pmask),
@@ -101,6 +104,7 @@ fn main() -> ! {
                     Bus::AHB1 => set_bits!(rcc.ahbrstr, pmask),
                     #[cfg(feature = "stm32f303re")]
                     Bus::AHB2 | Bus::AHB3 => {
+                        sys_log!("Wrong bus for f303re!");
                         panic!(); // The function of mapping should be correct
                     },
                     Bus::APB1 => set_bits!(rcc.apb1rstr, pmask),
@@ -124,6 +128,7 @@ fn main() -> ! {
                     Bus::AHB1 => clear_bits!(rcc.ahbrstr, pmask),
                     #[cfg(feature = "stm32f303re")]
                     Bus::AHB2 | Bus::AHB3 => {
+                        sys_log!("Wrong bus for f303re!");
                         panic!(); // The function of mapping should be correct
                     },
                     Bus::APB1 => clear_bits!(rcc.apb1rstr, pmask),

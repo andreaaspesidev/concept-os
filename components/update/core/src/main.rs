@@ -33,6 +33,7 @@ fn main() -> ! {
     let mut usart = UartChannel::new();
 
     // Main loop
+    sys_log!("[UPDATE] Hello");
     loop {
         // Create a buffer where to store the message
         let mut hello_buffer: [u8; HelloMessage::get_size()] =
@@ -40,18 +41,22 @@ fn main() -> ! {
         // Read message
         if usart.read_block(&mut hello_buffer).is_ok() {
             // Validate message
+            sys_log!("[UPDATE] Got hello message");
             let parsed = HelloMessage::from(&hello_buffer);
             if parsed.is_ok() {
                 let msg = parsed.unwrap();
                 // Respond to the message
                 let response = HelloResponseMessage::new(msg.get_operation());
                 if usart.write_block(&response.get_raw()).is_ok() {
+                    sys_log!("[UPDATE] Wrote hello response");
                     // Process this message
                     hello_arrived(&msg, &mut usart); // Ignore errors
                 } else {
                     panic!("Cannot write!");
                 }
             }
+        } else {
+            sys_log!("[UPDATE] Read error");
         }
     }
 }

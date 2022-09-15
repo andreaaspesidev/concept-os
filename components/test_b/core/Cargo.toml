@@ -1,5 +1,5 @@
 [package]
-name = "test_v2"
+name = "test"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,12 +7,17 @@ edition = "2021"
 stm32f303re = []
 
 [dependencies]
+test-b-api = {path = "../api"}
 userlib = {path = "../../../sys/userlib", features = ["log-itm"]}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
+
+[dependencies.stm32f3]
+version = "0.15.1"
+features = ["stm32f303", "rt"]
 
 # This section is here to discourage RLS/rust-analyzer from doing test builds,
 # since test builds don't work for cross compilation.
 [[bin]]
-name = "test_v2"
+name = "test"
 test = false
 bench = false

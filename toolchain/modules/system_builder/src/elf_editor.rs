@@ -76,6 +76,15 @@ impl<'a> ElfEditor<'a> {
             needed_flash,
             needed_ram,
         );
+        println!(
+            "Allocated component {} at flash: {:#010x} [size: {}], ram: {:#010x} [size: {}]",
+            hbf.header_base().component_id(),
+            alloc_result.flash_address,
+            alloc_result.flash_size,
+            alloc_result.sram_address,
+            alloc_result.sram_size
+        );
+
         let block_base_addr: u32 = alloc_result.flash_address;
         // Generate bytes
         let mut component_bytes: Vec<u8> = Vec::new();
@@ -272,10 +281,10 @@ fn perform_allocation(
                 FLASH_NUM_BLOCKS,
                 FLASH_NUM_SLOTS,
                 2,
-            >::from_flash(flash_buffer);
+            >::from_flash(flash_buffer, false);
             // Perform the allocation
             let flash_block = flash_alloc
-                .allocate(needed_flash)
+                .allocate(needed_flash + 8)
                 .expect("Failed to allocate space for HBF");
 
             drop(flash_alloc);

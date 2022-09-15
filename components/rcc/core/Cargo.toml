@@ -9,7 +9,7 @@ stm32f303re = ["rcc-api/stm32f303re", "dep:stm32f303re"]
 [dependencies]
 rcc-api = {path = "../api"}
 # Other-dependencies
-userlib = {path = "../../../sys/userlib"}
+userlib = {path = "../../../sys/userlib", features=["log-itm"]}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
 zerocopy = "0.6.1"
 

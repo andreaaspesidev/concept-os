@@ -18,7 +18,6 @@ rcc-api = {path = "../../rcc/api"}
 # Each board supported will have its section below
 [dependencies.stm32f303re]
 path = "../../../boards/stm32f303re"
-features = ["rt"]
 optional = true
 
 # This section is here to discourage RLS/rust-analyzer from doing test builds,
