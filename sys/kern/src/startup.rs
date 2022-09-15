@@ -7,10 +7,12 @@
 use heapless::FnvIndexMap;
 use unwrap_lite::UnwrapLite;
 
-use crate::{atomic::AtomicExt, utils::log_task};
 use crate::structures::populate_kernel_structures;
 use crate::sys_log;
 use crate::task::Task;
+use crate::utils::log_structures;
+use crate::atomic::AtomicExt;
+use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use abi::{InterruptOwner, HUBRIS_MAX_IRQS, HUBRIS_MAX_SUPPORTED_TASKS};
@@ -31,15 +33,18 @@ pub const HUBRIS_STORAGE_ANALYZE_NOTIFICATION: u32 = 1;
 // generated during build process.
 
 /// Structure of Task structures, sorted by Task ID
-static mut TASK_MAP: FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS> =
-    FnvIndexMap::new();
+static mut TASK_MAP: MaybeUninit<
+    FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+> = MaybeUninit::uninit();
 
 /// Structure of IRQs, in order to get to the tasks
-pub static mut IRQ_TO_TASK: FnvIndexMap<
-    u32,            // IRQ
-    InterruptOwner, // Task
-    HUBRIS_MAX_IRQS,
-> = FnvIndexMap::new();
+pub static mut IRQ_TO_TASK: MaybeUninit<
+    FnvIndexMap<
+        u32,            // IRQ
+        InterruptOwner, // Task
+        HUBRIS_MAX_IRQS,
+    >,
+> = MaybeUninit::uninit();
 
 /// The main kernel entry point.
 ///
@@ -68,30 +73,23 @@ pub unsafe fn start_kernel(tick_divisor: u32) -> ! {
         crate::arch::initialize_native();
     }
 
+    // Initialize structures
+    unsafe {
+        TASK_MAP.write(FnvIndexMap::new());
+        IRQ_TO_TASK.write(FnvIndexMap::new());
+    }
+
     // Load structures from flash
-    populate_kernel_structures(unsafe { &mut TASK_MAP }, unsafe {
-        &mut IRQ_TO_TASK
+    populate_kernel_structures(unsafe { TASK_MAP.assume_init_mut() }, unsafe {
+        IRQ_TO_TASK.assume_init_mut()
     });
 
     // Get a safe reference
-    let task_map = unsafe { &mut TASK_MAP };
+    let task_map = unsafe { TASK_MAP.assume_init_mut() };
 
     // Debug!
     sys_log!("--------- Kernel Start ----------");
-    // Print components
-    for (_cid, task) in task_map.iter() {
-        log_task(task);
-    }
-    // Print interrupts
-    let interr_map = unsafe { &mut IRQ_TO_TASK };
-    for (irq, owner) in interr_map.iter() {
-        sys_log!(
-            "- IRQ {} mapped to cid {} on bits {:#010x}",
-            irq,
-            owner.task_id,
-            owner.notification
-        );
-    }
+    log_structures(task_map, unsafe { IRQ_TO_TASK.assume_init_mut() });
 
     // With that done, set up initial register state etc.
     for (_, task) in task_map.iter_mut() {
@@ -132,7 +130,7 @@ pub(crate) fn with_task_table<R>(
     // produce a reference to the task table without aliasing, and we can be
     // confident that the memory it's pointing to is initialized.
 
-    let task_map_ptr = unsafe { &mut TASK_MAP };
+    let task_map_ptr = unsafe { TASK_MAP.assume_init_mut() };
 
     let r = body(task_map_ptr);
 
@@ -145,7 +143,7 @@ pub(crate) fn with_task_table<R>(
 pub(crate) fn with_irq_table<R>(
     body: impl FnOnce(&mut FnvIndexMap<u32, InterruptOwner, HUBRIS_MAX_IRQS>) -> R,
 ) -> R {
-    let irq_map_ptr = unsafe { &mut IRQ_TO_TASK };
+    let irq_map_ptr = unsafe { IRQ_TO_TASK.assume_init_mut() };
     let r = body(irq_map_ptr);
     r
 }

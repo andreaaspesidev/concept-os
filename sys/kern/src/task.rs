@@ -21,6 +21,7 @@ use crate::structures::revert_update;
 use crate::sys_log;
 use crate::time::Timestamp;
 use crate::umem::USlice;
+use crate::utils::{get_task, log_task};
 
 /// Internal representation of a task.
 ///
@@ -339,12 +340,16 @@ impl Task {
         if self.update_handler.is_some() {
             self.timer = TimerState::default();
             crate::arch::force_task_update_handler(self);
+            sys_log!("Forcing update handler for {}", self.component_id);
             // Immediately enter in run, if not faulted
             match self.state {
-                TaskState::Healthy(_) => self.state = TaskState::Healthy(SchedState::Runnable),
+                TaskState::Healthy(_) => {
+                    self.state = TaskState::Healthy(SchedState::Runnable)
+                }
                 _ => {}
             }
         } else {
+            sys_log!("Stopping task {}", self.component_id);
             // Stop the component otherwise
             self.state = TaskState::Faulted {
                 fault: FaultInfo::Injected(abi::TaskId(0)),
@@ -373,8 +378,8 @@ impl Task {
             Some(gen) => {
                 let gen_number: u8 = gen.into();
                 self.generation = gen_number as u32
-            }, // We may want to inform that something has changed
-            None => self.generation = 0
+            } // We may want to inform that something has changed
+            None => self.generation = 0,
         }
         self.update_since = None;
     }
@@ -979,8 +984,14 @@ pub fn force_fault(
     task_id: u16,
     fault: FaultInfo,
 ) -> NextTask {
-    sys_log!("Component {} fault: {:?}", task_id, fault);
     let task = tasks.get_mut(&task_id).expect("Cannot find component");
+    sys_log!(
+        "Component {} [descr: {}] fault: {:?}",
+        task_id,
+        task.descriptor().component_id(),
+        fault
+    );
+    log_task(task);
     task.state = match task.state {
         TaskState::Healthy(sched) => TaskState::Faulted {
             original_state: sched,
@@ -1004,6 +1015,40 @@ pub fn force_fault(
         NextTask::Specific(supervisor_id)
     } else {
         NextTask::Other
+    }
+}
+
+pub fn restart_pending_tasks(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    task_id: u16,
+    old_identifier: TaskId,
+) {
+    let new_identifier = get_task(tasks, task_id).current_identifier();
+    // Restarting a task can have implications for other tasks. We don't want to
+    // leave tasks sitting around waiting for a reply that will never come, for
+    // example. So, make a pass over the task table and unblock anyone who was
+    // expecting useful work from the now-defunct task.
+    for (_id, task) in tasks.iter_mut() {
+        // We'll skip processing faulted tasks, because we don't want to lose
+        // information in their fault records by changing their states.
+        if let TaskState::Healthy(sched) = task.state() {
+            match sched {
+                SchedState::InRecv(Some(peer))
+                | SchedState::InSend(peer)
+                | SchedState::InReply(peer)
+                    if *peer == old_identifier =>
+                {
+                    // Please accept our sincere condolences on behalf of the
+                    // kernel.
+                    let code =
+                        abi::dead_response_code(new_identifier.generation());
+
+                    task.save_mut().set_error_response(code);
+                    task.set_healthy_state(SchedState::Runnable);
+                }
+                _ => (),
+            }
+        }
     }
 }
 

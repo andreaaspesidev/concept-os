@@ -656,7 +656,7 @@ where
         &mut [],
         &[],
     );
-    panic!();
+    loop {}
 }
 
 /// Suspends the calling task until the kernel time is `>= time`.

@@ -5,7 +5,7 @@
 //! Implementation of IPC operations on the virtual kernel task.
 
 use abi::{
-    FaultInfo, Generation, SchedState, TaskState, UsageError,
+    FaultInfo, SchedState, TaskId, UsageError,
     HUBRIS_MAX_SUPPORTED_TASKS,
 };
 use unwrap_lite::UnwrapLite;
@@ -13,10 +13,10 @@ use unwrap_lite::UnwrapLite;
 use crate::err::UserError;
 use crate::startup::{with_irq_table, HUBRIS_STORAGE_ANALYZE_NOTIFICATION};
 use crate::structures::load_component_at;
-use crate::sys_log;
 use crate::task::{ArchState, NextTask, NotificationSet, Task};
 use crate::umem::USlice;
 use crate::utils::{get_task, get_task_mut};
+use crate::{sys_log, task};
 use heapless::FnvIndexMap;
 
 /// Message dispatcher.
@@ -129,38 +129,8 @@ fn restart_task(
         other_task.set_healthy_state(SchedState::Runnable);
     }
 
-    // Restarting a task can have implications for other tasks. We don't want to
-    // leave tasks sitting around waiting for a reply that will never come, for
-    // example. So, make a pass over the task table and unblock anyone who was
-    // expecting useful work from the now-defunct task.
-    for (id, task) in tasks.iter_mut() {
-        // Just to make this a little easier to think about, don't check either
-        // of the tasks involved in the restart operation. Neither should be
-        // affected anyway.
-        if *id == caller_id || *id == target_id {
-            continue;
-        }
-
-        // We'll skip processing faulted tasks, because we don't want to lose
-        // information in their fault records by changing their states.
-        if let TaskState::Healthy(sched) = task.state() {
-            match sched {
-                SchedState::InRecv(Some(peer))
-                | SchedState::InSend(peer)
-                | SchedState::InReply(peer)
-                    if peer == &old_identifier =>
-                {
-                    // Please accept our sincere condolences on behalf of the
-                    // kernel.
-                    let code = abi::dead_response_code(peer.generation());
-
-                    task.save_mut().set_error_response(code);
-                    task.set_healthy_state(SchedState::Runnable);
-                }
-                _ => (),
-            }
-        }
-    }
+    // Restart pending tasks
+    task::restart_pending_tasks(tasks, target_id, old_identifier);
 
     if target_id == caller_id {
         // Welp, they've restarted themselves. Best not return anything then.
@@ -225,7 +195,11 @@ fn set_update_handler(
     // Read the handler address
     let handler_address: u32 =
         deserialize_message(get_task(tasks, caller_id), message)?;
-    sys_log!("Set update handler for {}", caller_id);
+    sys_log!(
+        "Set update handler for {} at {:#010x}",
+        caller_id,
+        handler_address
+    );
     // Set the new handler
     get_task_mut(tasks, caller_id).set_update_handler(handler_address);
     // Respond to the task
@@ -276,15 +250,16 @@ fn activate_task(
             .set_send_response_and_length(0, 0);
         return Ok(NextTask::Same);
     }
+    sys_log!("Activating update task!");
     let mut next_hint = NextTask::Other;
     // Read the nominal id of the task
     let nominal_id = get_task(tasks, caller_id).descriptor().component_id();
 
     let old_task = tasks.get(&nominal_id);
-    let mut old_generation: Option<Generation> = None;
+    let mut old_identifier: Option<TaskId> = None;
     if old_task.is_some() {
         // Before removing, save the generation
-        old_generation = Some(old_task.unwrap_lite().generation().next());
+        old_identifier = Some(old_task.unwrap_lite().current_identifier());
         // Here we just removed IRQs from the old task, just delete it and use the ID
         // for the new task
         let old_task = tasks.remove(&nominal_id).unwrap_lite();
@@ -292,7 +267,8 @@ fn activate_task(
         unsafe {
             crate::arch::dismiss_block(
                 old_task.descriptor().get_descriptor_block(),
-            ).unwrap_lite();
+            )
+            .unwrap_lite();
         }
         // Immediately schedule the block for removal
         let storage_awoken = get_task_mut(tasks, abi::STORAGE_ID)
@@ -304,7 +280,7 @@ fn activate_task(
 
     let mut task = tasks.remove(&abi::UPDATE_TEMP_ID).unwrap_lite();
     // Switch the mode on the task
-    task.end_update(old_generation);
+    task.end_update(old_identifier.map(|id| id.generation().next()));
     // Add again the task
     tasks.insert(nominal_id, task).unwrap_lite();
     // Redirect all IRQs
@@ -317,6 +293,10 @@ fn activate_task(
             entry.task_id = nominal_id;
         }
     });
+    if let Some(old_id) = old_identifier {
+        // Restart pending tasks
+        task::restart_pending_tasks(tasks, nominal_id, old_id);
+    }
     // Alert the task
     let task = get_task_mut(tasks, nominal_id);
     task.save_mut().set_send_response_and_length(0, 0);

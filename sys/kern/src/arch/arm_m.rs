@@ -79,8 +79,8 @@ use stm32f303re::*;
 use zerocopy::FromBytes;
 
 use crate::atomic::AtomicExt;
-use crate::startup::with_task_table;
-use crate::task;
+use crate::startup::{with_task_table, with_irq_table};
+use crate::{task, sys_log};
 use crate::time::Timestamp;
 use crate::umem::USlice;
 use abi::FaultInfo;
@@ -246,6 +246,7 @@ pub fn reinitialize(task: &mut task::Task) {
     // |       .data        |
     // ---------------------- SRAM LOW ADDRESSES
 
+    let task_id = task.descriptor().component_id();
     let initial_stack = task.descriptor().initial_stack();
 
     // Modern ARMvX-M machines require 8-byte stack alignment. Make sure that's
@@ -266,19 +267,26 @@ pub fn reinitialize(task: &mut task::Task) {
     // Get the region, that will always be the first one by construction
     let sram_region = *task.region_table().first().unwrap_lite();
 
-    let mut stack_uslice: USlice<u32> = USlice::from_raw(
+    // Clear the whole sram region with 0x00
+    sys_log!("SRAM at {:#010x} for task {}", sram_region.base, task_id);
+    let sram_frame = unsafe{ core::slice::from_raw_parts_mut(sram_region.base as *mut u8, sram_region.size as usize) };
+    for i in 0..sram_frame.len() {
+        sram_frame[i] = 0x00;
+    }
+
+    /*let mut stack_uslice: USlice<u32> = USlice::from_raw(
         sram_region.base as usize,
         (initial_stack as usize - frame_size - sram_region.base as usize) >> 4, //? >> 2
     )
-    .unwrap_lite();
+    .unwrap_lite();*/
 
     // Before we set our frame, find the region that contains our initial stack
     // pointer, and zap the region from the base to the stack pointer with a
     // distinct (and storied) pattern.
-    let zap = task.try_write(&mut stack_uslice).unwrap_lite();
+    /*let zap = task.try_write(&mut stack_uslice).unwrap_lite();
     for word in zap.iter_mut() {
         *word = 0xbaddcafe;
-    }
+    }*/
 
     // Now copy the .data section in ram
     let mut data_uslice: USlice<u8> =
@@ -300,6 +308,7 @@ pub fn reinitialize(task: &mut task::Task) {
     // Conservatively/defensively zero the entire frame.
     *frame = ExtendedExceptionFrame::default();
     // Now fill in the bits we actually care about.
+    // sys_log!("Marking entry at {:#010x} for task {}", entry_point, task_id);
     frame.base.pc = entry_point | 1; // for thumb
     frame.base.xpsr = INITIAL_PSR;
     frame.base.lr = 0xFFFF_FFFF; // trap on return from main
@@ -314,6 +323,8 @@ pub fn reinitialize(task: &mut task::Task) {
 
     // Finally, record the EXC_RETURN we'll use to enter the task.
     task.save_mut().exc_return = EXC_RETURN_CONST;
+
+    //log_task(task);    
 }
 
 pub fn force_task_update_handler(task: &mut task::Task) {
@@ -817,11 +828,11 @@ pub unsafe extern "C" fn DefaultHandler() {
         x if x >= 16 => {
             // Hardware interrupt
             let irq_num = exception_num - 16;
-            let irq_to_task = unsafe { &crate::startup::IRQ_TO_TASK };
-            let owner = irq_to_task
+            let owner = with_irq_table(|irq_map| {
+                *irq_map
                 .get(&irq_num)
-                .unwrap_or_else(|| panic!("unhandled IRQ {}", irq_num));
-
+                .unwrap_or_else(|| panic!("unhandled IRQ {}", irq_num))
+            });
             let switch = with_task_table(|tasks| {
                 disable_irq(irq_num);
 

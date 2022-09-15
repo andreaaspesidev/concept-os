@@ -34,7 +34,7 @@ use core::convert::TryFrom;
 
 use crate::arch;
 use crate::err::{InteractFault, UserError};
-use crate::startup::with_task_table;
+use crate::startup::{with_task_table, with_irq_table};
 use crate::task::{self, ArchState, NextTask, Task};
 use crate::time::Timestamp;
 use crate::umem::{safe_copy, USlice};
@@ -77,7 +77,9 @@ pub unsafe extern "C" fn syscall_entry(nr: u32, task: *mut Task) {
     with_task_table(|tasks| {
         match safe_syscall_entry(nr, task_id, tasks) {
             // If we're returning to the same task, we're done!
-            NextTask::Same => (),
+            NextTask::Same => {
+                unsafe { switch_to(tasks.get_mut(&task_id).unwrap_lite()) }
+            },
 
             NextTask::Specific(i) => {
                 // Safety: this is a valid task from the tasks table, meeting
@@ -755,20 +757,22 @@ fn irq_control(
 
     // We don't have anymore TASK -> IRQ, but only IRQ -> TASK (as this is the one
     // that need to be quick). So in this case we have to iterate on all defined IRQs
-    let mut found = false;
-    let irq_to_task = unsafe { &crate::startup::IRQ_TO_TASK };
-    let interrupt_owner = abi::InterruptOwner {
-        task_id: caller_id,
-        notification: args.notification_bitmask,
-    };
-    for (irq, owner) in irq_to_task.iter() {
-        if *owner == interrupt_owner {
-            found = true;
-            // Apply operation on it
-            operation(*irq);
+    let got_task = with_irq_table(|irq_map| {
+        let mut found = false;
+        let interrupt_owner = abi::InterruptOwner {
+            task_id: caller_id,
+            notification: args.notification_bitmask,
+        };
+        for (irq, owner) in irq_map.iter() {
+            if *owner == interrupt_owner {
+                found = true;
+                // Apply operation on it
+                operation(*irq);
+            }
         }
-    }
-    if !found {
+        found
+    });
+    if !got_task {
         return Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
             UsageError::NoIrq,
         )));
