@@ -23,6 +23,7 @@ pub const SUPERVISOR_ID: u16 = 0;
 pub const STORAGE_ID: u16 = 4;
 pub const UPDATE_TEMP_ID: u16 = 1023;
 pub const REVERT_UPDATE_TIMEOUT: u64 = 30_000;
+pub const STATE_TRANSFER_REQUESTED_MASK: u32 = 1 << 31; 
 
 /// Names a particular incarnation of a task.
 ///
@@ -303,6 +304,12 @@ pub const fn extract_new_generation(code: u32) -> Option<Generation> {
     } else {
         None
     }
+}
+
+pub const CANCELLED_SYSCALL: u32 = 0xFFFF_0000;
+
+pub const fn was_syscall_cancelled(code: u32) -> bool {
+    code & CANCELLED_SYSCALL == CANCELLED_SYSCALL
 }
 
 /// Response code returned by the kernel if a lender has defected.

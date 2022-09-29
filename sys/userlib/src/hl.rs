@@ -7,17 +7,19 @@
 //! This is intended to provide a more ergonomic interface than the raw
 //! syscalls.
 
-use abi::TaskId;
+use abi::{TaskId, STATE_TRANSFER_REQUESTED_MASK};
 use core::cell::Cell;
 use core::marker::PhantomData;
+use unwrap_lite::UnwrapLite;
 use zerocopy::{AsBytes, FromBytes, LayoutVerified};
 
 use crate::{
     sys_borrow_info, sys_borrow_read, sys_borrow_write, sys_get_timer, sys_recv, sys_recv_closed,
-    sys_recv_open, sys_reply, sys_send, sys_set_timer, BorrowInfo, ClosedRecvError, FromPrimitive, Lease,
+    sys_recv_open, sys_reply, sys_send, sys_set_timer, BorrowInfo, ClosedRecvError, FromPrimitive,
+    Lease,
 };
 
-const INTERNAL_TIMER_NOTIFICATION: u32 = 1 << 31;
+const INTERNAL_TIMER_NOTIFICATION: u32 = 1 << 30;
 
 /// Receives a message, or a notification, and handles it.
 ///
@@ -555,7 +557,11 @@ where
 /// If the server sends back a successful response that is the wrong size for
 /// `M::Response`. This indicates a serious bug, so it's not something we would
 /// make every client handle every time by returning an `Err`.
-pub fn send_with_retry<M>(target: &Cell<TaskId>, message: &M, leases: &[Lease]) -> Result<M::Response, M::Err>
+pub fn send_with_retry<M>(
+    target: &Cell<TaskId>,
+    message: &M,
+    leases: &[Lease],
+) -> Result<M::Response, M::Err>
 where
     M: Call,
 {
@@ -666,12 +672,17 @@ where
 pub fn sleep_until(time: u64) {
     sys_set_timer(Some(time), INTERNAL_TIMER_NOTIFICATION);
     loop {
-        let _ = sys_recv_closed(&mut [], INTERNAL_TIMER_NOTIFICATION, TaskId::KERNEL);
-        // We don't actually need to check the results:
-        // - The kernel cannot die.
-        // - We only agreed to accept notification messages with our timer bit set.
-        // - We must assume that the kernel is correct.
-
+        let result = sys_recv_closed(
+            &mut [],
+            INTERNAL_TIMER_NOTIFICATION | STATE_TRANSFER_REQUESTED_MASK,
+            TaskId::KERNEL,
+        );
+        // Check whether the kernel cancelled the operation
+        if result.is_ok() {
+            if result.unwrap_lite().operation & STATE_TRANSFER_REQUESTED_MASK != 0 {
+                break;
+            }
+        }
         // We do, however, need to check for the possibility of spurious
         // wakeups, by reading the time back.
         if sys_get_timer().now >= time {
