@@ -410,7 +410,7 @@ fn apply_relocs(
         return Ok(());
     }
     let mut pos: usize = 0usize;
-    while pos < buffer.len() - 4usize {
+    while pos <= buffer.len() - 4usize {
         // --> Check the status of the relocs buffer
         if *used_relocs == *usable_relocs {
             // Populate again the buffer
