@@ -38,7 +38,7 @@ struct ReceiverState {
     pub current_read_pos: usize,
 }
 
-fn update_handler() {
+fn update_handler() -> ! {
     // Deconfigure everything, especially DMA
     //let usart = unsafe { &*device::USART2::ptr() };
     //let dma1 = unsafe { &*device::DMA1::ptr() };
@@ -60,7 +60,7 @@ fn main() -> ! {
     // For this component, it makes little sense and a lot of effort to transfer the state
     // In fact, reconfiguration of peripherals is still needed for DMA.
     kipc::activate_task();
-    kipc::set_update_handler(update_handler);
+    kipc::set_update_support(true);
 
     // From thin air, pluck a pointer to the USART register block.
     //
@@ -93,15 +93,20 @@ fn main() -> ! {
     };
 
     // Main loop
-    sys_log!("[UARTv3] Online!");
+    sys_log!("[UARTv1] Online!");
     let mut recv_buff: [u8; 8] = [0x00; 8];
     let mut frame_recovery: bool = true;
     loop {
         hl::recv(
             &mut recv_buff,
-            USART_IRQ_MASK | DMA1_CH6_IRQ_MASK | TIMEOUT_MASK,
+            USART_IRQ_MASK | DMA1_CH6_IRQ_MASK | TIMEOUT_MASK | STATE_TRANSFER_REQUESTED_MASK,
             &mut state,
             |state_ref, bits| {
+                // Check if state transfer
+                if bits & STATE_TRANSFER_REQUESTED_MASK != 0 {
+                    // Call the update handler
+                    update_handler();
+                }
                 // Timer IRQ
                 if bits & TIMEOUT_MASK != 0 {
                     // Timeout for read expired

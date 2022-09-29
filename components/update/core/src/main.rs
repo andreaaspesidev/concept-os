@@ -28,7 +28,7 @@ fn main() -> ! {
     // Then activate
     kipc::activate_task();
     // Immediately set the handler
-    kipc::set_update_handler(update_handler);
+    kipc::set_update_support(true);
     // Listen for the initial packet on serial
     let mut usart = UartChannel::new();
 
@@ -58,6 +58,10 @@ fn main() -> ! {
         } else {
             sys_log!("[UPDATE] Read error");
         }
+        // Check for update request
+        if kipc::is_state_transfer_requested() {
+            update_handler();
+        }
     }
 }
 
@@ -72,7 +76,7 @@ fn hello_arrived(
     }
 }
 
-fn update_handler() {
+fn update_handler() -> ! {
     // If we are here, then we are updating ourselves.
     // Just signal we completed the update
     let mut usart = UartChannel::new();
