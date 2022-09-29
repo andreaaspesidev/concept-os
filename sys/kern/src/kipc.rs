@@ -5,8 +5,7 @@
 //! Implementation of IPC operations on the virtual kernel task.
 
 use abi::{
-    FaultInfo, SchedState, TaskId, UsageError,
-    HUBRIS_MAX_SUPPORTED_TASKS,
+    FaultInfo, SchedState, TaskId, UsageError, HUBRIS_MAX_SUPPORTED_TASKS,
 };
 use unwrap_lite::UnwrapLite;
 
@@ -31,10 +30,11 @@ pub fn handle_kernel_message(
         1 => read_task_status(tasks, caller_id, args.message?, args.response?),
         2 => restart_task(tasks, caller_id, args.message?),
         3 => fault_task(tasks, caller_id, args.message?),
-        4 => set_update_handler(tasks, caller_id, args.message?),
+        4 => set_update_capability(tasks, caller_id, args.message?),
         5 => get_state_availability(tasks, caller_id),
-        6 => activate_task(tasks, caller_id),
-        7 => load_component(tasks, caller_id, args.message?),
+        6 => state_transfer_requested(tasks, caller_id),
+        7 => activate_task(tasks, caller_id),
+        8 => load_component(tasks, caller_id, args.message?),
         _ => {
             // Task has sent an unknown message to the kernel. That's bad.
             Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
@@ -187,21 +187,22 @@ fn fault_task(
     Ok(NextTask::Same)
 }
 
-fn set_update_handler(
+fn set_update_capability(
     tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
     caller_id: u16,
     message: USlice<u8>,
 ) -> Result<NextTask, UserError> {
     // Read the handler address
-    let handler_address: u32 =
+    let state_transfer_support: bool =
         deserialize_message(get_task(tasks, caller_id), message)?;
     sys_log!(
-        "Set update handler for {} at {:#010x}",
+        "Set update support for {}: {}",
         caller_id,
-        handler_address
+        state_transfer_support
     );
     // Set the new handler
-    get_task_mut(tasks, caller_id).set_update_handler(handler_address);
+    get_task_mut(tasks, caller_id)
+        .set_state_transfer_support(state_transfer_support);
     // Respond to the task
     get_task_mut(tasks, caller_id)
         .save_mut()
@@ -214,13 +215,22 @@ fn get_state_availability(
     tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
     caller_id: u16,
 ) -> Result<NextTask, UserError> {
+    // A mature component will never have state to receive
+    if caller_id != abi::UPDATE_TEMP_ID {
+        get_task_mut(tasks, caller_id)
+            .save_mut()
+            .set_send_response_and_length(0, 0);
+        return Ok(NextTask::Same);
+    }
+    // Otherwise, it depends on whether the old component is active and
+    // is willing to transfer state
     let mut state_available: Option<u16> = None;
     let nominal_id = get_task(tasks, caller_id).descriptor().component_id();
     // Search for the nominal component ID
     let task = tasks.get(&nominal_id);
     if task.is_some() {
         let task_data = task.unwrap_lite();
-        if task_data.get_update_handler().is_some() {
+        if task_data.support_state_transfer() {
             state_available = Some(task_data.current_identifier().0);
         }
     }
@@ -234,6 +244,19 @@ fn get_state_availability(
             },
             0,
         );
+    return Ok(NextTask::Same);
+}
+
+fn state_transfer_requested(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
+) -> Result<NextTask, UserError> {
+    let requested = get_task(tasks, caller_id).is_transfer_requested();
+    sys_log!("State requested for {}: {}", caller_id, requested);
+    // Respond to the task
+    get_task_mut(tasks, caller_id)
+        .save_mut()
+        .set_send_response_and_length(requested as u32, 0);
     return Ok(NextTask::Same);
 }
 
@@ -270,12 +293,8 @@ fn activate_task(
             )
             .unwrap_lite();
         }
-        // Immediately schedule the block for removal
-        let storage_awoken = get_task_mut(tasks, abi::STORAGE_ID)
-            .post(NotificationSet(HUBRIS_STORAGE_ANALYZE_NOTIFICATION));
-        if storage_awoken {
-            next_hint = NextTask::Specific(abi::STORAGE_ID);
-        }
+        // Do not schedule the block for removal here, as we might not have the task
+        // yet, if we are updating the storage component
     }
 
     let mut task = tasks.remove(&abi::UPDATE_TEMP_ID).unwrap_lite();
@@ -296,6 +315,12 @@ fn activate_task(
     if let Some(old_id) = old_identifier {
         // Restart pending tasks
         task::restart_pending_tasks(tasks, nominal_id, old_id);
+        // Now is safe to schedule the old block for removal
+        let storage_awoken = get_task_mut(tasks, abi::STORAGE_ID)
+            .post(NotificationSet(HUBRIS_STORAGE_ANALYZE_NOTIFICATION));
+        if storage_awoken {
+            next_hint = NextTask::Specific(abi::STORAGE_ID);
+        }
     }
     // Alert the task
     let task = get_task_mut(tasks, nominal_id);

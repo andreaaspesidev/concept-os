@@ -364,6 +364,8 @@ fn reply(
         // Huh. The target task is off doing something else. This can happen if
         // application-specific supervisory logic unblocks it before we've had a
         // chance to reply (e.g. to implement timeouts).
+        // This happens also if the target of the reply is under state transfer,
+        // as we could have unlocked it in order to allow for a state transfer.
         return Ok(NextTask::Same);
     }
 

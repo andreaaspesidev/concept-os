@@ -230,6 +230,7 @@ fn add_task_to_system(
     Ok(())
 }
 
+/// Insert a component in the system, and executes it
 pub fn load_component_at(
     task_map: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
     irq_map: &mut FnvIndexMap<u32, InterruptOwner, HUBRIS_MAX_IRQS>,
@@ -255,13 +256,12 @@ pub fn load_component_at(
     // Check if an older component with this ID exist
     let nominal_id = task.descriptor().component_id();
     let task_search = task_map.get_mut(&nominal_id);
-    //let mut can_state_transfer: bool = false;
     if task_search.is_some() {
-        // If it has the update handler, force it
         let old_task = task_search.unwrap();
-        // Remove all its irqs
+        // Remove all its irqs, after disabling them
         for interrupt_num in 0..old_task.descriptor().num_interrupts() {
             let interrupt = old_task.descriptor().interrupt_nth(interrupt_num);
+            crate::arch::disable_irq(interrupt.irq_num);
             irq_map.remove(&interrupt.irq_num).unwrap();
         }
         // If the old component support it, now it can state transfer.
@@ -300,7 +300,8 @@ pub fn revert_update(
     if old_task.is_none() {
         return; // Ignore, we have nothing to revert to
     }
-    // Re-map IRQs of the old one
+    // Re-map IRQs of the old one. Do not reenable them, as the task will restart
+    // and enable them itself.
     with_irq_table(|irq_map| {
         let task = get_task(task_map, nominal_id);
         for interrupt_num in 0..task.descriptor().num_interrupts() {

@@ -10,7 +10,7 @@ use abi::{
     FaultInfo, FaultSource, Generation, Priority, RegionAttributes,
     RegionDescriptor, ReplyFaultReason, SchedState, TaskDescriptor, TaskFlags,
     TaskId, TaskState, ULease, UsageError, HUBRIS_MAX_SUPPORTED_TASKS,
-    REGIONS_PER_TASK,
+    REGIONS_PER_TASK,STATE_TRANSFER_REQUESTED_MASK, CANCELLED_SYSCALL
 };
 use heapless::{FnvIndexMap, Vec};
 use zerocopy::FromBytes;
@@ -62,10 +62,11 @@ pub struct Task {
     /// restarted.
     descriptor: TaskDescriptor,
 
-    /// Optional handler to be called upon component update
-    /// in order to allow state transfer.
-    update_handler: Option<u32>,
+    /// Whether the task is willing to supply state to a newer version.
+    transfer_state_support: bool,
+    transfer_state_requested: bool,
 
+    /// Timestamp marking the start moment of a state transfer window.
     update_since: Option<Timestamp>,
 }
 
@@ -93,7 +94,8 @@ impl Task {
             data_section: data_section,
             save: crate::arch::SavedState::default(),
             timer: crate::task::TimerState::default(),
-            update_handler: None,
+            transfer_state_support: false,
+            transfer_state_requested: false,
             update_since: None,
         };
         // Append all the regions
@@ -224,7 +226,6 @@ impl Task {
     ///
     /// This would return a `NextTask` but that would require the task to know
     /// its own global ID, which it does not.
-    #[must_use]
     pub fn post(&mut self, n: NotificationSet) -> bool {
         self.notifications |= n.0;
 
@@ -311,6 +312,8 @@ impl Task {
         self.notifications = 0;
         self.state = TaskState::default();
         self.update_since = None;
+        self.transfer_state_support = false;
+        self.transfer_state_requested = false;
 
         crate::arch::reinitialize(self);
     }
@@ -327,24 +330,45 @@ impl Task {
         TaskId::for_id_and_gen(self.component_id, self.generation())
     }
 
-    pub fn set_update_handler(&mut self, update_handler: u32) {
-        self.update_handler = Some(update_handler);
+    /// Enables the component to request additional time to permit state transfer
+    /// when an update occurs. This shortens the time on update, as if the component
+    /// is not willing to transfer state, will be simply terminated upon new version
+    /// start.
+    pub fn set_state_transfer_support(&mut self, available: bool) {
+        self.transfer_state_support = available;
     }
 
-    pub fn get_update_handler(&self) -> Option<u32> {
-        self.update_handler
+    pub fn support_state_transfer(&self) -> bool {
+        self.transfer_state_support
     }
 
+    pub fn is_transfer_requested(&self) -> bool {
+        self.transfer_state_requested
+    }
+
+    /// Begins a state transfer for this component.
     pub fn begin_state_transfer(&mut self) {
-        // Enter the update handler if one exists
-        if self.update_handler.is_some() {
-            self.timer = TimerState::default();
-            crate::arch::force_task_update_handler(self);
-            sys_log!("Forcing update handler for {}", self.component_id);
-            // Immediately enter in run, if not faulted
+        // If the component is willing to begin state transfer,
+        // setup all necessary steps
+        if self.transfer_state_support {
+            // Notify the bit of state transfer requested
+            sys_log!("Asking state transfer for {}", self.component_id);
+            self.transfer_state_requested = true;
+            self.post(NotificationSet(STATE_TRANSFER_REQUESTED_MASK));
+            // Unblock the task if is waiting for a response from another task
             match self.state {
-                TaskState::Healthy(_) => {
-                    self.state = TaskState::Healthy(SchedState::Runnable)
+                TaskState::Healthy(sched_state) => {
+                    match sched_state {
+                        SchedState::InSend(_) | SchedState::InReply(_) => {
+                            // - If InSend, Simply cancel the operation with an error
+                            // - If InReply, then when the original task replyes,
+                            //   it's already managed. For the responding task,
+                            //   everything went successfully
+                            self.save_mut().set_send_response_and_length(CANCELLED_SYSCALL, 0);
+                            self.set_healthy_state(SchedState::Runnable);
+                        },
+                        _ => {}
+                    }
                 }
                 _ => {}
             }
@@ -354,7 +378,7 @@ impl Task {
             self.state = TaskState::Faulted {
                 fault: FaultInfo::Injected(abi::TaskId(0)),
                 original_state: SchedState::Runnable,
-            }
+            };
         }
     }
 
@@ -368,7 +392,7 @@ impl Task {
         self.update_since = Some(time);
     }
 
-    pub fn is_still_update(&self) -> &Option<Timestamp> {
+    pub fn is_still_updating(&self) -> &Option<Timestamp> {
         &self.update_since
     }
 
@@ -826,7 +850,7 @@ pub fn process_timers(
     for (cid, task) in tasks.iter_mut() {
         // Check for dying tasks
         if !task_revert {
-            match task.is_still_update() {
+            match task.is_still_updating() {
                 Some(at) => {
                     if current_time - *at
                         > Timestamp::from(abi::REVERT_UPDATE_TIMEOUT)

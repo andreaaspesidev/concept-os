@@ -327,7 +327,7 @@ pub fn reinitialize(task: &mut task::Task) {
     //log_task(task);    
 }
 
-pub fn force_task_update_handler(task: &mut task::Task) {
+/*pub fn force_task_update_handler(task: &mut task::Task) {
     // In order to force the task to execute the update handler,
     // we have to overwrite the PC saved in the exception frame saved on the stack
     let update_handler = task.get_update_handler().unwrap_lite();
@@ -340,7 +340,7 @@ pub fn force_task_update_handler(task: &mut task::Task) {
     // Let's write the new pc
     let frame = &mut task.try_write(&mut frame_uslice).unwrap_lite()[0];
     frame.base.pc = update_handler;
-}
+}*/
 
 pub fn mark_task_update(task: &mut task::Task) {
     task.set_update_since(now());
