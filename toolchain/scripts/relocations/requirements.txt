@@ -2,3 +2,5 @@ lief
 pyelftools
 pyserde
 toml
+tomli
+tomli_w
