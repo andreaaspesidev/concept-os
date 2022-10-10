@@ -1,0 +1,12 @@
+name = "stm32f303re_bthermo"
+board = "stm32f303re"
+kernel_ram = 8192
+components = [
+    "idle", 
+    "rcc", 
+    "storage", 
+    "uart-channel-multi-bluetooth", 
+    "update", 
+    "bthermo", 
+    "bthermo-controller"
+]
