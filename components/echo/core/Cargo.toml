@@ -1,0 +1,19 @@
+[package]
+name = "echo"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+stm32f303re = []
+
+[dependencies]
+userlib = {path = "../../../sys/userlib", features = ["log-itm"]}
+cortex-m = { version = "0.7", features = ["inline-asm"] }
+uart-channel-api = {path = "../../uart-channel/api"}
+
+# This section is here to discourage RLS/rust-analyzer from doing test builds,
+# since test builds don't work for cross compilation.
+[[bin]]
+name = "echo"
+test = false
+bench = false
