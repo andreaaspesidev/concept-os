@@ -1,0 +1,4 @@
+loguru~=0.5.3
+pyserial~=3.4
+PyYAML~=5.3.1
+ujson~=4.0.1

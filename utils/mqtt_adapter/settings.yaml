@@ -1,0 +1,19 @@
+logger:
+  enable: true          # true/false, if true enables logger
+  #file: "logger.log"    # path where the log must be written
+  #max_size: "500 Mb"    # maximum size before log rotation
+  level: "DEBUG"         # log level: DEBUG, INFO, SUCCESS, WARNING, ERROR
+
+serial:
+  port_name: /dev/rfcomm0
+  baudrate: 115200
+
+mqtt:
+  server_ip: "192.168.0.3"
+  server_port: 1883
+  username: "mqtt"
+  password: "mqtt"
+  root_topic: "bthermo"
+
+multiplex:
+  enable: true
