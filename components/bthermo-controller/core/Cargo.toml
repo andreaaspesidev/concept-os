@@ -1,0 +1,20 @@
+[package]
+name = "bthermo-controller"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+stm32f303re = []
+
+[dependencies]
+userlib = {path = "../../../sys/userlib", features=["log-itm"]}
+uart-channel-api = {path = "../../uart-channel-multi-bluetooth/api"}
+bthermo-api = {path = "../../bthermo/api"}
+zerocopy = "0.6.1"
+
+# This section is here to discourage RLS/rust-analyzer from doing test builds,
+# since test builds don't work for cross compilation.
+[[bin]]
+name = "bthermo-controller"
+test = false
+bench = false
