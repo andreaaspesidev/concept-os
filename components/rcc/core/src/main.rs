@@ -41,7 +41,6 @@ fn main() -> ! {
 
     // Message handler
     let recv_handler = |op: Operation, msg: hl::Message| -> Result<(), RCCError> {
-        sys_log!("[RCC] Got message!");
         match op {
             Operation::EnableClock => {
                 // Parse message (the same for all)
