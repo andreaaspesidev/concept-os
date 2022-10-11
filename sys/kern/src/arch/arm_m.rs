@@ -73,18 +73,22 @@
 use core::arch::asm;
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
+use flash_allocator::flash::page::FlashPage;
 use flash_allocator::flash::walker::FlashWalker;
 use flash_allocator::flash::{FlashBlock, FlashMethods};
+use heapless::FnvIndexMap;
 use stm32f303re::*;
 use zerocopy::FromBytes;
 
 use crate::atomic::AtomicExt;
-use crate::startup::{with_task_table, with_irq_table};
-use crate::{task, sys_log};
+use crate::startup::{with_irq_table, with_task_table};
+use crate::task::{NextTask, Task};
 use crate::time::Timestamp;
 use crate::umem::USlice;
+use crate::{sys_log, task};
 use abi::FaultInfo;
 use abi::FaultSource;
+use abi::HUBRIS_MAX_SUPPORTED_TASKS;
 use unwrap_lite::UnwrapLite;
 
 macro_rules! uassert {
@@ -269,7 +273,12 @@ pub fn reinitialize(task: &mut task::Task) {
 
     // Clear the whole sram region with 0x00
     sys_log!("SRAM at {:#010x} for task {}", sram_region.base, task_id);
-    let sram_frame = unsafe{ core::slice::from_raw_parts_mut(sram_region.base as *mut u8, sram_region.size as usize) };
+    let sram_frame = unsafe {
+        core::slice::from_raw_parts_mut(
+            sram_region.base as *mut u8,
+            sram_region.size as usize,
+        )
+    };
     for i in 0..sram_frame.len() {
         sram_frame[i] = 0x00;
     }
@@ -324,7 +333,7 @@ pub fn reinitialize(task: &mut task::Task) {
     // Finally, record the EXC_RETURN we'll use to enter the task.
     task.save_mut().exc_return = EXC_RETURN_CONST;
 
-    //log_task(task);    
+    //log_task(task);
 }
 
 /*pub fn force_task_update_handler(task: &mut task::Task) {
@@ -687,28 +696,7 @@ pub unsafe extern "C" fn SysTick() {
     crate::profiling::event_timer_isr_enter();
     with_task_table(|tasks| {
         // Load the time before this tick event.
-        let t0 = TICKS[0].load(Ordering::Relaxed);
-        let t1 = TICKS[1].load(Ordering::Relaxed);
-
-        // Advance the kernel's notion of time by adding 1. Laboriously.
-        let (t0, t1) = if let Some(t0p) = t0.checked_add(1) {
-            // Incrementing t0 did not roll over, no need to update t1.
-            TICKS[0].store(t0p, Ordering::Relaxed);
-            (t0p, t1)
-        } else {
-            // Incrementing t0 overflowed. We need to also increment t1. We use
-            // normal checked addition for this, not wrapping, because this
-            // should not be able to overflow under normal operation, and would
-            // almost certainly indicate state corruption that we'd like to
-            // discover.
-            TICKS[0].store(0, Ordering::Relaxed);
-            TICKS[1].store(t1 + 1, Ordering::Relaxed);
-            (0, t1 + 1)
-        };
-
-        // Process any timers.
-        let now = Timestamp::from([t0, t1]);
-        let switch = task::process_timers(tasks, now);
+        let switch = advance_time(tasks, 1);
 
         // If any timers fired, we need to defer a context switch, because the entry
         // sequence to this ISR doesn't save state correctly for efficiency.
@@ -717,6 +705,35 @@ pub unsafe extern "C" fn SysTick() {
         }
     });
     crate::profiling::event_timer_isr_exit();
+}
+
+fn advance_time(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    ticks: u32,
+) -> NextTask {
+    // Load the time before this tick event.
+    let t0 = TICKS[0].load(Ordering::Relaxed);
+    let t1 = TICKS[1].load(Ordering::Relaxed);
+
+    // Advance the kernel's notion of time by adding ticks. Laboriously.
+    let (t0, t1) = if let Some(t0p) = t0.checked_add(ticks) {
+        // Incrementing t0 did not roll over, no need to update t1.
+        TICKS[0].store(t0p, Ordering::Relaxed);
+        (t0p, t1)
+    } else {
+        // Incrementing t0 overflowed. We need to also increment t1. We use
+        // normal checked addition for this, not wrapping, because this
+        // should not be able to overflow under normal operation, and would
+        // almost certainly indicate state corruption that we'd like to
+        // discover.
+        TICKS[0].store(0, Ordering::Relaxed);
+        TICKS[1].store(t1 + 1, Ordering::Relaxed);
+        (0, t1 + 1)
+    };
+
+    // Process any timers.
+    let now = Timestamp::from([t0, t1]);
+    task::process_timers(tasks, now)
 }
 
 fn pend_context_switch_from_isr() {
@@ -830,8 +847,8 @@ pub unsafe extern "C" fn DefaultHandler() {
             let irq_num = exception_num - 16;
             let owner = with_irq_table(|irq_map| {
                 *irq_map
-                .get(&irq_num)
-                .unwrap_or_else(|| panic!("unhandled IRQ {}", irq_num))
+                    .get(&irq_num)
+                    .unwrap_or_else(|| panic!("unhandled IRQ {}", irq_num))
             });
             let switch = with_task_table(|tasks| {
                 disable_irq(irq_num);
@@ -1206,17 +1223,76 @@ impl AtomicExt for AtomicBool {
  * Masks the generics and the implementation details from the main kernel
  * procedures.
  */
-static mut FLASH_INTERFACE: MaybeUninit<
-    Flash<FLASH_START_ADDR, FLASH_PAGE_SIZE, FLASH_END_ADDR>,
-> = MaybeUninit::uninit();
+static mut FLASH_INTERFACE: MaybeUninit<FlashInterface> = MaybeUninit::uninit();
 
 pub unsafe fn initialize_native() {
     unsafe {
-        FLASH_INTERFACE.write(Flash::new());
+        FLASH_INTERFACE.write(FlashInterface::new());
     }
 }
 
-pub fn get_flash_interface() -> &'static mut dyn FlashMethods<'static> {
+/// We have to offer an interface to access flash methods.
+/// This must also take into account that some operations will stall the CPU.
+/// During this time, we might skip SysTick interrupt, and so here below
+/// we force this concept by adding back to the ticks the worst case scenario.
+pub struct FlashInterface {
+    native_methods:
+        Flash<'static, FLASH_START_ADDR, FLASH_PAGE_SIZE, FLASH_END_ADDR>,
+}
+
+impl FlashInterface {
+    pub fn new() -> Self {
+        Self {
+            native_methods: Flash::new(),
+        }
+    }
+    pub fn write_timed(
+        &mut self,
+        tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+        address: u32,
+        data: &[u8],
+    ) -> Result<NextTask, ()> {
+        let result = self.native_methods.write(address, data);
+        let lost_ms = data.len() as u32 / FLASH_WRITES_PER_MS;
+        let switch = advance_time(tasks, lost_ms);
+        return result.map(|_| switch);
+    }
+    pub fn erase_timed(
+        &mut self,
+        tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+        page_num: u16,
+    ) -> Result<NextTask, ()> {
+        let result = self.native_methods.erase(page_num);
+        let switch = advance_time(tasks, FLASH_ERASE_MS);
+        return result.map(|_| switch);
+    }
+}
+
+impl FlashMethods<'static> for FlashInterface {
+    fn read(&self, address: u32, buffer: &mut [u8]) -> Result<(), ()> {
+        self.native_methods.read(address, buffer)
+    }
+    fn write(&mut self, address: u32, data: &[u8]) -> Result<(), ()> {
+        self.native_methods.write(address, data)
+    }
+    fn flush_write_buffer(&mut self) -> Result<(), ()> {
+        self.native_methods.flush_write_buffer()
+    }
+    fn page_from_address(&self, address: u32) -> Option<FlashPage> {
+        self.native_methods.page_from_address(address)
+    }
+    fn page_from_number(&self, page_num: u16) -> Option<FlashPage> {
+        self.native_methods.page_from_number(page_num)
+    }
+    fn prev_page(&self, page_num: u16) -> Option<FlashPage> {
+        self.native_methods.prev_page(page_num)
+    }
+    fn erase(&mut self, page_num: u16) -> Result<(), ()> {
+        self.native_methods.erase(page_num)
+    }
+}
+
+pub fn get_flash_interface() -> &'static mut FlashInterface {
     unsafe { FLASH_INTERFACE.assume_init_mut() }
 }
 
@@ -1231,7 +1307,6 @@ pub fn get_flash_block(
         FLASH_ALLOCATOR_START_SCAN_ADDR,
         FLASH_NUM_SLOTS,
         FLASH_BLOCK_SIZE,
-        FLASH_FLAG_SIZE,
     >(flash_methods, base_address, is_base_exact)
 }
 
@@ -1243,24 +1318,18 @@ pub fn finalize_block(block_base_address: u32) -> Result<(), ()> {
     flash_allocator::flash::utils::finalize_block::<
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_NUM_SLOTS,
-        FLASH_FLAG_SIZE,
     >(flash_methods, block)
 }
 
 pub unsafe fn dismiss_block(block_base_address: u32) -> Result<(), ()> {
     // Get the block
-    let block = get_flash_block(
-        block_base_address,
-        false,
-    )
-    .unwrap_lite();
+    let block = get_flash_block(block_base_address, false).unwrap_lite();
     // Mark the block
     let flash_methods = get_flash_interface();
     unsafe {
         flash_allocator::flash::utils::mark_block_dismissed::<
             FLASH_ALLOCATOR_START_ADDR,
             FLASH_NUM_SLOTS,
-            FLASH_FLAG_SIZE,
         >(flash_methods, block)
     }
 }
@@ -1274,7 +1343,6 @@ pub struct FlashWalkerFacade {
         FLASH_ALLOCATOR_START_SCAN_ADDR,
         FLASH_NUM_SLOTS,
         FLASH_BLOCK_SIZE,
-        FLASH_FLAG_SIZE,
     >,
 }
 
@@ -1302,7 +1370,6 @@ pub fn get_flash_walker() -> FlashWalkerFacade {
         FLASH_ALLOCATOR_START_SCAN_ADDR,
         FLASH_NUM_SLOTS,
         FLASH_BLOCK_SIZE,
-        FLASH_FLAG_SIZE,
     >::new(flash_methods);
     FlashWalkerFacade {
         native_walker: naive_walker,

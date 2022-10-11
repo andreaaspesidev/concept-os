@@ -32,11 +32,10 @@ mod tests {
     const SIZE: usize = (END_ADDR - START_ADDR + 1) as usize; // 0x80000 -> 2^19 -> 524288
     
     const BLOCK_SIZE: usize = 4096;
-    const FLAG_SIZE: usize = 2;
 
     fn init_stm32f303e<'a>(
         flash: &'a mut dyn FlashMethods<'a>
-    ) -> impl FlashAllocator<'a, FLAG_SIZE> {
+    ) -> impl FlashAllocator<'a> {
         assert!(SIZE % BLOCK_SIZE as usize == 0);
         const NUM_BLOCKS: usize = SIZE / BLOCK_SIZE as usize; // 128
         const NUM_SLOTS: usize = 7 + 1; // clog2(NUM_BLOCKS) + 1
@@ -46,9 +45,8 @@ mod tests {
             START_SCAN_ADDR,
             BLOCK_SIZE,
             NUM_BLOCKS,
-            NUM_SLOTS,
-            FLAG_SIZE,
-        >::from_flash(flash);
+            NUM_SLOTS
+        >::from_flash(flash, false);
         println!(
             "Required memory bytes: {}",
             core::mem::size_of::<
@@ -59,7 +57,6 @@ mod tests {
                     BLOCK_SIZE,
                     NUM_BLOCKS,
                     NUM_SLOTS,
-                    FLAG_SIZE,
                 >,
             >()
         );

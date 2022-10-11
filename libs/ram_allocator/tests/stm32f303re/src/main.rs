@@ -4,10 +4,8 @@ mod flash_structure;
 #[cfg(test)]
 mod tests {
     use crate::{fake_flash::Flash, flash_structure::FLASH_PAGES};
-    use flash_allocator::flash::{
-        FlashAllocator, FlashAllocatorImpl, FlashMethods, walker::FlashWalkerImpl,
-    };
-    use ram_allocator::{RAMAllocatorImpl, RAMAllocator};
+    use flash_allocator::flash::{header::BlockHeader, FlashAllocatorImpl};
+    use ram_allocator::{RAMAllocator, RAMAllocatorImpl};
     use std::fmt;
 
     /*
@@ -30,16 +28,16 @@ mod tests {
     const FLASH_START_ADDR: u32 = 0x0800_0000;
     const FLASH_END_ADDR: u32 = 0x0807_FFFF;
     const FLASH_SIZE: usize = (FLASH_END_ADDR - FLASH_START_ADDR + 1) as usize; // 0x80000 -> 2^19 -> 524288
-    
+
     const FLASH_ALLOCATOR_START_ADDR: u32 = 0x0800_0000;
-    const FLASH_ALLOCATOR_END_ADDR: u32 = 0x0807_FFFF; 
-    const FLASH_ALLOCATOR_SIZE: usize = (FLASH_ALLOCATOR_END_ADDR - FLASH_ALLOCATOR_START_ADDR + 1) as usize;
+    const FLASH_ALLOCATOR_END_ADDR: u32 = 0x0807_FFFF;
+    const FLASH_ALLOCATOR_SIZE: usize =
+        (FLASH_ALLOCATOR_END_ADDR - FLASH_ALLOCATOR_START_ADDR + 1) as usize;
     const FLASH_ALLOCATOR_START_SCAN_ADDR: u32 = 0x0800_1000; // ALLOCATOR_START_SCAN_ADDR - ALLOCATOR_START_ADDR MUST BE A POWER OF 2
 
     const FLASH_BLOCK_SIZE: usize = 4096;
     const FLASH_NUM_BLOCKS: usize = FLASH_ALLOCATOR_SIZE / FLASH_BLOCK_SIZE as usize; // 128
     const FLASH_NUM_SLOTS: usize = 7 + 1; // clog2(NUM_BLOCKS) + 1
-    const FLAG_SIZE: usize = 2;
 
     const SRAM_START_ADDR: u32 = 0x2000_0000;
     const SRAM_END_ADDR: u32 = 0x2000_FFFF;
@@ -65,12 +63,11 @@ mod tests {
             let ptr = flash_content.as_mut_ptr();
             shadow_copy = core::slice::from_raw_parts_mut(ptr, FLASH_SIZE);
         }
-        let mut flash =
-            Flash::<FLASH_BLOCK_SIZE, BLOCK_MAX_LEVEL, FLASH_ALLOCATOR_SIZE, FLAG_SIZE>::new(
-                FLASH_START_ADDR,
-                &FLASH_PAGES,
-                &mut flash_content,
-            );
+        let mut flash = Flash::<FLASH_BLOCK_SIZE, BLOCK_MAX_LEVEL, FLASH_ALLOCATOR_SIZE>::new(
+            FLASH_START_ADDR,
+            &FLASH_PAGES,
+            &mut flash_content,
+        );
         let mut flash_allocator = FlashAllocatorImpl::<
             FLASH_ALLOCATOR_START_ADDR,
             FLASH_ALLOCATOR_END_ADDR,
@@ -78,70 +75,88 @@ mod tests {
             FLASH_BLOCK_SIZE,
             FLASH_NUM_BLOCKS,
             FLASH_NUM_SLOTS,
-            FLAG_SIZE,
-        >::from_flash(&mut flash);
+        >::from_flash(&mut flash, false);
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
         // Allocation 1
-        let flash_alloc1 = flash_allocator.allocate(FLASH_BLOCK_SIZE as u32).unwrap();
+        let flash_alloc1 = flash_allocator
+            .allocate(FLASH_BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .unwrap();
         println!("Allocated at: {:#010x}", flash_alloc1.get_base_address());
         // Allocate 2
-        let flash_alloc2 = flash_allocator.allocate(3 * FLASH_BLOCK_SIZE as u32).unwrap();
+        let flash_alloc2 = flash_allocator
+            .allocate(3 * FLASH_BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .unwrap();
         println!("Allocated at: {:#010x}", flash_alloc2.get_base_address());
         // Allocate 3
-        let flash_alloc3 = flash_allocator.allocate(4 * FLASH_BLOCK_SIZE as u32).unwrap();
+        let flash_alloc3 = flash_allocator
+            .allocate(4 * FLASH_BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .unwrap();
         println!("Allocated at: {:#010x}", flash_alloc3.get_base_address());
-        
+
         drop(flash_allocator);
-        
+
         let mut sram_allocator = RAMAllocatorImpl::<
-            SRAM_START_ADDR, 
-            SRAM_END_ADDR, 
-            SRAM_BLOCK_SIZE, 
-            SRAM_NUM_BLOCKS, 
-            SRAM_NUM_SLOTS, 
+            SRAM_START_ADDR,
+            SRAM_END_ADDR,
+            SRAM_BLOCK_SIZE,
+            SRAM_NUM_BLOCKS,
+            SRAM_NUM_SLOTS,
             SRAM_RESERVED,
             FLASH_ALLOCATOR_START_ADDR,
             FLASH_ALLOCATOR_END_ADDR,
             FLASH_ALLOCATOR_START_SCAN_ADDR,
             FLASH_NUM_SLOTS,
             FLASH_BLOCK_SIZE,
-            FLAG_SIZE
-            >::from_flash(&mut flash);
+        >::from_flash(&mut flash);
         println!("{:?}", &Fmt(|f| sram_allocator.dump(f)));
         // Allocate 1
-        let ram_alloc1 = sram_allocator.allocate(flash_alloc1.get_base_address(), 512).unwrap();
+        let ram_alloc1 = sram_allocator
+            .allocate(flash_alloc1.get_base_address(), 512)
+            .unwrap();
         println!("Allocated at: {:#010x}", ram_alloc1.get_base_address());
-        mark_component(&mut shadow_copy, ram_alloc1.get_flash_position().get_base_address());
+        mark_component(
+            &mut shadow_copy,
+            ram_alloc1.get_flash_position().get_base_address(),
+        );
         println!("{:?}", &Fmt(|f| sram_allocator.dump(f)));
         // Allocate 2
-        let ram_alloc2 = sram_allocator.allocate(flash_alloc2.get_base_address(), 1024).unwrap();
+        let ram_alloc2 = sram_allocator
+            .allocate(flash_alloc2.get_base_address(), 1024)
+            .unwrap();
         println!("Allocated at: {:#010x}", ram_alloc2.get_base_address());
-        mark_component(&mut shadow_copy, ram_alloc2.get_flash_position().get_base_address());
+        mark_component(
+            &mut shadow_copy,
+            ram_alloc2.get_flash_position().get_base_address(),
+        );
         println!("{:?}", &Fmt(|f| sram_allocator.dump(f)));
         // Allocate 3
-        let ram_alloc3 = sram_allocator.allocate(flash_alloc3.get_base_address(), 4096).unwrap();
+        let ram_alloc3 = sram_allocator
+            .allocate(flash_alloc3.get_base_address(), 4096)
+            .unwrap();
         println!("Allocated at: {:#010x}", ram_alloc3.get_base_address());
-        mark_component(&mut shadow_copy, ram_alloc3.get_flash_position().get_base_address());
+        mark_component(
+            &mut shadow_copy,
+            ram_alloc3.get_flash_position().get_base_address(),
+        );
         println!("{:?}", &Fmt(|f| sram_allocator.dump(f)));
 
         drop(sram_allocator);
 
         // Recreate
         let sram_allocator_rec = RAMAllocatorImpl::<
-            SRAM_START_ADDR, 
-            SRAM_END_ADDR, 
-            SRAM_BLOCK_SIZE, 
-            SRAM_NUM_BLOCKS, 
-            SRAM_NUM_SLOTS, 
+            SRAM_START_ADDR,
+            SRAM_END_ADDR,
+            SRAM_BLOCK_SIZE,
+            SRAM_NUM_BLOCKS,
+            SRAM_NUM_SLOTS,
             SRAM_RESERVED,
             FLASH_ALLOCATOR_START_ADDR,
             FLASH_ALLOCATOR_END_ADDR,
             FLASH_ALLOCATOR_START_SCAN_ADDR,
             FLASH_NUM_SLOTS,
             FLASH_BLOCK_SIZE,
-            FLAG_SIZE
-            >::from_flash(&mut flash);
-        println!("{:?}", &Fmt(|f| sram_allocator_rec.dump(f)));    
+        >::from_flash(&mut flash);
+        println!("{:?}", &Fmt(|f| sram_allocator_rec.dump(f)));
     }
 }
 

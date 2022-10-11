@@ -11,7 +11,6 @@ pub struct Flash<
     const BLOCK_SIZE: usize,
     const BLOCK_MAX_LEVEL: u16,
     const ALLOCATOR_SIZE: usize,
-    const FLAG_BYTES: usize,
     const SWAP_PAGE_NUM: u16,
 > {
     content: &'b mut [u8],
@@ -24,9 +23,8 @@ impl<
         const BLOCK_SIZE: usize,
         const BLOCK_MAX_LEVEL: u16,
         const ALLOCATOR_SIZE: usize,
-        const FLAG_BYTES: usize,
         const SWAP_PAGE_NUM: u16,
-    > Flash<'b, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, FLAG_BYTES, SWAP_PAGE_NUM>
+    > Flash<'b, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>
 {
     pub fn new(start_addr: u32, page_mapping: &'static [FlashPage], content: &'b mut [u8]) -> Self {
         Self {
@@ -43,6 +41,16 @@ impl<
         }
         None
     }
+    fn write_u8(&mut self, address: u32, value: u8) -> Result<(), ()> {
+        // In case flash memory requires an higher granularity for writing
+        // this method must enforce it by buffering data and make a single write
+        let offset = (address - self.start_addr) as usize;
+        if !(self.content[offset] == 0xFF || value == 0x00 || self.content[offset] == value) {
+            return Err(());
+        }
+        self.content[offset] = value;
+        Ok(())
+    }
 }
 
 impl<
@@ -51,26 +59,21 @@ impl<
         const BLOCK_SIZE: usize,
         const BLOCK_MAX_LEVEL: u16,
         const ALLOCATOR_SIZE: usize,
-        const FLAG_BYTES: usize,
         const SWAP_PAGE_NUM: u16,
     > FlashMethods<'a>
-    for Flash<'b, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, FLAG_BYTES, SWAP_PAGE_NUM>
+    for Flash<'b, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>
 {
-    fn read(&self, address: u32, len: usize) -> Result<&'a [u8], ()> {
+    fn read(&self, address: u32, buffer: &mut [u8]) -> Result<(), ()> {
         let offset = (address - self.start_addr) as usize;
-        unsafe {
-            // Needed as for testing now we are using vectors in heap, that would outlive the lifetime 'a
-            Ok(core::slice::from_raw_parts(&self.content[offset], len))
+        for i in 0..buffer.len() {
+            buffer[i] = self.content[offset + i];
         }
+        Ok(())
     }
-    fn write(&mut self, address: u32, value: u8) -> Result<(), ()> {
-        // In case flash memory requires an higher granularity for writing
-        // this method must enforce it by buffering data and make a single write
-        let offset = (address - self.start_addr) as usize;
-        if !(self.content[offset] == 0xFF || value == 0x00 || self.content[offset] == value) {
-            return Err(());
+    fn write(&mut self, address: u32, data: &[u8]) -> Result<(), ()> {
+        for i in 0..data.len() {
+            self.write_u8(address + i as u32, data[i])?;
         }
-        self.content[offset] = value;
         Ok(())
     }
     fn page_from_address(&self, address: u32) -> Option<FlashPage> {
@@ -115,7 +118,6 @@ impl<
             BLOCK_SIZE,
             BLOCK_MAX_LEVEL,
             ALLOCATOR_SIZE,
-            FLAG_BYTES,
             SWAP_PAGE_NUM,
         >::new(self);
         swapper.swap_procedure(page_number, start_type, start_size as u32)

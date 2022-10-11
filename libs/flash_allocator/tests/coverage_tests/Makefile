@@ -7,7 +7,7 @@ update:
 	
 coverage:
 	cargo clean
-	cargo tarpaulin --out HTML
+	cargo tarpaulin --out HTML --engine llvm
 	xdg-open tarpaulin-report.html
 
 clean:

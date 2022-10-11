@@ -34,6 +34,8 @@ impl From<BlockType> for u16 {
     }
 }
 
+// Terrile implementation, required as I have found
+// no other way to obtain FromBytes for this structure
 unsafe impl FromBytes for BlockType {
     fn only_derive_is_allowed_to_implement_this_trait()
     where

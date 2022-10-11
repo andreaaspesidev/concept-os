@@ -2,7 +2,7 @@
     SWAP Procedure
 */
 
-use crate::flash::{header::BlockHeader, FlashMethods};
+use crate::flash::{header::BlockHeader, FlashMethods, FLAG_BYTES};
 
 /// u32 from big endian bytes
 /// 0x12345678
@@ -77,7 +77,6 @@ pub struct SwapperImpl<
     const BLOCK_SIZE: usize,
     const BLOCK_MAX_LEVEL: u16,
     const ALLOCATOR_SIZE: usize,
-    const FLAG_BYTES: usize,
     const SWAP_PAGE_NUM: u16,
 > {
     flash: &'a mut dyn FlashMethods<'a>,
@@ -90,9 +89,8 @@ impl<
         const BLOCK_SIZE: usize,
         const BLOCK_MAX_LEVEL: u16,
         const ALLOCATOR_SIZE: usize,
-        const FLAG_BYTES: usize,
         const SWAP_PAGE_NUM: u16,
-    > SwapperImpl<'a, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, FLAG_BYTES, SWAP_PAGE_NUM>
+    > SwapperImpl<'a, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>
 {
     pub fn new(flash: &'a mut dyn FlashMethods<'a>) -> Self {
         Self {
@@ -102,13 +100,10 @@ impl<
         }
     }
 
-    fn read_block_header(&self, address: u32) -> BlockHeader<'a, FLAG_BYTES> {
-        let header_buffer = self
-            .flash
-            .read(address, BlockHeader::<FLAG_BYTES>::HEADER_SIZE)
-            .unwrap();
-        let block_header: BlockHeader<FLAG_BYTES> =
-            BlockHeader::<FLAG_BYTES>::new(header_buffer, BLOCK_MAX_LEVEL);
+    fn read_block_header(&self, address: u32) -> BlockHeader {
+        let mut header_buffer: [u8; BlockHeader::HEADER_SIZE] = [0x00; BlockHeader::HEADER_SIZE];
+        self.flash.read(address, &mut header_buffer).unwrap();
+        let block_header: BlockHeader = BlockHeader::new(&header_buffer, BLOCK_MAX_LEVEL);
         return block_header;
     }
 
@@ -120,11 +115,14 @@ impl<
         // Write PAGE_NUM (in little endian)
         let swap_page = self.flash.page_from_number(SWAP_PAGE_NUM).unwrap();
         self.flash
-            .write(swap_page.base_address(), (page_number & 0xFF) as u8)
-            .unwrap(); // Low word
-        self.flash
-            .write(swap_page.base_address() + 1, (page_number >> 8) as u8)
-            .unwrap(); // High word
+            .write(
+                swap_page.base_address(),
+                &[
+                    (page_number & 0xFF) as u8, // Low word
+                    (page_number >> 8) as u8,   // High word
+                ],
+            )
+            .unwrap();
         self.current_position += 2 + FLAG_BYTES as u32; // The header size
         self.swap_init = true;
     }
@@ -140,29 +138,26 @@ impl<
         let mut buff: [u8; 4];
         // 1 - write target address
         buff = frgm_target.to_le_bytes();
-        for b in buff {
-            self.flash
-                .write(swap_start_addr + self.current_position, b)
-                .unwrap();
-            self.current_position += 1;
-        }
+        self.flash
+            .write(swap_start_addr + self.current_position, &buff)
+            .unwrap();
+        self.current_position += buff.len() as u32;
+
         // 2 - write fragment size
         buff = frgm_size.to_le_bytes();
-        for b in buff {
-            self.flash
-                .write(swap_start_addr + self.current_position, b)
-                .unwrap();
-            self.current_position += 1;
-        }
+        self.flash
+            .write(swap_start_addr + self.current_position, &buff)
+            .unwrap();
+        self.current_position += buff.len() as u32;
         // 3 - copy fragment data
         let mut read_pos: u32 = page_start_addr + frgm_target;
         let frgm_end_addr = read_pos + frgm_size;
         while read_pos < frgm_end_addr {
-            // todo: check if included or not
-            let data = self.flash.read(read_pos, 1).unwrap();
-            assert!(data.len() == 1);
+            // TODO: move data in chunks
+            let mut data_buff: [u8; 1] = [0x00; 1];
+            self.flash.read(read_pos, &mut data_buff).unwrap();
             self.flash
-                .write(swap_start_addr + self.current_position, data[0])
+                .write(swap_start_addr + self.current_position, &data_buff)
                 .unwrap();
             self.current_position += 1;
             read_pos += 1;
@@ -182,15 +177,18 @@ impl<
     }
 
     fn read_u32(&self, address: u32) -> u32 {
-        let buff = self.flash.read(address, 4).unwrap();
-        return u32_le_from_array(buff);
+        let mut buff: [u8; 4] = [0x00; 4];
+        self.flash.read(address, &mut buff).unwrap();
+        return u32::from_le_bytes(buff);
     }
     fn read_u16(&self, address: u32) -> u16 {
-        let buff = self.flash.read(address, 2).unwrap();
-        return u16_le_from_array(buff);
+        let mut buff: [u8; 2] = [0x00; 2];
+        self.flash.read(address, &mut buff).unwrap();
+        return u16::from_le_bytes(buff);
     }
     fn read_flag(&self, address: u32) -> bool {
-        let buff = self.flash.read(address, FLAG_BYTES).unwrap();
+        let mut buff: [u8; FLAG_BYTES] = [0x00; FLAG_BYTES];
+        self.flash.read(address, &mut buff).unwrap();
         return buff == [0x00; FLAG_BYTES];
     }
 
@@ -207,9 +205,10 @@ impl<
             // Empty header, finished fragments
             // Copy back fragment
             for i in 0..frgm_size {
-                let data = self.flash.read(curr_pos + i, 1).unwrap();
+                let mut data_buff: [u8; 1] = [0x00; 1];
+                self.flash.read(curr_pos + i, &mut data_buff).unwrap();
                 self.flash
-                    .write(target_page_start_addr + frgm_target + i, data[0])
+                    .write(target_page_start_addr + frgm_target + i, &data_buff)
                     .unwrap();
             }
             curr_pos += frgm_size;
@@ -230,10 +229,8 @@ impl<
         const BLOCK_SIZE: usize,
         const BLOCK_MAX_LEVEL: u16,
         const ALLOCATOR_SIZE: usize,
-        const FLAG_BYTES: usize,
         const SWAP_PAGE_NUM: u16,
-    > Swapper<'a>
-    for SwapperImpl<'a, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, FLAG_BYTES, SWAP_PAGE_NUM>
+    > Swapper<'a> for SwapperImpl<'a, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>
 {
     fn swap_procedure(
         &mut self,
@@ -288,11 +285,11 @@ impl<
             curr_pos += block_size;
         }
         // 3 - mark copy completed, erase target page
-        for i in 0..(FLAG_BYTES as u32) {
-            self.flash
-                .write(swap_page.base_address() + 2 + i, 0x00)
-                .unwrap();
-        }
+        let buff: [u8; FLAG_BYTES] = [0x00; FLAG_BYTES];
+        self.flash
+            .write(swap_page.base_address() + 2, &buff)
+            .unwrap();
+        self.flash.flush_write_buffer().unwrap();
         self.flash.erase(page_number).unwrap();
         // 4 - copy back
         self.copy_back(page.base_address());

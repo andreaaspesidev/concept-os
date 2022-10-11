@@ -52,28 +52,7 @@ impl<const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_ADDRE
         self.target_address = 0;
         Ok(())
     }
-}
-
-impl<'a, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_ADDRESS: u32>
-    FlashMethods<'a> for Flash<FLASH_START_ADDRESS, PAGE_SIZE, FLASH_END_ADDRESS>
-{
-    fn read(&self, address: u32, len: usize) -> Result<&'a [u8],()> {
-        // Validate read address
-        if address < FLASH_START_ADDRESS || (address + (len as u32) > FLASH_END_ADDRESS) {
-            return Err(());
-        }
-        // Negate write if this includes pending writes
-        // TODO: maybe read considering the buffer? How to compose the abstraction?
-        if self.target_address > 0 {
-            if self.target_address >= address && self.target_address <= address + (len as u32) {
-                return Err(());
-            }
-        }
-        let offset: usize = (address - FLASH_START_ADDRESS) as usize;
-        // Actually perform the operation
-        unsafe { Ok(core::slice::from_raw_parts(&self.content[offset], len)) }
-    }
-    fn write(&mut self, address: u32, value: u8) -> Result<(), ()> {
+    fn write_u8(&mut self, address: u32, value: u8) -> Result<(), ()> {
         // In STM32F303, we must write 16bits at a time. Half writes or other "tricks" does
         // not work, as the flash controller checks the whole word is 0xFFFF before proceding
         // with the write. It's always possible to write 0x0000 in any situation, as the only exception.
@@ -117,6 +96,36 @@ impl<'a, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_A
         // Automatic flush when we get enough data
         if is_high_byte {
             self.flush_write_buffer()?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_ADDRESS: u32>
+    FlashMethods<'a> for Flash<FLASH_START_ADDRESS, PAGE_SIZE, FLASH_END_ADDRESS>
+{
+    fn read(&self, address: u32, buffer: &mut [u8]) -> Result<(),()> {
+        // Validate read address
+        if address < FLASH_START_ADDRESS || (address + (buffer.len() as u32) > FLASH_END_ADDRESS) {
+            return Err(());
+        }
+        // Negate write if this includes pending writes
+        // TODO: maybe read considering the buffer? How to compose the abstraction?
+        if self.target_address > 0 {
+            if self.target_address >= address && self.target_address <= address + (buffer.len() as u32) {
+                return Err(());
+            }
+        }
+        let offset: usize = (address - FLASH_START_ADDRESS) as usize;
+        // Actually perform the operation
+        for i in 0..buffer.len() {
+            buffer[i] = self.content[offset + i];
+        }
+        Ok(())
+    }
+    fn write(&mut self, address: u32, data: &[u8]) -> Result<(), ()> {
+        for i in 0..data.len() {
+            self.write_u8(address + i as u32, data[i])?;
         }
         Ok(())
     }

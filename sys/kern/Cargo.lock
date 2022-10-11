@@ -141,6 +141,7 @@ dependencies = [
  "abi",
  "buddy_allocator",
  "heapless",
+ "serde",
 ]
 
 [[package]]

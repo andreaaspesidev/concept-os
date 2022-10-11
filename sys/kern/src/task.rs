@@ -114,7 +114,7 @@ impl Task {
     /// This function is `must_use` because calling it without checking its
     /// return value is incredibly suspicious.
     #[must_use]
-    fn can_read<T>(&self, slice: &USlice<T>) -> bool {
+    pub fn can_read<T>(&self, slice: &USlice<T>) -> bool {
         self.can_access(slice, RegionAttributes::READ)
     }
 
@@ -152,7 +152,7 @@ impl Task {
     /// This function is `must_use` because calling it without checking its
     /// return value is incredibly suspicious.
     #[must_use]
-    fn can_write<T>(&self, slice: &USlice<T>) -> bool {
+    pub fn can_write<T>(&self, slice: &USlice<T>) -> bool {
         self.can_access(slice, RegionAttributes::WRITE)
     }
 

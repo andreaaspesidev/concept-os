@@ -19,6 +19,7 @@ num-traits = { version = "0.2.12", default-features = false }
 unwrap-lite = { path = "../../libs/unwrap-lite" }
 cfg-if = "0.1.10"
 no-panics-whatsoever = "0.1.0"
+flash_allocator = {path = "../../libs/flash_allocator"}
 
 #
 # In order to use macros as discriminants in enums that make use of derive

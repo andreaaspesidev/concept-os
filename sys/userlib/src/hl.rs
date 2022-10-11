@@ -10,6 +10,7 @@
 use abi::{TaskId, STATE_TRANSFER_REQUESTED_MASK};
 use core::cell::Cell;
 use core::marker::PhantomData;
+//use serde::{Deserialize, Serialize};
 use unwrap_lite::UnwrapLite;
 use zerocopy::{AsBytes, FromBytes, LayoutVerified};
 
@@ -665,6 +666,52 @@ where
     loop {}
 }
 
+/*
+pub fn get_state<'a, S, M>(
+    buffer: &'a mut [u8],
+    state: S,
+    handler: impl FnOnce(S, &'a M),
+) -> Result<(), StateError>
+where
+    M: for<'a> Deserialize<'a>,
+{
+    // Check if state exists
+    let origin = crate::kipc::get_state_availability();
+    if origin == 0 {
+        return Err(StateError::NotAvailable);
+    }
+    // Launch the timer
+    sys_set_timer(
+        Some(sys_get_timer().now + 10000),
+        INTERNAL_TIMER_NOTIFICATION,
+    );
+    // Receive the message
+    let rm = sys_recv(buffer, INTERNAL_TIMER_NOTIFICATION, Some(TaskId(origin)))
+        .map_err(|_| StateError::RecvError)?;
+    if rm.sender == TaskId::KERNEL {
+        // It's the timer, abort
+        return Err(StateError::Timeout);
+    } else {
+        // Cancel the timer
+        sys_set_timer(None, INTERNAL_TIMER_NOTIFICATION);
+        // Parse as requested
+        let (msg, _) = ssmarshal::deserialize(&buffer[..rm.message_len])
+            .map_err(|_| StateError::BufferTooSmall)?;
+        handler(state, &msg);
+        Ok(())
+    }
+}
+
+pub fn transfer_state<M>(state: M) -> !
+where
+    M: Serialize,
+{
+    let mut buff: [u8; core::mem::size_of::<M>()] = [0x00; core::mem::size_of::<M>()];
+    ssmarshal::serialize(&mut buff, &state);
+    sys_send(TaskId(crate::UPDATE_TEMP_ID), 0u16, &buff, &mut [], &[]);
+    loop {}
+} */
+
 /// Suspends the calling task until the kernel time is `>= time`.
 ///
 /// TODO: once we figure out how to convert between ticks and seconds here, this
@@ -698,3 +745,54 @@ pub fn sleep_until(time: u64) {
 pub fn sleep_for(ticks: u64) {
     sleep_until(sys_get_timer().now + ticks)
 }
+
+/*
+pub type ComponentState: Sized + Default;
+pub type OldState: Sized + Deserialize;
+pub type MigrationState: Sized + Serialize;
+
+pub trait StateSetup<ComponentState, OldState> {
+    /// Process an eventual instance of the old transferred state,
+    /// then creates a new instance of state, if needed.
+    fn setup_state(prev_state: &OldState) -> Option<ComponentState>;
+    /// Converts the current state into a serializable state to allow
+    /// state transfer
+    fn transfer_state(state: &mut ComponentState) -> Option<MigrationState>;
+}
+
+pub trait RunMethod<ComponentState> {
+    /// Main loop of the component, that will be invoked
+    /// after an eventual state transfer succedeed.
+    fn run(state: &mut ComponentState) -> !;
+}
+
+
+pub struct Componenta<ComponentState, OldState, StateSetupMethod, MainMethod>
+where
+    StateSetupMethod: StateSetup<ComponentState, OldState>,
+    MainMethod: RunMethod<ComponentState>,
+{
+    state: State,
+}
+
+impl<State, MigratedState, StateSetupMethod, MainMethod>
+    Component<State, MigratedState, StateSetupMethod, MainMethod>
+where
+    State: Sized + Default,
+    MigratedState: Sized + Deserialize,
+    StateSetupMethod: StateSetup<State, MigratedState>,
+    MainMethod: RunMethod<State>,
+{
+    pub fn run() -> Self {
+        // Create a default state
+        let mut state = State::default();
+        // Ask the state
+        const BUFF_SIZE: usize = core::mem::size_of::<MigratedState>();
+        let mut buff: [u8; BUFF_SIZE] = [0x00; BUFF_SIZE];
+        let get_result = get_state(&mut buff, (), |_s, prev_state: &MigratedState| {
+            state = StateSetupMethod::setup_state(prev_state);
+        });
+        Self { state: state }
+    }
+}
+ */

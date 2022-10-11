@@ -5,8 +5,10 @@
 //! Implementation of IPC operations on the virtual kernel task.
 
 use abi::{
-    FaultInfo, SchedState, TaskId, UsageError, HUBRIS_MAX_SUPPORTED_TASKS,
+    FaultInfo, FaultSource, SchedState, TaskId, UsageError,
+    HUBRIS_MAX_SUPPORTED_TASKS,
 };
+use flash_allocator::flash::FlashMethods;
 use unwrap_lite::UnwrapLite;
 
 use crate::err::UserError;
@@ -35,6 +37,23 @@ pub fn handle_kernel_message(
         12 => state_transfer_requested(tasks, caller_id),
         20 => activate_task(tasks, caller_id),
         21 => load_component(tasks, caller_id, args.message?),
+        30 => flash_read(tasks, caller_id, args.message?, args.response?),
+        31 => flash_write(tasks, caller_id, args.message?, args.response?),
+        32 => flash_flush_buffer(tasks, caller_id),
+        33 => flash_page_from_address(
+            tasks,
+            caller_id,
+            args.message?,
+            args.response?,
+        ),
+        34 => flash_page_from_number(
+            tasks,
+            caller_id,
+            args.message?,
+            args.response?,
+        ),
+        35 => flash_prev_page(tasks, caller_id, args.message?, args.response?),
+        36 => flash_erase(tasks, caller_id, args.message?),
         _ => {
             // Task has sent an unknown message to the kernel. That's bad.
             Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
@@ -348,4 +367,266 @@ fn load_component(
         .save_mut()
         .set_send_response_and_length(load_result.is_err() as u32, 0);
     Ok(NextTask::Same)
+}
+
+fn flash_read(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
+    message: USlice<u8>,
+    mut response: USlice<u8>,
+) -> Result<NextTask, UserError> {
+    // The wanted address is inside the message, while the task expects the response
+    // to be written to the buffer pointed by response slice.
+
+    // First validate this task. Only the storage task is allowed to perform these calls
+    if caller_id != abi::STORAGE_ID {
+        return Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
+            UsageError::IllegalTask,
+        )));
+    }
+    // Then extract the address
+    let address: u32 =
+        deserialize_message(get_task(tasks, caller_id), message)?;
+
+    // Check the task can actually write to this location.
+    // We threat this as a fault if something is not right
+    let task = get_task(tasks, caller_id);
+    if !task.can_write(&response) {
+        return Err(UserError::Unrecoverable(FaultInfo::MemoryAccess {
+            address: Some(response.base_addr() as u32),
+            source: FaultSource::Kernel,
+        }));
+    }
+
+    // Now use the flash methods to perform this operation
+    let dest_buffer = unsafe { response.assume_writable() };
+    let flash_methods = crate::arch::get_flash_interface();
+    let response_code: u32;
+    match flash_methods.read(address, dest_buffer) {
+        Ok(_) => response_code = 0,
+        Err(_) => response_code = 1,
+    }
+    // Write the operation response
+    get_task_mut(tasks, caller_id)
+        .save_mut()
+        .set_send_response_and_length(response_code, 0);
+    Ok(NextTask::Same)
+}
+
+fn flash_write(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
+    message: USlice<u8>,
+    address: USlice<u8>,
+) -> Result<NextTask, UserError> {
+    // With an abuse, the message is actually the source buffer, while in the outgoing
+    // buffer we can find the destination address. Maybe this choice will be revisited
+    // in the future.
+
+    // First validate this task. Only the storage task is allowed to perform these calls
+    if caller_id != abi::STORAGE_ID {
+        return Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
+            UsageError::IllegalTask,
+        )));
+    }
+    // Then extract the address
+    let address: u32 =
+        deserialize_message(get_task(tasks, caller_id), address)?;
+
+    // Check the task can actually reference this location.
+    // We threat this as a fault if something is not right
+    let task = get_task(tasks, caller_id);
+    if !task.can_read(&message) {
+        return Err(UserError::Unrecoverable(FaultInfo::MemoryAccess {
+            address: Some(message.base_addr() as u32),
+            source: FaultSource::Kernel,
+        }));
+    }
+
+    // Perform the operation
+    let source_buffer = unsafe { message.assume_readable() };
+    let flash_methods = crate::arch::get_flash_interface();
+    let response_code: u32;
+    let mut next_task = NextTask::Same;
+    match flash_methods.write_timed(tasks, address, source_buffer) {
+        Ok(switch) => {
+            response_code = 0;
+            next_task = switch;
+        }
+        Err(_) => response_code = 1,
+    }
+    // Write the operation response
+    get_task_mut(tasks, caller_id)
+        .save_mut()
+        .set_send_response_and_length(response_code, 0);
+    Ok(next_task)
+}
+
+fn flash_flush_buffer(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
+) -> Result<NextTask, UserError> {
+    // First validate this task. Only the storage task is allowed to perform these calls
+    if caller_id != abi::STORAGE_ID {
+        return Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
+            UsageError::IllegalTask,
+        )));
+    }
+
+    // Perform the operation
+    let flash_methods = crate::arch::get_flash_interface();
+    let response_code: u32;
+    match flash_methods.flush_write_buffer() {
+        Ok(_) => response_code = 0,
+        Err(_) => response_code = 1,
+    }
+    // Write the operation response
+    get_task_mut(tasks, caller_id)
+        .save_mut()
+        .set_send_response_and_length(response_code, 0);
+    Ok(NextTask::Same)
+}
+
+fn flash_page_from_address(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
+    message: USlice<u8>,
+    response: USlice<u8>,
+) -> Result<NextTask, UserError> {
+    // First validate this task. Only the storage task is allowed to perform these calls
+    if caller_id != abi::STORAGE_ID {
+        return Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
+            UsageError::IllegalTask,
+        )));
+    }
+
+    // Then extract the address
+    let address: u32 =
+        deserialize_message(get_task(tasks, caller_id), message)?;
+
+    // Perform the operation
+    let flash_methods = crate::arch::get_flash_interface();
+    match flash_methods.page_from_address(address) {
+        Some(page) => {
+            let response_len = serialize_response(
+                get_task_mut(tasks, caller_id),
+                response,
+                &page,
+            )?;
+            get_task_mut(tasks, caller_id)
+                .save_mut()
+                .set_send_response_and_length(0, response_len);
+        }
+        None => get_task_mut(tasks, caller_id)
+            .save_mut()
+            .set_send_response_and_length(1, 0),
+    }
+    Ok(NextTask::Same)
+}
+
+fn flash_page_from_number(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
+    message: USlice<u8>,
+    response: USlice<u8>,
+) -> Result<NextTask, UserError> {
+    // First validate this task. Only the storage task is allowed to perform these calls
+    if caller_id != abi::STORAGE_ID {
+        return Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
+            UsageError::IllegalTask,
+        )));
+    }
+
+    // Then extract the address
+    let number: u16 = deserialize_message(get_task(tasks, caller_id), message)?;
+
+    // Perform the operation
+    let flash_methods = crate::arch::get_flash_interface();
+    match flash_methods.page_from_number(number) {
+        Some(page) => {
+            let response_len = serialize_response(
+                get_task_mut(tasks, caller_id),
+                response,
+                &page,
+            )?;
+            get_task_mut(tasks, caller_id)
+                .save_mut()
+                .set_send_response_and_length(0, response_len);
+        }
+        None => get_task_mut(tasks, caller_id)
+            .save_mut()
+            .set_send_response_and_length(1, 0),
+    }
+    Ok(NextTask::Same)
+}
+
+fn flash_prev_page(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
+    message: USlice<u8>,
+    response: USlice<u8>,
+) -> Result<NextTask, UserError> {
+    // First validate this task. Only the storage task is allowed to perform these calls
+    if caller_id != abi::STORAGE_ID {
+        return Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
+            UsageError::IllegalTask,
+        )));
+    }
+
+    // Then extract the address
+    let number: u16 = deserialize_message(get_task(tasks, caller_id), message)?;
+
+    // Perform the operation
+    let flash_methods = crate::arch::get_flash_interface();
+    match flash_methods.prev_page(number) {
+        Some(page) => {
+            let response_len = serialize_response(
+                get_task_mut(tasks, caller_id),
+                response,
+                &page,
+            )?;
+            get_task_mut(tasks, caller_id)
+                .save_mut()
+                .set_send_response_and_length(0, response_len);
+        }
+        None => get_task_mut(tasks, caller_id)
+            .save_mut()
+            .set_send_response_and_length(1, 0),
+    }
+    Ok(NextTask::Same)
+}
+
+fn flash_erase(
+    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    caller_id: u16,
+    message: USlice<u8>,
+) -> Result<NextTask, UserError> {
+    // First validate this task. Only the storage task is allowed to perform these calls
+    if caller_id != abi::STORAGE_ID {
+        return Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
+            UsageError::IllegalTask,
+        )));
+    }
+    // Then extract the page number
+    let page_num: u16 =
+        deserialize_message(get_task(tasks, caller_id), message)?;
+
+    // Now use the flash methods to perform this operation
+    let flash_methods = crate::arch::get_flash_interface();
+    let response_code: u32;
+    let mut next_task = NextTask::Same;
+    match flash_methods.erase_timed(tasks, page_num) {
+        Ok(switch) => {
+            response_code = 0;
+            next_task = switch;
+        }
+        Err(_) => response_code = 1,
+    }
+    // Write the operation response
+    get_task_mut(tasks, caller_id)
+        .save_mut()
+        .set_send_response_and_length(response_code, 0);
+    // It's important to check again timing as these operation
+    // may have halt the CPU for more than expected.
+    Ok(next_task)
 }
