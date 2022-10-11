@@ -41,24 +41,24 @@ pub fn fault_task(task_id: u16) {
 }
 
 pub fn set_update_support(is_supported: bool) {
-    let (rc, _len) = sys_send(TaskId::KERNEL, 4, is_supported.as_bytes(), &mut [], &[]);
+    let (rc, _len) = sys_send(TaskId::KERNEL, 10, is_supported.as_bytes(), &mut [], &[]);
     if rc != 0 {
         panic!();
     }
 }
 
 pub fn get_state_availability() -> u16 {
-    let (rc, _len) = sys_send(TaskId::KERNEL, 5, &[], &mut [], &[]);
+    let (rc, _len) = sys_send(TaskId::KERNEL, 11, &[], &mut [], &[]);
     return rc as u16;
 }
 
 pub fn is_state_transfer_requested() -> bool {
-    let (rc, _len) = sys_send(TaskId::KERNEL, 6, &[], &mut [], &[]);
+    let (rc, _len) = sys_send(TaskId::KERNEL, 12, &[], &mut [], &[]);
     return rc != 0;
 }
 
 pub fn activate_task() {
-    let (rc, _len) = sys_send(TaskId::KERNEL, 7, &[], &mut [], &[]);
+    let (rc, _len) = sys_send(TaskId::KERNEL, 20, &[], &mut [], &[]);
     if rc != 0 {
         panic!();
     }
@@ -67,7 +67,7 @@ pub fn activate_task() {
 pub fn load_component(block_base_address: u32) -> bool {
     let (rc, _len) = sys_send(
         TaskId::KERNEL,
-        8,
+        21,
         block_base_address.as_bytes(),
         &mut [],
         &[],

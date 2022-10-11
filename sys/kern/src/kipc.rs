@@ -30,11 +30,11 @@ pub fn handle_kernel_message(
         1 => read_task_status(tasks, caller_id, args.message?, args.response?),
         2 => restart_task(tasks, caller_id, args.message?),
         3 => fault_task(tasks, caller_id, args.message?),
-        4 => set_update_capability(tasks, caller_id, args.message?),
-        5 => get_state_availability(tasks, caller_id),
-        6 => state_transfer_requested(tasks, caller_id),
-        7 => activate_task(tasks, caller_id),
-        8 => load_component(tasks, caller_id, args.message?),
+        10 => set_update_capability(tasks, caller_id, args.message?),
+        11 => get_state_availability(tasks, caller_id),
+        12 => state_transfer_requested(tasks, caller_id),
+        20 => activate_task(tasks, caller_id),
+        21 => load_component(tasks, caller_id, args.message?),
         _ => {
             // Task has sent an unknown message to the kernel. That's bad.
             Err(UserError::Unrecoverable(FaultInfo::SyscallUsage(
