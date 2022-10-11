@@ -1,4 +1,4 @@
-COMPONENT_NAME:=update
+COMPONENT_NAME:=idle
 current_dir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 root_dir := $(shell dirname $(realpath ../../.))
 
