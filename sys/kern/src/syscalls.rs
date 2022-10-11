@@ -78,7 +78,7 @@ pub unsafe extern "C" fn syscall_entry(nr: u32, task: *mut Task) {
         match safe_syscall_entry(nr, task_id, tasks) {
             // If we're returning to the same task, we're done!
             NextTask::Same => {
-                unsafe { switch_to(tasks.get_mut(&task_id).unwrap_lite()) }
+                // unsafe { switch_to(tasks.get_mut(&task_id).unwrap_lite()) }
             },
 
             NextTask::Specific(i) => {

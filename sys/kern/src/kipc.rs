@@ -252,7 +252,6 @@ fn state_transfer_requested(
     caller_id: u16,
 ) -> Result<NextTask, UserError> {
     let requested = get_task(tasks, caller_id).is_transfer_requested();
-    sys_log!("State requested for {}: {}", caller_id, requested);
     // Respond to the task
     get_task_mut(tasks, caller_id)
         .save_mut()

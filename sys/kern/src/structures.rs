@@ -1,7 +1,7 @@
 use crate::{
-    startup::with_irq_table,
+    startup::{with_irq_table, HUBRIS_STORAGE_ANALYZE_NOTIFICATION},
     sys_log,
-    task::Task,
+    task::{NotificationSet, Task},
     utils::{get_task, get_task_mut},
 };
 use abi::{
@@ -164,6 +164,11 @@ fn remove_task_from_system(
         let interrupt = task.descriptor().interrupt_nth(interrupt_num);
         irq_map.remove(&interrupt.irq_num).unwrap_lite();
     }
+    // Mark the corresponding block for removal
+    unsafe {
+        crate::arch::dismiss_block(task.descriptor().get_descriptor_block())
+            .unwrap_lite();
+    }
     // Remove the task
     task_map.remove(&task_id).unwrap_lite();
 }
@@ -298,6 +303,9 @@ pub fn revert_update(
     // Get the old one
     let old_task = task_map.get_mut(&nominal_id);
     if old_task.is_none() {
+        // Remove the new version
+        get_task_mut(task_map, abi::STORAGE_ID)
+            .post(NotificationSet(HUBRIS_STORAGE_ANALYZE_NOTIFICATION));
         return; // Ignore, we have nothing to revert to
     }
     // Re-map IRQs of the old one. Do not reenable them, as the task will restart
@@ -327,4 +335,7 @@ pub fn revert_update(
     {
         old_task.set_healthy_state(abi::SchedState::Runnable);
     }
+    // Remove the new version
+    get_task_mut(task_map, abi::STORAGE_ID)
+        .post(NotificationSet(HUBRIS_STORAGE_ANALYZE_NOTIFICATION));
 }
