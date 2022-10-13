@@ -711,6 +711,10 @@ fn advance_time(
     tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
     ticks: u32,
 ) -> NextTask {
+    // Check for null ticks
+    if ticks == 0 {
+        return NextTask::Same;
+    }
     // Load the time before this tick event.
     let t0 = TICKS[0].load(Ordering::Relaxed);
     let t1 = TICKS[1].load(Ordering::Relaxed);

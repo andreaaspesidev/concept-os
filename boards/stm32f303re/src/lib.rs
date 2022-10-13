@@ -11,20 +11,20 @@ use flash_allocator::flash::{page::FlashPage, FlashMethods};
 /**
  * STM32 F303RE
  * - Flash Constant
- * 
+ *
  * Flash: 0x0800 0000 - 0x0807 FFFF
  * Size: 512Kb
- * 
+ *
  * Notes:
  * - In order for the system to work correcly, the first part of the flash
  *   (starting from address 0x0800 0000) must be reserved to the kernel.
  *   The allocator have two requirements:
- *   - Must have a base address (FLASH_ALLOCATOR_START_ADDR) aligned with its size (FLASH_ALLOCATOR_SIZE). 
+ *   - Must have a base address (FLASH_ALLOCATOR_START_ADDR) aligned with its size (FLASH_ALLOCATOR_SIZE).
  *     To alleviate this huge limitation, it's possible to reserve a whole subspace
  *     at the beginning by selecting a  FLASH_ALLOCATOR_START_SCAN_ADDR > FLASH_ALLOCATOR_START_ADDR
  *   - The page containing FLASH_ALLOCATOR_START_SCAN_ADDR must not contain important data (like kernel code).
  *     The allocator will need to erase this page in order to deallocate the first blocks.
- *     For this reason, let's impose that FLASH_ALLOCATOR_START_SCAN_ADDR points to the 
+ *     For this reason, let's impose that FLASH_ALLOCATOR_START_SCAN_ADDR points to the
  *     beginning of the first free page after the one containing the last kernel code.
  */
 pub const FLASH_ALLOCATOR_START_ADDR: u32 = 0x0804_0000; // Page 0x0080
@@ -42,22 +42,22 @@ pub const FLASH_END_ADDR: u32 = 0x0807_FFFF;
 // pub const FLASH_SIZE: usize = (FLASH_END_ADDR - FLASH_START_ADDR + 1) as usize; // 0x8000 -> 32768
 
 pub const FLASH_BLOCK_SIZE: usize = 2048;
-pub const FLASH_FLAG_SIZE: usize = 2;       // 2 bytes
-pub const FLASH_NUM_BLOCKS: usize =
-    FLASH_ALLOCATOR_SIZE / FLASH_BLOCK_SIZE as usize; // 128
+pub const FLASH_NUM_BLOCKS: usize = FLASH_ALLOCATOR_SIZE / FLASH_BLOCK_SIZE as usize; // 128
 pub const FLASH_NUM_SLOTS: usize = 7 + 1; // clog2(NUM_BLOCKS) + 1
 
 pub const FLASH_PAGE_SIZE: u32 = 2048;
 
+// Flash operation timings: worst case scenario
+pub const FLASH_ERASE_MS: u32 = 40;
+pub const FLASH_WRITES_PER_MS: u32 = 1000 / 60 * 2;
+
 // Compile time checks
-static_assertions::const_assert_eq!(
-    2 << (FLASH_NUM_SLOTS-2), FLASH_NUM_BLOCKS
-);
+static_assertions::const_assert_eq!(2 << (FLASH_NUM_SLOTS - 2), FLASH_NUM_BLOCKS);
 
 /**
  * STM32 F303RE
- * - Flash Constant
- * 
+ * - RAM Constant
+ *
  * RAM: 0x2000 0000 - 0x2000 FFFF
  * Size: 64Kb
  */
@@ -71,14 +71,12 @@ pub const SRAM_NUM_BLOCKS: usize = SRAM_SIZE / SRAM_BLOCK_SIZE as usize; // 128
 pub const SRAM_NUM_SLOTS: usize = 7 + 1; // clog2(NUM_BLOCKS) + 1
 
 // Compile time checks
-static_assertions::const_assert_eq!(
-    2 << (SRAM_NUM_SLOTS-2), SRAM_NUM_BLOCKS
-);
+static_assertions::const_assert_eq!(2 << (SRAM_NUM_SLOTS - 2), SRAM_NUM_BLOCKS);
 
 /**
  * STM32 F303RE
  * - Flash Interface
- * 
+ *
  * Provides methods to read, but expecially write and erase
  * the flash memory.
  */
@@ -89,15 +87,19 @@ const FLASH_KEY2: u32 = 0xCDEF_89AB;
 #[allow(non_camel_case_types)]
 pub enum FlashError {
     PROGRAM_ERROR,
-    WRITE_PROTECTION_ERROR
+    WRITE_PROTECTION_ERROR,
 }
 
-pub struct Flash<'b, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_ADDRESS: u32>
-{
+pub struct Flash<
+    'b,
+    const FLASH_START_ADDRESS: u32,
+    const PAGE_SIZE: u32,
+    const FLASH_END_ADDRESS: u32,
+> {
     flash: &'b device::flash::RegisterBlock,
     write_buffer: [u8; 2],
     target_address: u32,
-    last_error: Option<FlashError>
+    last_error: Option<FlashError>,
 }
 
 impl<'b, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_ADDRESS: u32>
@@ -111,7 +113,7 @@ impl<'b, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_A
             flash: flash,
             write_buffer: [0xFF; 2],
             target_address: 0,
-            last_error: None
+            last_error: None,
         }
     }
 
@@ -154,7 +156,7 @@ impl<'b, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_A
                 w.wrprterr().set_bit(); // Clear bit
             }
             w
-        });  // Reset by writing 1 (see pag. 79)
+        }); // Reset by writing 1 (see pag. 79)
 
         // Check if errors
         if error.is_some() {
@@ -166,7 +168,8 @@ impl<'b, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_A
 
     fn flush_write_buffer(&mut self) -> Result<(), ()> {
         let data: u16 = u16::from_le_bytes(self.write_buffer);
-        let actual_data: u16 = unsafe {core::ptr::read_volatile(self.target_address as *const u16)};
+        let actual_data: u16 =
+            unsafe { core::ptr::read_volatile(self.target_address as *const u16) };
         // Check if no change, do not write just skip
         if data == actual_data {
             // Reset status
@@ -181,10 +184,7 @@ impl<'b, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_A
         // Write PROGRAM flag
         self.flash.cr.modify(|_, w| w.pg().set_bit());
         unsafe {
-            core::ptr::write_volatile(
-                (self.target_address) as *mut u16,
-                data,
-            );
+            core::ptr::write_volatile((self.target_address) as *mut u16, data);
         }
         // Wait result of the operation and clear flags
         let result = self.wait_flash_operation();
@@ -201,27 +201,8 @@ impl<'b, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_A
         self.target_address = 0;
         Ok(())
     }
-}
 
-impl<'a, 'b, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_ADDRESS: u32>
-    FlashMethods<'a> for Flash<'b, FLASH_START_ADDRESS, PAGE_SIZE, FLASH_END_ADDRESS>
-{
-    fn read(&self, address: u32, len: usize) -> Result<&'a [u8],()> {
-        // Validate read address
-        if address < FLASH_START_ADDRESS || address + (len as u32) > FLASH_END_ADDRESS {
-            return Err(());
-        }
-        // Negate write if this includes pending writes
-        // TODO: maybe read considering the buffer? How to compose the abstraction?
-        if self.target_address > 0 {
-            if self.target_address >= address && self.target_address <= address + (len as u32) {
-                return Err(());
-            }
-        }
-        // Actually perform the operation
-        unsafe { Ok(core::slice::from_raw_parts(address as *const u8, len)) }
-    }
-    fn write(&mut self, address: u32, value: u8) -> Result<(), ()> {
+    fn write_u8(&mut self, address: u32, value: u8) -> Result<(), ()> {
         // In STM32F303, we must write 16bits at a time. Half writes or other "tricks" does
         // not work, as the flash controller checks the whole word is 0xFFFF before proceding
         // with the write. It's always possible to write 0x0000 in any situation, as the only exception.
@@ -244,7 +225,7 @@ impl<'a, 'b, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_E
         // Buffer empty, populate for this write
         if self.target_address == 0 {
             // Fill the buffer with the current data
-            let current_word: u16 = unsafe {core::ptr::read_volatile(base_address as *const u16)};
+            let current_word: u16 = unsafe { core::ptr::read_volatile(base_address as *const u16) };
             self.write_buffer[0] = (current_word & 0xFF) as u8;
             self.write_buffer[1] = (current_word >> 8) as u8;
         }
@@ -267,7 +248,47 @@ impl<'a, 'b, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_E
         }
         Ok(())
     }
-    fn flush_write_buffer(&mut self) -> Result<(),()> {
+}
+
+impl<
+        'a,
+        'b,
+        const FLASH_START_ADDRESS: u32,
+        const PAGE_SIZE: u32,
+        const FLASH_END_ADDRESS: u32,
+    > FlashMethods<'a> for Flash<'b, FLASH_START_ADDRESS, PAGE_SIZE, FLASH_END_ADDRESS>
+{
+    fn read(&self, address: u32, buffer: &mut [u8]) -> Result<(), ()> {
+        // Validate read address
+        if address < FLASH_START_ADDRESS || address + (buffer.len() as u32) > FLASH_END_ADDRESS {
+            return Err(());
+        }
+        // Negate write if this includes pending writes
+        // TODO: maybe read considering the buffer? How to compose the abstraction?
+        if self.target_address > 0 {
+            if self.target_address >= address
+                && self.target_address <= address + (buffer.len() as u32)
+            {
+                return Err(());
+            }
+        }
+        // Actually perform the operation
+        buffer.copy_from_slice(unsafe {
+            core::slice::from_raw_parts(address as *const u8, buffer.len())
+        });
+        Ok(())
+    }
+
+    fn write(&mut self, address: u32, data: &[u8]) -> Result<(), ()> {
+        // Write the bytes singularly, using the legacy method.
+        // In this way we easily take into account odd lengths
+        for i in 0..data.len() {
+            self.write_u8(address + i as u32, data[i])?;
+        }
+        Ok(())
+    }
+
+    fn flush_write_buffer(&mut self) -> Result<(), ()> {
         // Nothing to flush
         if self.target_address == 0 {
             return Ok(());
@@ -288,8 +309,10 @@ impl<'a, 'b, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_E
         // Wait result of the operation and clear flags
         let result = self.wait_flash_operation();
         // Reset bit
-        self.flash.cr.modify(|_, w| w.strt().clear_bit().per().clear_bit());
-        
+        self.flash
+            .cr
+            .modify(|_, w| w.strt().clear_bit().per().clear_bit());
+
         // Check for errors
         if result.is_err() {
             self.last_error = Some(result.unwrap_err());
