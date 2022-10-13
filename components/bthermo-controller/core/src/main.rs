@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use bthermo_api::{OutputType, Program, RepeatType, TimeStructure, MAX_PROGRAMS};
+use bthermo_api::{OutputType, Program, RepeatType, TimeStructure, MAX_PROGRAMS, NUM_TEMPERATURES};
 use userlib::*;
 use zerocopy::{AsBytes, LayoutVerified};
 
@@ -17,7 +17,7 @@ const CMD_REM_PROGRAM: u8 = 'd' as u8;
 fn main() -> ! {
     // Activate task
     kipc::activate_task();
-    
+
     // Create an instance of balancino
     let mut bthermo = bthermo_api::BThermo::new();
 
@@ -78,10 +78,14 @@ fn main() -> ! {
                     serial.write_block(&[CMD_READ_TEMP, 0x01]).unwrap();
                     continue;
                 }
-                let mut response_pkt: [u8; 5] = [0x00; 5];
+                let mut response_pkt: [u8; NUM_TEMPERATURES * 4 + 4 + 1] =
+                    [0x00; NUM_TEMPERATURES * 4 + 4 + 1];
                 response_pkt[0] = CMD_READ_TEMP;
-                let temp_bytes = data.unwrap().temperature.to_le_bytes();
-                response_pkt[1..].copy_from_slice(&temp_bytes);
+                let temp_data = data.unwrap();
+                let temp_bytes = temp_data.as_bytes();
+                for i in 0..temp_bytes.len() {
+                    response_pkt[i + 1] = temp_bytes[i];
+                }
                 // Send response
                 serial.write_block(&response_pkt).unwrap();
             }

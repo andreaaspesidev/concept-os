@@ -1,5 +1,5 @@
 use bthermo_api::{OutputType, RepeatType, TimeStructure};
-use userlib::{UnwrapLite};
+use userlib::UnwrapLite;
 
 use crate::{
     outputs::OutputController,
@@ -41,29 +41,26 @@ pub enum ProgramError {
     NoMoreSpace,
 }
 
-pub struct ProgramManager {
-}
+pub struct ProgramManager {}
 
-impl ProgramManager{
+impl ProgramManager {
     pub fn new() -> Self {
-        Self {
-        }
+        Self {}
     }
 
     fn get_next_id(&mut self, state_manager: &mut StateManager) -> u8 {
-        let program_bits = state_manager.get_program_bits_mut();
+        let program_state = state_manager.get_program_state_mut();
         // implementation of ffs
-        let value_32 = *program_bits as u32;
-        let ffs =
-            (31 - (value_32 & value_32.wrapping_neg()).leading_zeros()) as u16;
+        let value_32 = program_state.program_bits as u32;
+        let ffs = (31 - (value_32 & value_32.wrapping_neg()).leading_zeros()) as u16;
         // Unset the bit
-        *program_bits &= !(1 << ffs);
+        program_state.program_bits &= !(1 << ffs);
         return ffs as u8;
     }
     fn free_id(&mut self, program_id: u8, state_manager: &mut StateManager) {
         assert!(program_id < 16);
-        let program_bits = state_manager.get_program_bits_mut();
-        *program_bits |= 1 << program_id;
+        let program_state = state_manager.get_program_state_mut();
+        program_state.program_bits |= 1 << program_id;
     }
 
     /// Adds a new program to the system, if there is space from a new one.
@@ -75,10 +72,10 @@ impl ProgramManager{
         temperature_setpoint: f32,
         output: OutputType,
         repeat: RepeatType,
-        state_manager: &mut StateManager
+        state_manager: &mut StateManager,
     ) -> Result<u8, ProgramError> {
         // Check if we have enough space
-        if state_manager.get_programs().is_full() {
+        if state_manager.get_program_state().programs.is_full() {
             return Err(ProgramError::NoMoreSpace);
         }
         // Check dates makes sense
@@ -89,7 +86,8 @@ impl ProgramManager{
         let program_id = self.get_next_id(state_manager);
         // Add the program
         state_manager
-            .get_programs_mut()
+            .get_program_state_mut()
+            .programs
             .push(ProgramEntry {
                 program_id,
                 from_time,
@@ -104,12 +102,15 @@ impl ProgramManager{
     }
     /// Removes a program
     /// (more efficient with Maps, but seems over-complicated here)
-    pub fn remove_program(&mut self, program_id: u8, state_manager: &mut StateManager) -> Result<(), ()> {
+    pub fn remove_program(
+        &mut self,
+        program_id: u8,
+        state_manager: &mut StateManager,
+    ) -> Result<(), ()> {
+        let program_state = state_manager.get_program_state_mut();
         // Get program index
         let mut program_index: Option<usize> = None;
-        for (index, program) in
-            state_manager.get_programs().iter().enumerate()
-        {
+        for (index, program) in program_state.programs.iter().enumerate() {
             if program.program_id == program_id {
                 program_index = Some(index);
                 break;
@@ -117,7 +118,7 @@ impl ProgramManager{
         }
         // Remove the program
         if let Some(index) = program_index {
-            state_manager.get_programs_mut().swap_remove(index);
+            program_state.programs.swap_remove(index);
             // Free the id
             self.free_id(program_id, state_manager);
             return Ok(());
@@ -137,40 +138,35 @@ impl ProgramManager{
                 let current_time_s: u32 = extract_up_to_hour(current_time);
                 let from_time_s: u32 = extract_up_to_hour(program_from_time);
                 let to_time_s: u32 = extract_up_to_hour(program_to_time);
-                return current_time_s >= from_time_s
-                    && current_time_s < to_time_s;
+                return current_time_s >= from_time_s && current_time_s < to_time_s;
             }
             RepeatType::EveryWeek => {
                 // EveryDay + compare week day
                 let current_time_s: u32 = extract_up_to_weekday(current_time);
                 let from_time_s: u32 = extract_up_to_weekday(program_from_time);
                 let to_time_s: u32 = extract_up_to_weekday(program_to_time);
-                return current_time_s >= from_time_s
-                    && current_time_s < to_time_s;
+                return current_time_s >= from_time_s && current_time_s < to_time_s;
             }
             RepeatType::EveryMonth => {
                 // EveryDay + compare day
                 let current_time_s = extract_up_to_day(current_time);
                 let from_time_s = extract_up_to_day(program_from_time);
                 let to_time_s = extract_up_to_day(program_to_time);
-                return current_time_s >= from_time_s
-                    && current_time_s < to_time_s;
+                return current_time_s >= from_time_s && current_time_s < to_time_s;
             }
             RepeatType::EveryYear => {
                 // EveryMonth + compare month
                 let current_time_s = extract_up_to_month(current_time);
                 let from_time_s = extract_up_to_month(program_from_time);
                 let to_time_s = extract_up_to_month(program_to_time);
-                return current_time_s >= from_time_s
-                    && current_time_s < to_time_s;
+                return current_time_s >= from_time_s && current_time_s < to_time_s;
             }
             RepeatType::NoRepeat => {
                 // EveryMonth + compare year
                 let current_time_s = extract_up_to_year(current_time);
                 let from_time_s = extract_up_to_year(program_from_time);
                 let to_time_s = extract_up_to_year(program_to_time);
-                return current_time_s >= from_time_s
-                    && current_time_s < to_time_s;
+                return current_time_s >= from_time_s && current_time_s < to_time_s;
             }
         }
     }
@@ -181,10 +177,10 @@ impl ProgramManager{
         current_time: &TimeStructure,
         current_temperature: f32,
         outputs: &mut OutputController,
-        state_manager: &mut StateManager
+        state_manager: &mut StateManager,
     ) {
         let mut out_state: [bool; 4] = [false; 4];
-        for program in state_manager.get_programs() {
+        for program in &state_manager.get_program_state().programs {
             if Self::program_active(
                 current_time,
                 &program.from_time,

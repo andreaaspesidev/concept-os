@@ -33,9 +33,20 @@ class OnMessageEvent extends ReduxAction<AppState> {
       var out4 = dataBytes[4] > 0;
       return state.copy(outputs: List.from([out1, out2, out3, out4]));
     } else if (dataType == REQUEST_TEMP_CMD) {
-      var temperature =
-          dataBytes.buffer.asByteData().getFloat32(1, Endian.little);
-      return state.copy(deviceTemperature: temperature);
+      var numTemps = 16;
+      List<double> history =
+          [for (var i = 0; i < numTemps; i++) i].map((pIndex) {
+        // Start addr
+        var startAddr = 1 + pIndex * 4;
+        var temperature =
+            dataBytes.buffer.asByteData().getFloat32(startAddr, Endian.little);
+        return temperature;
+      }).toList();
+      double operation =
+          dataBytes.buffer.asByteData().getFloat32(1 + 16 * 4, Endian.little);
+      return state.copy(
+          deviceTemperatureHistory: history,
+          deviceTemperatureOperation: operation);
     } else if (dataType == SET_RTC_CMD) {
       var success = dataBytes[1] == 0;
       if (success) {

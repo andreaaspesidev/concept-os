@@ -2,6 +2,7 @@
 #![no_main]
 
 mod ds3231;
+mod history;
 mod i2c;
 mod outputs;
 mod programs;
@@ -18,11 +19,14 @@ use state::{StateManager, TransferableState};
 use userlib::{FromPrimitive, *};
 use zerocopy::{AsBytes, LayoutVerified};
 
+use crate::history::History;
+
 const TIMER_IRQ_MASK: u32 = 0x0000_0001;
 const SLEEP_MAX_TIME_MS: u64 = 500;
 
 #[export_name = "main"]
 fn main() -> ! {
+    sys_log!("[THERMO] Waiting for state!");
     // Prepare for state migration
     let mut transfer_buffer: [u8; core::mem::size_of::<TransferableState>()] =
         [0x00; core::mem::size_of::<TransferableState>()];
@@ -60,8 +64,11 @@ fn main() -> ! {
         );
     }
 
-    // Obtain a safe reference to the state manager
+    // Create an instance of the state manager
     let mut state_manager = StateManager::new(prev_state);
+
+    // Create an instance of the history
+    let mut history = History::new();
 
     // Create an instance of the program controller
     let mut program_manager = programs::ProgramManager::new();
@@ -79,6 +86,9 @@ fn main() -> ! {
         }
         let current_time = time_result.unwrap_lite();
         let current_temp = temp_result.unwrap_lite();
+        let current_ticks = sys_get_timer().now;
+        // Update stats
+        history.add_temperature(current_ticks, current_temp, &mut state_manager);
         // Process the control loop
         program_manager.run(
             &current_time,
@@ -89,11 +99,11 @@ fn main() -> ! {
         // Process requests, until the timeout expires
         process_requests(
             &current_time,
-            current_temp,
             &mut i2c,
             &mut rtc,
             &output_controller,
             &mut program_manager,
+            &mut history,
             &mut state_manager,
         );
     }
@@ -146,11 +156,11 @@ fn init_hardware(
 
 fn process_requests(
     current_time: &TimeStructure,
-    current_temp: f32,
     i2c: &mut i2c::I2C_Channel,
     rtc: &mut ds3231::DS3231,
     output_controller: &outputs::OutputController,
     program_manager: &mut programs::ProgramManager,
+    history: &mut History,
     state_manager: &mut StateManager,
 ) {
     let mut request_buffer: [u8; 32] = [0; 32];
@@ -213,7 +223,8 @@ fn process_requests(
                     }
                     Operation::ReadTemperature => {
                         let response = ReadTemperatureResponse {
-                            temperature: current_temp,
+                            history: history.get_temperatures(state_manager),
+                            operation_value: history.perform_operation(state_manager),
                         };
                         sys_reply(rm.sender, 0, response.as_bytes());
                     }
@@ -224,7 +235,7 @@ fn process_requests(
                         sys_reply(rm.sender, 0, response.as_bytes());
                     }
                     Operation::GetPrograms => {
-                        let programs = state_manager.get_programs();
+                        let programs = &state_manager.get_program_state().programs;
                         // Create an array for the response data
                         let mut response_programs: [Program; MAX_PROGRAMS] =
                             [Program::default(); MAX_PROGRAMS];

@@ -5,7 +5,8 @@ import 'package:bthermo_app/redux/state/program_state.dart';
 class AppState {
   final bool connected;
   final DateTime deviceTime;
-  final double deviceTemperature;
+  final List<double> deviceTemperatureHistory;
+  final double deviceTemperatureOperation;
   final MessageType lastMsg;
   final List<ProgramState> programs;
   final List<bool> outputs;
@@ -15,7 +16,8 @@ class AppState {
   AppState(
       {required this.connected,
       required this.deviceTime,
-      required this.deviceTemperature,
+      required this.deviceTemperatureHistory,
+      required this.deviceTemperatureOperation,
       required this.lastMsg,
       required this.programs,
       required this.outputs,
@@ -24,7 +26,8 @@ class AppState {
   static AppState initialState() => AppState(
       connected: false,
       deviceTime: DateTime.now(),
-      deviceTemperature: 0.0,
+      deviceTemperatureHistory: List.empty(),
+      deviceTemperatureOperation: 0.0,
       programs: List.empty(),
       outputs: List.from([false, false, false, false]),
       lastMsg: MessageType.None,
@@ -33,7 +36,8 @@ class AppState {
   AppState copy(
           {bool? connected,
           DateTime? deviceTime,
-          double? deviceTemperature,
+          List<double>? deviceTemperatureHistory,
+          double? deviceTemperatureOperation,
           MessageType? lastMsg,
           List<ProgramState>? programs,
           List<bool>? outputs,
@@ -41,7 +45,10 @@ class AppState {
       AppState(
           connected: connected ?? this.connected,
           deviceTime: deviceTime ?? this.deviceTime,
-          deviceTemperature: deviceTemperature ?? this.deviceTemperature,
+          deviceTemperatureHistory:
+              deviceTemperatureHistory ?? this.deviceTemperatureHistory,
+          deviceTemperatureOperation:
+              deviceTemperatureOperation ?? this.deviceTemperatureOperation,
           lastMsg: lastMsg ?? this.lastMsg,
           programs: programs ?? this.programs,
           outputs: outputs ?? this.outputs,

@@ -8,6 +8,7 @@ use zerocopy::{AsBytes, FromBytes};
  * Constants
  */
 pub const MAX_PROGRAMS: usize = 16;
+pub const NUM_TEMPERATURES: usize = 16;
 const BTHERMO_TASK_ID: TaskId = TaskId(10);
 
 /**
@@ -191,7 +192,8 @@ pub struct ReadTemperatureRequest {}
 #[derive(Debug, FromBytes, AsBytes)]
 #[repr(C)]
 pub struct ReadTemperatureResponse {
-    pub temperature: f32,
+    pub history: [f32; NUM_TEMPERATURES],
+    pub operation_value: f32
 }
 impl hl::Call for ReadTemperatureRequest {
     const OP: u16 = Operation::ReadTemperature as u16;
