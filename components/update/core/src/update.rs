@@ -4,7 +4,9 @@ use crate::utils::*;
 use hbf_lite::{BufferReaderImpl, HbfFile};
 use storage_api::*;
 use uart_channel_api::*;
+use userlib::flash::BlockType;
 use userlib::sys_log;
+use userlib::UnwrapLite;
 
 pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageError> {
     // Ask fixed header
@@ -19,40 +21,26 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
     let fhm = FixedHeaderMessage::from(&mut hbf_header_buff)?;
     // Read hbf
     let hbf_reader = BufferReaderImpl::from(fhm.get_raw());
-    let hbf = hbf_lite::HbfFile::from_reader(&hbf_reader).unwrap(); // Already validated
-    // Validate versions
-
+    let hbf = wrap_hbf_error(hbf_lite::HbfFile::from_reader(&hbf_reader))?;
     // Get needed space
     let needed_flash = wrap_hbf_error(hbf.header_base())?.total_size();
     let needed_ram = wrap_hbf_error(hbf.header_main())?.component_min_ram();
     // Request the allocation
     let mut storage = Storage::new();
-    let result = storage.allocate_component(needed_flash, needed_ram);
-    // Fail if no space available
-    if result.is_err() {
-        match result.unwrap_err() {
-            StorageError::OutOfFlash | StorageError::OutOfRam => {
-                channel_write_single(channel, ComponentUpdateResponse::NotEnoughSpace as u8)?;
-                return Err(MessageError::NotEnoughSpace);
-            }
-            _ => {
-                channel_write_single(channel, ComponentUpdateResponse::GenericFailure as u8)?;
-                return Err(MessageError::FlashError);
-            }
-        }
-    }
     // ---> !!!! From this point on, if we fail we must deallocate !!!!
-    let allocation = result.unwrap();
+    let allocation = storage
+        .allocate_component(needed_flash, needed_ram)
+        .map_err(|e| {
+            // Fail if no space available
+            match e {
+                StorageError::OutOfFlash | StorageError::OutOfRam => MessageError::NotEnoughSpace,
+                _ => MessageError::FlashError,
+            }
+        })?;
 
     // Snap header base
-    let header_base = wrap_error(
-        wrap_hbf_error(hbf.header_base()),
-        &mut storage,
-        allocation.flash_base_address,
-        channel,
-    )?;
-
-    drop(hbf);
+    let header_base = hbf.header_base().unwrap_lite(); // Already read, safe to get
+    drop(hbf); // Force ourselves not to use this object anymore
 
     // Start by flushing hbf header on flash
     // NOTE: we must skip the checksum field, as we will modify the HBF. As last operation, we will write
@@ -62,7 +50,7 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
         u32_from_le_bytes(&hbf_header_buff[checksum_offset..checksum_offset + 4]);
 
     let mut validation_checksum: u32 = 0;
-    let mut new_checksum: u32 = 0;
+    let mut new_checksum: u32;
     // Change checksum
     for i in 0..4usize {
         hbf_header_buff[checksum_offset + i] = 0x00;
@@ -78,41 +66,38 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
     }
 
     let mut curr_pos: u32 = 0;
-    if storage
-        .write_stream(
-            allocation.flash_base_address,
-            curr_pos,
-            &hbf_header_buff[0..hbf_header_buff.len() - 1],
-        )
-        .is_err()
-    {
-        // Deallocate the space
+
+    deallocate_on_error(
         storage
-            .deallocate_block(allocation.flash_base_address)
-            .unwrap();
-        // Signal error
-        channel_write_single(channel, ComponentUpdateResponse::GenericFailure as u8)?;
-        return Err(MessageError::FlashError);
-    }
+            .write_stream(
+                allocation.flash_base_address,
+                curr_pos,
+                &hbf_header_buff[0..hbf_header_buff.len() - 1],
+            )
+            .map_err(|_| MessageError::FlashError),
+        &mut storage,
+        allocation.flash_base_address,
+    )?;
+
     curr_pos += hbf_header_buff.len() as u32 - 1;
 
     let mut to_read: usize = hbf_lite::REGION_SIZE * header_base.num_regions() as usize
         + hbf_lite::INTERRUPT_SIZE * header_base.num_interrupts() as usize
-        + hbf_lite::RELOC_SIZE * header_base.num_relocations() as usize;
+        + hbf_lite::RELOC_SIZE * header_base.num_relocations() as usize
+        + hbf_lite::DEPENDENCY_SIZE * header_base.num_dependencies() as usize;
 
-    wrap_error(
+    deallocate_on_error(
         channel_write_single(
             channel,
             ComponentUpdateCommand::SendComponentVariableHeader as u8,
         ),
         &mut storage,
         allocation.flash_base_address,
-        channel,
     )?;
 
     sys_log!("Waiting for variable header");
 
-    wrap_error(
+    deallocate_on_error(
         read_bytes(
             to_read,
             channel,
@@ -124,7 +109,6 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
         ),
         &mut storage,
         allocation.flash_base_address,
-        channel,
     )?;
 
     // Now, with the whole header intact, let's generate a version of the hbf that is actually
@@ -133,22 +117,27 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
 
     sys_log!("Reading HBF from flash");
 
-    let flash_hbf = wrap_error(
+    let flash_hbf = deallocate_on_error(
         wrap_hbf_error(HbfFile::from_reader(&flash_reader)),
         &mut storage,
         allocation.flash_base_address,
-        channel,
+    )?;
+
+    // Before reading the payload, validate the dependencies of this component
+    deallocate_on_error(
+        validate_version_and_dependencies(&flash_hbf, &mut storage, allocation.flash_base_address),
+        &mut storage,
+        allocation.flash_base_address,
     )?;
 
     // From this point on, the validation and new checksum are different
     new_checksum = validation_checksum;
 
     // Now at the same way, read the payload
-    to_read = wrap_error(
+    to_read = deallocate_on_error(
         wrap_hbf_error(flash_hbf.payload_size()),
         &mut storage,
         allocation.flash_base_address,
-        channel,
     )? as usize;
 
     // Calculate needed offsets, create needed vars
@@ -158,19 +147,18 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
     let mut used_relocs: usize = 0;
     let mut usable_relocs: usize = 0;
     let mut total_usable_relocs: usize =
-        wrap_hbf_error(flash_hbf.header_base())?.num_relocations() as usize;
+        flash_hbf.header_base().unwrap_lite().num_relocations() as usize;
     let mut current_reloc_pos: usize = 0;
 
-    wrap_error(
+    deallocate_on_error(
         channel_write_single(channel, ComponentUpdateCommand::SendComponentPayload as u8),
         &mut storage,
         allocation.flash_base_address,
-        channel,
     )?;
 
     sys_log!("Waiting for payload");
 
-    wrap_error(
+    deallocate_on_error(
         read_bytes(
             to_read,
             channel,
@@ -198,7 +186,6 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
         ),
         &mut storage,
         allocation.flash_base_address,
-        channel,
     )?;
 
     sys_log!("Checksum validation");
@@ -217,29 +204,24 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
         // Deallocate the space
         storage
             .deallocate_block(allocation.flash_base_address)
-            .unwrap();
-        // Signal error
-        channel_write_single(channel, ComponentUpdateResponse::FailedHBFValidation as u8)?;
+            .unwrap_lite();
         return Err(MessageError::FailedHBFValidation);
     }
 
     // Validate the HBF (last one, to ensure the library reads it correctly)
-    let hbf_validation = wrap_error(
+    let hbf_validation = deallocate_on_error(
         wrap_hbf_error(flash_hbf.validate()),
         &mut storage,
         allocation.flash_base_address,
-        channel,
     )?;
     if !hbf_validation {
         // Deallocate the space
         storage
             .deallocate_block(allocation.flash_base_address)
             .unwrap();
-        // Signal error
-        channel_write_single(channel, ComponentUpdateResponse::FailedHBFValidation as u8)?;
         return Err(MessageError::FailedHBFValidation);
     }
-    // TODO: Start component, do stuff ...
+    // Start component, do stuff ...
     sys_log!("Try to start component");
     let start_result = userlib::kipc::load_component(allocation.flash_base_address);
     if start_result {
@@ -250,41 +232,15 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
     Ok(())
 }
 
-fn wrap_error<T>(
+fn deallocate_on_error<T>(
     r: Result<T, MessageError>,
     storage: &mut Storage,
     block_base_address: u32,
-    channel: &mut UartChannel,
 ) -> Result<T, MessageError> {
     r.map_err(|e| {
         // Deallocate the space
-        if storage.deallocate_block(block_base_address).is_err() {
-            sys_log!("Block deallocation failed!");
-            if channel_write_single(channel, ComponentUpdateResponse::GenericFailure as u8).is_err()
-            {
-                return MessageError::ChannelError;
-            }
-            return MessageError::FlashError;
-        } else {
-            match e {
-                MessageError::InvalidSize => sys_log!("IS"),
-                MessageError::InvalidCRC => sys_log!("IC"),
-                MessageError::InvalidOperation => sys_log!("IO"),
-                MessageError::InvalidHBF => sys_log!("IH"),
-                MessageError::NotEnoughSpace => sys_log!("NE"),
-                MessageError::FlashError => sys_log!("FE"),
-                MessageError::ChannelError => sys_log!("CE"),
-                MessageError::TimeoutError => sys_log!("TE"),
-                MessageError::FailedHBFValidation => sys_log!("VF"),
-                MessageError::CannotFindComponent => sys_log!("CC"),
-                MessageError::CannotFindVersion => sys_log!("CV"),
-            }
-            if channel_write_single(channel, ComponentUpdateResponse::GenericFailure as u8).is_err()
-            {
-                return MessageError::ChannelError;
-            }
-        }
-        // Return the error
+        storage.deallocate_block(block_base_address).unwrap_lite();
+        // Return error
         e
     })
 }
@@ -315,12 +271,8 @@ where
             &mut pkt_buffer[0..min_to_read + 1],
         )?;
         // Validate this packet
-        let parsed_pkt = RawPacket::from(&pkt_buffer[0..min_to_read + 1]);
-        if parsed_pkt.is_err() {
-            return Err(parsed_pkt.unwrap_err());
-        }
+        let pkt = RawPacket::from(&pkt_buffer[0..min_to_read + 1])?;
         // Write this packet content
-        let pkt = parsed_pkt.unwrap();
 
         // Apply relocations if requested.
         // To this purpose, must move the data in another buffer were we can edit
@@ -335,12 +287,10 @@ where
         buffer_process(&mut data[0..min_to_read], *curr_pos)?;
 
         // Save stream to flash
-        if storage
+        storage
             .write_stream(flash_base, *curr_pos, &data[0..min_to_read])
-            .is_err()
-        {
-            return Err(MessageError::FlashError);
-        }
+            .map_err(|_| MessageError::FlashError)?;
+
         *curr_pos += pkt.get_raw().len() as u32;
         // Update stats
         bytes_to_read -= min_to_read;
@@ -350,18 +300,79 @@ where
     Ok(())
 }
 
-fn validate_update_version(component_id: u16, update_version: u32, storage: &mut Storage) -> bool {
-    // Start by searching this component
-    // We are sure only one version exists, because we erase old versions!
-    let search_result = search_component(component_id, None, &storage);
-    if search_result.is_err() {
-        return true;
+/// Scans the system to verify if all the dependencies of this component
+/// are satisfied
+fn validate_version_and_dependencies(
+    hbf: &HbfFile,
+    storage: &mut Storage,
+    block_base_address: u32,
+) -> Result<(), MessageError> {
+    // Iterating for components is expensive, so must be ideally done once.
+    // The number of dependencies is unknown at compile time, so we may exploit ordering
+    // constraint.
+    let hbf_base = wrap_hbf_error(hbf.header_base())?;
+    let num_dependencies = hbf_base.num_dependencies();
+    // Prepare for iterating over the blocks
+    // Get block stats
+    let flash_status = storage
+        .report_status()
+        .map_err(|_| MessageError::FlashError)?;
+    // Some dependencies
+    let mut current_dep = hbf.dependency_nth(0).unwrap_lite(); // At least one must exist
+    let mut current_dep_pos: u16 = 1;
+    // Iterate all blocks
+    for block_num in 0..flash_status.blocks {
+        // Get block
+        let block = storage.get_nth_block(block_num).unwrap();
+        // Skip the current block!
+        if block.block_base_address == block_base_address {
+            continue;
+        }
+        if block.block_type == BlockType::COMPONENT {
+            // Read hbf header
+            let mut buff: [u8; hbf_lite::HBF_HEADER_MIN_SIZE] =
+                [0x00; hbf_lite::HBF_HEADER_MIN_SIZE];
+            storage
+                .read_stream(block.block_base_address, 0, &mut buff)
+                .map_err(|_| MessageError::FlashError)?;
+            // Parse it
+            let reader = hbf_lite::BufferReaderImpl::from(&buff);
+            let comp_hbf =
+                hbf_lite::HbfFile::from_reader(&reader).map_err(|_| MessageError::FlashError)?;
+            let comp_data = comp_hbf.header_base().unwrap_lite();
+            // Check whether this component is an old version of ours
+            if comp_data.component_id() == hbf_base.component_id() {
+                // Check constraint on greater version
+                if comp_data.component_version() >= hbf_base.component_version() {
+                    return Err(MessageError::IllegalDowngrade);
+                }
+            } else if comp_data.component_id() == current_dep.component_id() {
+                // Check version
+                if current_dep.min_version() > 0
+                    && comp_data.component_version() < current_dep.min_version()
+                {
+                    // Wrong version (lower bound)
+                    return Err(MessageError::DependencyError);
+                } else if current_dep.max_version() > 0
+                    && comp_data.component_version() > current_dep.max_version()
+                {
+                    // Wrong version (upper bound)
+                    return Err(MessageError::DependencyError);
+                }
+                // Advance with the dependency
+                if current_dep_pos < num_dependencies {
+                    // Get next one
+                    current_dep = hbf.dependency_nth(current_dep_pos).unwrap_lite();
+                    current_dep_pos += 1;
+                } else {
+                    // Got all the dependencies
+                    return Ok(());
+                }
+            }
+        }
     }
-    let result = search_result.unwrap();
-    if result.component_version >= update_version {
-        return false;
-    }
-    return true;
+    // Missing dependency
+    return Err(MessageError::MissingDependency);
 }
 
 /**
@@ -369,7 +380,7 @@ fn validate_update_version(component_id: u16, update_version: u32, storage: &mut
  * read from flash), and we know relocations are in-order, we can store a sliding-buffer
  * of N relocs, and just iterate over this buffer.
  */
-const RELOC_BUFFER_LEN: usize = 4;
+const RELOC_BUFFER_LEN: usize = 16;
 
 fn read_next_relocs(
     reloc_buffer: &mut [u32; RELOC_BUFFER_LEN],

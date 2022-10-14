@@ -33,7 +33,7 @@ pub fn write_component_config(file_name: &str, config: &ComponentConfig) -> Resu
 mod test {
     use std::path::PathBuf;
 
-    use crate::structures::{Component, ComponentFlag, Region, RegionAttribute, Interrupt};
+    use crate::structures::{Component, ComponentFlag, Region, RegionAttribute, Interrupt, Dependency};
     use tempfile::NamedTempFile;
 
     use super::*;
@@ -61,7 +61,8 @@ mod test {
                 min_ram: 1024
             },
             regions: None,
-            interrupts: None
+            interrupts: None,
+            dependencies: None
         };
         // Write to file
         let result = write_component_config(&file_path, &config);
@@ -101,7 +102,8 @@ mod test {
                     attributes: vec![RegionAttribute::DMA]
                 }
             ]),
-            interrupts: None
+            interrupts: None,
+            dependencies: None
         };
         // Write to file
         let result = write_component_config(&file_path, &config);
@@ -149,6 +151,67 @@ mod test {
                 Interrupt{
                     irq: 2,
                     notification_mask: 0b00000000_00000000_00000000_00000010
+                }
+            ]),
+            dependencies: None
+        };
+        // Write to file
+        let result = write_component_config(&file_path, &config);
+        assert!(result.is_ok());
+        // Check file content
+        let file_content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(file_content, fs::read_to_string(test_file_path).unwrap());
+        // Recover structure
+        let recovered = read_component_config(&file_path).unwrap();
+        assert_eq!(recovered, config);
+    }
+    #[test]
+    fn config_generation4() {
+        // Create temp config
+        let file = NamedTempFile::new().unwrap();
+        let file_path = file.path().to_str().unwrap();
+        let test_file_path = get_test_file_path("test4.toml");
+
+        let config = ComponentConfig {
+            component: Component {
+                id: 2,
+                version: 3,
+                priority: 4,
+                flags: vec![],
+                min_ram: 2048
+            },
+            regions: Some(vec![
+                Region{
+                    base_address: 0x0800_0000,
+                    size: 0x1000,
+                    attributes: vec![RegionAttribute::READ, RegionAttribute::WRITE]
+                },
+                Region{
+                    base_address: 0x0800_1000,
+                    size: 0x2000,
+                    attributes: vec![RegionAttribute::DMA]
+                }
+            ]),
+            interrupts: Some(vec![
+                Interrupt{
+                    irq: 1,
+                    notification_mask: 0b00000000_00000000_00000000_00000001
+                },
+                Interrupt{
+                    irq: 2,
+                    notification_mask: 0b00000000_00000000_00000000_00000010
+                }
+            ]),
+            dependencies: Some(vec![
+                Dependency{
+                    component_id: 1,
+                    min_version: 1,
+                    max_version: 0
+                },
+                Dependency {
+                    component_id: 2,
+                    min_version: 0,
+                    max_version: 10
                 }
             ])
         };

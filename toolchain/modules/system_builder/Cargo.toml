@@ -1,6 +1,6 @@
 [package]
 name = "system_builder"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 description = "A tool to generate an image of the system, ready to be flashed"
 

@@ -5,14 +5,16 @@ use core::fmt::{Debug, Error, Formatter};
  */
 pub const HBF_MAGIC: [u8; 4] = [0x7f, b'H', b'B', b'F'];
 
-pub const HBF_CHECKSUM_OFFSET: u32 = 0x20;
+pub const HBF_CHECKSUM_OFFSET: u32 = 0x24;
 
 pub const HBF_HEADER_MIN_SIZE: usize = core::mem::size_of::<HbfHeaderBase>();
-pub const FIXED_HEADER_SIZE: usize = core::mem::size_of::<HbfHeaderBase>()
-    + core::mem::size_of::<HbfHeaderMain>();
+pub const FIXED_HEADER_SIZE: usize =
+    core::mem::size_of::<HbfHeaderBase>() + core::mem::size_of::<HbfHeaderMain>();
 pub const REGION_SIZE: usize = core::mem::size_of::<HbfHeaderRegion>();
 pub const INTERRUPT_SIZE: usize = core::mem::size_of::<HbfHeaderInterrupt>();
 pub const RELOC_SIZE: usize = core::mem::size_of::<HbfHeaderRelocation>();
+pub const DEPENDENCY_SIZE: usize = core::mem::size_of::<HbfHeaderDependency>();
+
 
 bitflags::bitflags! {
     #[repr(transparent)]
@@ -65,19 +67,21 @@ impl From<u16> for HbfVersion {
 #[derive(Clone, Copy)]
 #[repr(packed, C)]
 pub struct HbfHeaderBase {
-    magic_number: u32,      // 0
-    version: u16,           // 4
-    total_size: u32,        // 6
-    component_id: u16,      // 10
-    component_version: u32, // 12
-    main_offset: u16,       // 16
-    region_offset: u16,     // 18
-    region_count: u16,      // 20
-    interrupt_offset: u16,  // 22
-    interrupt_count: u16,   // 24
-    relocation_offset: u16, // 26
-    relocation_count: u32,  // 28
-    checksum: u32,          // 32
+    magic_number: u32,        // 0
+    version: u16,             // 4
+    total_size: u32,          // 6
+    component_id: u16,        // 10
+    component_version: u32,   // 12
+    main_offset: u16,         // 16
+    region_offset: u16,       // 18
+    region_count: u16,        // 20
+    interrupt_offset: u16,    // 22
+    interrupt_count: u16,     // 24
+    relocation_offset: u16,   // 26
+    relocation_count: u32,    // 28
+    dependencies_offset: u16, // 32
+    dependencies_count: u16,  // 34
+    checksum: u32,            // 36
 }
 
 impl<'a> HbfHeaderBase {
@@ -131,6 +135,15 @@ impl<'a> HbfHeaderBase {
         unsafe { p.read_unaligned() }
     }
 
+    pub fn num_dependencies(&self) -> u16 {
+        let p = core::ptr::addr_of!(self.dependencies_count);
+        unsafe { p.read_unaligned() }
+    }
+    pub fn offset_dependencies(&self) -> u16 {
+        let p = core::ptr::addr_of!(self.dependencies_offset);
+        unsafe { p.read_unaligned() }
+    }
+
     pub fn checksum(&self) -> u32 {
         let p = core::ptr::addr_of!(self.checksum);
         unsafe { p.read_unaligned() }
@@ -155,6 +168,7 @@ impl Debug for HbfHeaderBase {
             .field("Region Count", &self.num_regions())
             .field("Interrupt Count", &self.num_interrupts())
             .field("Relocation Count", &self.num_relocations())
+            .field("Dependencies Count", &self.num_dependencies())
             .field("Checksum", &format_args!("{:#010x}", &self.checksum()))
             .finish()
     }
@@ -334,6 +348,50 @@ impl Debug for HbfHeaderRelocation {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf Relocation")
             .field("Offset", &format_args!("{:#010x}", &self.offset()))
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy)]
+#[repr(packed, C)]
+pub struct HbfHeaderDependency {
+    component_id: u32, //0
+    min_version: u32,  //4
+    max_version: u32,  //8
+}
+
+impl<'a> HbfHeaderDependency {
+    pub fn component_id(&self) -> u16 {
+        let p = core::ptr::addr_of!(self.component_id);
+        (unsafe { p.read_unaligned() }) as u16
+    }
+
+    pub fn min_version(&self) -> u32 {
+        let p = core::ptr::addr_of!(self.min_version);
+        unsafe { p.read_unaligned() }
+    }
+
+    pub fn max_version(&self) -> u32 {
+        let p = core::ptr::addr_of!(self.max_version);
+        unsafe { p.read_unaligned() }
+    }
+
+    pub fn get_raw(&self) -> &'a [u8] {
+        unsafe {
+            core::slice::from_raw_parts(
+                (self as *const Self) as *const u8,
+                core::mem::size_of::<Self>(),
+            )
+        }
+    }
+}
+
+impl Debug for HbfHeaderDependency {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.debug_struct("Hbf Dependency")
+            .field("Component ID", &self.component_id())
+            .field("Min Version", &self.min_version())
+            .field("MaxVersion", &self.max_version())
             .finish()
     }
 }

@@ -1,9 +1,16 @@
 use core::fmt::Debug;
 
-use crate::{header::{HbfHeaderBaseWrapper, HbfHeaderRegionWrapper, HbfHeaderInterruptWrapper, HbfHeaderRelocationWrapper, HbfHeaderRegionIter, HbfHeaderInterruptIter, HbfHeaderRelocationIter, HbfHeaderMainWrapper}, section::HbfPayloadSectionWrapper};
+use crate::{
+    header::{
+        HbfHeaderBaseWrapper, HbfHeaderDependencyIter, HbfHeaderDependencyWrapper,
+        HbfHeaderInterruptIter, HbfHeaderInterruptWrapper, HbfHeaderMainWrapper,
+        HbfHeaderRegionIter, HbfHeaderRegionWrapper, HbfHeaderRelocationIter,
+        HbfHeaderRelocationWrapper,
+    },
+    section::HbfPayloadSectionWrapper,
+};
 
 pub mod hbf;
-
 
 pub trait HbfFile: Debug {
     fn content(&self) -> &[u8];
@@ -19,6 +26,9 @@ pub trait HbfFile: Debug {
 
     fn relocation_nth(&self, index: usize) -> Option<HbfHeaderRelocationWrapper>;
     fn relocation_iter(&self) -> HbfHeaderRelocationIter;
+
+    fn dependency_nth(&self, index: usize) -> Option<HbfHeaderDependencyWrapper>;
+    fn dependency_iter(&self) -> HbfHeaderDependencyIter;
 
     fn read_only_section(&self) -> HbfPayloadSectionWrapper;
     fn data_section(&self) -> Option<HbfPayloadSectionWrapper>;

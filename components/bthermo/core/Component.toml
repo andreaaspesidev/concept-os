@@ -24,3 +24,9 @@ attributes = [
     'WRITE',
     'DEVICE'
 ]
+
+# RCC
+[[dependencies]]
+component_id = 2
+min_version = 1
+max_version = 1

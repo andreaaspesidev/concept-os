@@ -1,25 +1,29 @@
 use hbf_lite::{BufferReaderImpl, HbfFile};
 
-use crate::{crc::crc8_update, utils::u32_from_le_bytes};
+use crate::{crc::crc8_update};
 
 /**
  * Generic enums
  */
-#[derive(Debug, Clone, Copy)]
-pub enum MessageError {
-    InvalidSize,
-    InvalidCRC,
-    InvalidOperation,
-    InvalidHBF,
-    NotEnoughSpace,
-    FlashError,
-    ChannelError,
-    TimeoutError,
-    FailedHBFValidation,
-    CannotFindComponent,
-    CannotFindVersion,
-}
 #[derive(Clone, Copy, Debug)]
+#[repr(u8)]
+pub enum MessageError {
+    InvalidSize = 0xE1,
+    InvalidCRC = 0xE2,
+    InvalidOperation = 0xE3,
+    CannotReadHBF = 0xE4,
+    NotEnoughSpace = 0xE5,
+    FlashError = 0xE6,
+    TimeoutError = 0xE7,
+    FailedHBFValidation = 0xE8,
+    DependencyError = 0xE9,
+    MissingDependency = 0xEA,
+    IllegalDowngrade = 0xEB,
+    //CannotFindComponent = 0xEC,
+    //CannotFindVersion = 0xED,
+    ChannelError = 0xFF,
+}
+#[derive(Clone, Copy)]
 #[repr(u8)]
 pub enum OperationType {
     ComponentUpdate = 0xCA,
@@ -27,16 +31,13 @@ pub enum OperationType {
     ComponentErase = 0xCE,
 }
 
-pub const TIMEOUT_ERROR: u8 = 0xE0;
-
 /**
  * Generic Messages
  */
 
 /// Hello Message
-pub struct HelloMessage<'a> {
+pub struct HelloMessage {
     operation: OperationType,
-    buffer: &'a [u8],
 }
 impl TryFrom<u8> for OperationType {
     type Error = MessageError;
@@ -49,18 +50,17 @@ impl TryFrom<u8> for OperationType {
         }
     }
 }
-impl<'a> HelloMessage<'a> {
+impl<'a> HelloMessage {
     pub fn from(buffer: &'a [u8]) -> Result<Self, MessageError> {
         // Validate buffer
         let op = Self::validate(buffer)?;
         // Return instance
         Ok(Self {
             operation: op,
-            buffer: buffer,
         })
     }
     pub const fn get_size() -> usize {
-        18
+        2
     }
     fn validate(buffer: &'a [u8]) -> Result<OperationType, MessageError> {
         // Check message size
@@ -82,9 +82,6 @@ impl<'a> HelloMessage<'a> {
     }
     pub fn get_operation(&self) -> OperationType {
         self.operation
-    }
-    pub fn get_aes_key(&self) -> &'a [u8] {
-        &self.buffer[1..17]
     }
 }
 
@@ -156,21 +153,14 @@ impl<'a> RawPacket<'a> {
  */
 #[repr(u8)]
 pub enum ComponentUpdateCommand {
-    SendComponentMetadata = 0x01,
-    SendComponentFixedHeader = 0x02,
-    SendComponentVariableHeader = 0x03,
-    SendComponentPayload = 0x04,
+    SendComponentFixedHeader = 0x01,
+    SendComponentVariableHeader = 0x02,
+    SendComponentPayload = 0x03,
     SendNextFragment = 0xA0,
 }
 
 #[repr(u8)]
 pub enum ComponentUpdateResponse {
-    FailedMetadataCheck = 0xE1,
-    NotEnoughSpace = 0xE2,
-    CannotStartComponent = 0xE3,
-    InvalidHBF = 0xE4,
-    FailedHBFValidation = 0xE5,
-    GenericFailure = 0xE7,
     Success = 0xFF,
 }
 
@@ -212,13 +202,14 @@ impl<'a> FixedHeaderMessage<'a> {
         let buff_reader = BufferReaderImpl::from(&buffer[0..buffer.len() - 1]);
         let hbf = HbfFile::from_reader(&buff_reader);
         if hbf.is_err() {
-            return Err(MessageError::InvalidHBF);
+            return Err(MessageError::CannotReadHBF);
         }
         // Return
         Ok(())
     }
 }
 
+/* 
 pub struct ComponentIDPacket<'a> {
     buffer: &'a [u8],
 }
@@ -256,8 +247,9 @@ impl<'a> ComponentIDPacket<'a> {
         // Return
         Ok(())
     }
-}
+} */
 
+/* 
 /**
  * Component Erase
  */
@@ -273,6 +265,7 @@ pub enum ComponentEraseResponse {
     GenericFailure = 0xEF,
     Success = 0xFF,
 }
+*/
 
 /**
  * System Info

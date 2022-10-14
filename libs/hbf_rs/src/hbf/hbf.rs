@@ -1,14 +1,26 @@
-use core::{slice::from_raw_parts};
-use core::fmt::{Debug, Formatter, Error};
+use core::fmt::{Debug, Error, Formatter};
+use core::slice::from_raw_parts;
 
-use crate::header::HBF_CHECKSUM_OFFSET;
-use crate::{header::{HBF_HEADER_MIN_SIZE, HbfHeaderBaseGen, HbfHeaderMainGen, HbfHeaderBaseWrapper, HbfHeaderRegionGen, HbfHeaderInterruptGen, HbfHeaderRelocationGen, HbfHeaderRegionWrapper, HbfHeaderInterruptWrapper, HbfHeaderRelocationWrapper, HbfHeaderRegionIter, HbfHeaderInterruptIter, HbfHeaderRelocationIter, HbfHeaderMainWrapper, HBF_MAGIC, HbfVersion}, section::{HbfPayloadSectionWrapper, HbfPayloadSectionGen}, HbfFile};
-
+use crate::header::{
+    HbfHeaderDependencyGen, HbfHeaderDependencyIter, HbfHeaderDependencyWrapper,
+    HBF_CHECKSUM_OFFSET,
+};
+use crate::{
+    header::{
+        HbfHeaderBaseGen, HbfHeaderBaseWrapper, HbfHeaderInterruptGen, HbfHeaderInterruptIter,
+        HbfHeaderInterruptWrapper, HbfHeaderMainGen, HbfHeaderMainWrapper, HbfHeaderRegionGen,
+        HbfHeaderRegionIter, HbfHeaderRegionWrapper, HbfHeaderRelocationGen,
+        HbfHeaderRelocationIter, HbfHeaderRelocationWrapper, HbfVersion, HBF_HEADER_MIN_SIZE,
+        HBF_MAGIC,
+    },
+    section::{HbfPayloadSectionGen, HbfPayloadSectionWrapper},
+    HbfFile,
+};
 
 /// Memorizes a reference to the hbf buffer (start address)
 pub struct HbfGen<'a>(&'a [u8]);
 
-impl <'a> HbfGen<'a> {
+impl<'a> HbfGen<'a> {
     pub fn from_bytes(buffer: &'a [u8]) -> Result<Self, crate::Error> {
         if buffer.len() < HBF_HEADER_MIN_SIZE {
             return Err(crate::Error::BufferTooShort);
@@ -64,19 +76,32 @@ impl <'a> HbfGen<'a> {
             from_raw_parts(rel_ptr as *const HbfHeaderRelocationGen, num)
         }
     }
+    fn hbf_header_dependency_raw(&'a self) -> &'a [HbfHeaderDependencyGen] {
+        let offset = self.header_base().offset_dependencies() as usize;
+        let num = self.header_base().num_dependencies() as usize;
+        unsafe {
+            let rel_ptr = self.content().as_ptr().add(offset);
+            from_raw_parts(rel_ptr as *const HbfHeaderDependencyGen, num)
+        }
+    }
     fn hbf_payload_read_only_gen(&self) -> HbfPayloadSectionGen {
         let offset = core::mem::size_of::<HbfHeaderBaseGen>()
             + core::mem::size_of::<HbfHeaderMainGen>()
-            + core::mem::size_of::<HbfHeaderRegionGen>() * self.header_base().num_regions() as usize
-            + core::mem::size_of::<HbfHeaderInterruptGen>() * self.header_base().num_interrupts() as usize
-            + core::mem::size_of::<HbfHeaderRelocationGen>() * self.header_base().num_relocations() as usize;
+            + core::mem::size_of::<HbfHeaderRegionGen>()
+                * self.header_base().num_regions() as usize
+            + core::mem::size_of::<HbfHeaderInterruptGen>()
+                * self.header_base().num_interrupts() as usize
+            + core::mem::size_of::<HbfHeaderRelocationGen>()
+                * self.header_base().num_relocations() as usize
+            + core::mem::size_of::<HbfHeaderDependencyGen>()
+                * self.header_base().num_dependencies() as usize;
         let size = match self.header_main().data_offset() {
             0 => self.header_base().total_size() - offset as u32,
-            data_offset =>  data_offset - offset as u32
+            data_offset => data_offset - offset as u32,
         };
         return HbfPayloadSectionGen {
             offset: offset as u32,
-            size: size
+            size: size,
         };
     }
 
@@ -87,11 +112,11 @@ impl <'a> HbfGen<'a> {
             0 => None,
             _ => Some(HbfPayloadSectionGen {
                 offset: offset,
-                size: size
-            })
+                size: size,
+            }),
         };
     }
-    
+
     /*
         Size calcs
     */
@@ -112,12 +137,17 @@ impl <'a> HbfGen<'a> {
     fn payload_size(&self) -> u32 {
         let offset = core::mem::size_of::<HbfHeaderBaseGen>()
             + core::mem::size_of::<HbfHeaderMainGen>()
-            + core::mem::size_of::<HbfHeaderRegionGen>() * self.header_base().num_regions() as usize
-            + core::mem::size_of::<HbfHeaderInterruptGen>() * self.header_base().num_interrupts() as usize
-            + core::mem::size_of::<HbfHeaderRelocationGen>() * self.header_base().num_relocations() as usize;
+            + core::mem::size_of::<HbfHeaderRegionGen>()
+                * self.header_base().num_regions() as usize
+            + core::mem::size_of::<HbfHeaderInterruptGen>()
+                * self.header_base().num_interrupts() as usize
+            + core::mem::size_of::<HbfHeaderRelocationGen>()
+                * self.header_base().num_relocations() as usize
+            + core::mem::size_of::<HbfHeaderDependencyGen>()
+                * self.header_base().num_dependencies() as usize;
         self.header_base().total_size() - offset as u32
     }
-    
+
     /*
         Direct access
     */
@@ -136,6 +166,11 @@ impl <'a> HbfGen<'a> {
             .get(index)
             .map(|r| HbfHeaderRelocationWrapper::new(self, r))
     }
+    pub fn dependency_nth(&self, index: usize) -> Option<HbfHeaderDependencyWrapper> {
+        self.hbf_header_dependency_raw()
+            .get(index)
+            .map(|r| HbfHeaderDependencyWrapper::new(self, r))
+    }
 
     /*
         Iterator support
@@ -149,13 +184,16 @@ impl <'a> HbfGen<'a> {
     pub fn relocation_iter(&self) -> HbfHeaderRelocationIter {
         HbfHeaderRelocationIter::new(self)
     }
+    pub fn dependency_iter(&self) -> HbfHeaderDependencyIter {
+        HbfHeaderDependencyIter::new(self)
+    }
 
     /*
         Validation
     */
     pub fn validate(&self) -> bool {
         let bytes = self.content();
-        let mut index : usize = 0;
+        let mut index: usize = 0;
         let mut checksum: u32 = 0;
         loop {
             let mut word: u32 = 0;
@@ -173,7 +211,7 @@ impl <'a> HbfGen<'a> {
             } else {
                 // Convert the 4 bytes into a word
                 let mut i = 0;
-                for c in &bytes[index..index+available] {
+                for c in &bytes[index..index + available] {
                     word |= u32::from(*c) << (8 * i);
                     i += 1;
                 }
@@ -183,10 +221,9 @@ impl <'a> HbfGen<'a> {
         }
         return self.header_base().checksum() == checksum;
     }
-
 }
 
-impl <'a> HbfFile for HbfGen<'a> {
+impl<'a> HbfFile for HbfGen<'a> {
     fn content(&self) -> &[u8] {
         self.content()
     }
@@ -220,6 +257,13 @@ impl <'a> HbfFile for HbfGen<'a> {
         self.relocation_iter()
     }
 
+    fn dependency_nth(&self, index: usize) -> Option<HbfHeaderDependencyWrapper> {
+        self.dependency_nth(index)
+    }
+    fn dependency_iter(&self) -> HbfHeaderDependencyIter {
+        self.dependency_iter()
+    }
+
     fn read_only_section(&self) -> HbfPayloadSectionWrapper {
         HbfPayloadSectionWrapper::new(self, self.hbf_payload_read_only_gen())
     }
@@ -244,10 +288,9 @@ impl <'a> HbfFile for HbfGen<'a> {
     fn payload_size(&self) -> u32 {
         self.payload_size()
     }
-
 }
 
-impl <'a> Debug for HbfGen<'a> {
+impl<'a> Debug for HbfGen<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf File")
             .field("Memory Location", &self.content().as_ptr())

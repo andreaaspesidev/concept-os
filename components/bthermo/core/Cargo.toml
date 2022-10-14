@@ -10,11 +10,12 @@ stm32f303re = ["rcc-api/stm32f303re", "dep:stm32f303re"]
 bthermo-api = {path = "../api"}
 userlib = {path = "../../../sys/userlib", features=["log-itm"]}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
-rcc-api = {path = "../../rcc/api"}
 zerocopy = "0.6.1"
 serde = { version = "1.0.114", default-features = false, features = ["derive"] }
 heapless = "0.7.16"
 ringbuffer = {version="0.8.5", default-features = false}
+# Component dependencies
+rcc-api = {path = "../../rcc/api"}
 
 # Device-specific dependencies.
 # Each board supported will have its section below

@@ -17,7 +17,7 @@ dependencies = [
 
 [[package]]
 name = "hbf_simple_read"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "hbf_lite",
 ]

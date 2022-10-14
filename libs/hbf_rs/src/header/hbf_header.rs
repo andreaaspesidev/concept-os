@@ -1,22 +1,25 @@
 use super::{
-    HbfHeaderBase, HbfHeaderInterrupt, HbfHeaderMain, HbfHeaderRegion, HbfHeaderRelocation,
+    HbfHeaderBase, HbfHeaderDependency, HbfHeaderInterrupt, HbfHeaderMain, HbfHeaderRegion,
+    HbfHeaderRelocation,
 };
 
 #[repr(packed, C)]
 pub struct HbfHeaderBaseGen {
-    magic_number: u32,      // 0
-    version: u16,           // 4
-    total_size: u32,        // 6
-    component_id: u16,      // 10
-    component_version: u32, // 12
-    main_offset: u16,       // 16
-    region_offset: u16,     // 18
-    region_count: u16,      // 20
-    interrupt_offset: u16,  // 22
-    interrupt_count: u16,   // 24
-    relocation_offset: u16, // 26
-    relocation_count: u32,  // 28
-    checksum: u32,          // 32
+    magic_number: u32,        // 0
+    version: u16,             // 4
+    total_size: u32,          // 6
+    component_id: u16,        // 10
+    component_version: u32,   // 12
+    main_offset: u16,         // 16
+    region_offset: u16,       // 18
+    region_count: u16,        // 20
+    interrupt_offset: u16,    // 22
+    interrupt_count: u16,     // 24
+    relocation_offset: u16,   // 26
+    relocation_count: u32,    // 28
+    dependencies_offset: u16, // 32
+    dependencies_count: u16,  // 34
+    checksum: u32,            // 36
 }
 
 impl<'a> HbfHeaderBase<'a> for HbfHeaderBaseGen {
@@ -67,6 +70,15 @@ impl<'a> HbfHeaderBase<'a> for HbfHeaderBaseGen {
     }
     fn offset_relocation(&self) -> u16 {
         let p = core::ptr::addr_of!(self.relocation_offset);
+        unsafe { p.read_unaligned() }
+    }
+
+    fn num_dependencies(&self) -> u16 {
+        let p = core::ptr::addr_of!(self.dependencies_count);
+        unsafe { p.read_unaligned() }
+    }
+    fn offset_dependencies(&self) -> u16 {
+        let p = core::ptr::addr_of!(self.dependencies_offset);
         unsafe { p.read_unaligned() }
     }
 
@@ -212,6 +224,39 @@ impl<'a> HbfHeaderRelocation<'a> for HbfHeaderRelocationGen {
             core::slice::from_raw_parts(
                 self as *const Self as *const u8,
                 core::mem::size_of::<HbfHeaderRelocationGen>(),
+            )
+        }
+    }
+}
+
+#[repr(packed, C)]
+pub struct HbfHeaderDependencyGen {
+    component_id: u32, //0
+    min_version: u32,  //4
+    max_version: u32,  //8
+}
+
+impl<'a> HbfHeaderDependency<'a> for HbfHeaderDependencyGen {
+    fn component_id(&self) -> u16 {
+        let p = core::ptr::addr_of!(self.component_id);
+        (unsafe { p.read_unaligned() }) as u16
+    }
+
+    fn min_version(&self) -> u32 {
+        let p = core::ptr::addr_of!(self.min_version);
+        unsafe { p.read_unaligned() }
+    }
+
+    fn max_version(&self) -> u32 {
+        let p = core::ptr::addr_of!(self.max_version);
+        unsafe { p.read_unaligned() }
+    }
+
+    fn get_raw(&self) -> &'a [u8] {
+        unsafe {
+            core::slice::from_raw_parts(
+                (self as *const Self) as *const u8,
+                core::mem::size_of::<Self>(),
             )
         }
     }

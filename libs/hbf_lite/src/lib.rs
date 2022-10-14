@@ -2,11 +2,12 @@
 
 use core::fmt::{Debug, Error, Formatter};
 
+use header::HbfHeaderDependency;
 pub use header::{HbfHeaderBase, HbfHeaderMain, HbfHeaderRelocation, HbfVersion, HBF_MAGIC};
 
 pub use header::{
     HbfHeaderInterrupt, HbfHeaderRegion, FIXED_HEADER_SIZE, HBF_CHECKSUM_OFFSET,
-    HBF_HEADER_MIN_SIZE, INTERRUPT_SIZE, REGION_SIZE, RELOC_SIZE,
+    HBF_HEADER_MIN_SIZE, INTERRUPT_SIZE, REGION_SIZE, RELOC_SIZE, DEPENDENCY_SIZE
 };
 
 mod header;
@@ -20,6 +21,7 @@ pub enum HbfError {
     InvalidRegion,
     InvalidInterrupt,
     InvalidRelocation,
+    InvalidDependency,
     InvalidOffset,
 }
 
@@ -205,6 +207,22 @@ impl<'a> HbfFile<'a> {
         unsafe { Ok(*(buffer.as_ptr() as *const HbfHeaderRelocation)) }
     }
 
+    pub fn dependency_nth(&self, dependency_num: u16) -> Result<HbfHeaderDependency, HbfError> {
+        // Check region number
+        if dependency_num >= self.header_base()?.num_dependencies() {
+            return Err(HbfError::InvalidRelocation);
+        }
+        // Compute offset (base + num*size)
+        const SIZE: usize = core::mem::size_of::<HbfHeaderDependency>();
+        let mut offset = self.header_base()?.offset_dependencies() as u32;
+        offset += (dependency_num as usize * SIZE) as u32;
+        // Read enough to parse
+        let mut buffer: [u8; SIZE] = [0x00; SIZE];
+        self.reader.read(offset, &mut buffer)?;
+        // Convert the buffer into the structure
+        unsafe { Ok(*(buffer.as_ptr() as *const HbfHeaderDependency)) }
+    }
+
     pub fn get_readonly_payload(&self) -> Result<HbfPayloadSection<'a>, HbfError> {
         // Compute offset
         let offset = core::mem::size_of::<HbfHeaderBase>()
@@ -213,7 +231,9 @@ impl<'a> HbfFile<'a> {
             + core::mem::size_of::<HbfHeaderInterrupt>()
                 * self.header_base()?.num_interrupts() as usize
             + core::mem::size_of::<HbfHeaderRelocation>()
-                * self.header_base()?.num_relocations() as usize;
+                * self.header_base()?.num_relocations() as usize
+            + core::mem::size_of::<HbfHeaderDependency>()
+                * self.header_base()?.num_dependencies() as usize;
         // Compute size
         let size = match self.header_main()?.data_offset() {
             0 => self.header_base()?.total_size() - offset as u32,
@@ -259,7 +279,9 @@ impl<'a> HbfFile<'a> {
             + core::mem::size_of::<HbfHeaderInterrupt>()
                 * self.header_base()?.num_interrupts() as usize
             + core::mem::size_of::<HbfHeaderRelocation>()
-                * self.header_base()?.num_relocations() as usize;
+                * self.header_base()?.num_relocations() as usize
+            + core::mem::size_of::<HbfHeaderDependency>()
+                * self.header_base()?.num_dependencies() as usize;
         Ok(self.header_base()?.total_size() - offset as u32)
     }
 

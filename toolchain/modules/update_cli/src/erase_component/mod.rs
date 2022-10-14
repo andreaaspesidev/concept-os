@@ -26,7 +26,7 @@ pub fn erase_component(serial_port: String, component_id: u16, component_version
 
 fn begin_communication(serial: &mut TTYPort, component_id: u16, component_version: u32, verbose: bool) {
     // Send hello message
-    let hello_msg = HelloMessage::new(OperationType::ComponentErase, [0x00; 16]);
+    let hello_msg = HelloMessage::new(OperationType::ComponentErase);
     flush_read(serial);
     serial_write(serial, &hello_msg.get_raw());
     // Read hello response

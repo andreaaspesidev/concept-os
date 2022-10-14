@@ -86,7 +86,7 @@ fn begin_communication(
 ) {
     // Send hello message
     progress.message("Connection Setup   ");
-    let hello_msg = HelloMessage::new(OperationType::ComponentUpdate, [0x00; 16]);
+    let hello_msg = HelloMessage::new(OperationType::ComponentUpdate);
     flush_read(serial);
     serial_write(serial, &hello_msg.get_raw());
     // Read hello response
@@ -109,7 +109,7 @@ fn begin_communication(
     if buff[0] != ComponentUpdateCommand::SendComponentFixedHeader as u8 {
         eprintln!(
             "Unexpected response from device at first step (Fixed Header): {:?}",
-            buff[0]
+            MessageError::from(buff[0])
         );
         return;
     }
@@ -145,7 +145,7 @@ fn send_fixed_header(
     if buff[0] != ComponentUpdateCommand::SendComponentVariableHeader as u8 {
         eprintln!(
             "Unexpected response from device at second step (Variable Header): {:?}",
-            buff[0]
+            MessageError::from(buff[0])
         );
         return;
     }
@@ -181,7 +181,7 @@ fn send_variable_header(
         } else if buff[0] != ComponentUpdateCommand::SendNextFragment as u8 {
             eprintln!(
                 "Unexpected response from device at third step (Variable Header): {:?}",
-                buff[0]
+                MessageError::from(buff[0])
             );
             return;
         }
@@ -234,7 +234,7 @@ fn send_payload(
         } else if buff[0] != ComponentUpdateCommand::SendNextFragment as u8 {
             eprintln!(
                 "Unexpected response from device at fourth step (Payload) {:?}",
-                buff[0]
+                MessageError::from(buff[0])
             );
             return;
         }
@@ -267,9 +267,14 @@ fn extract_variable_header(hbf: &dyn HbfFile) -> Vec<u8> {
         let raw_data = i.get_raw();
         buffer.extend_from_slice(raw_data);
     }
-    // Lastly append relocations
+    // Next append relocations
     for r in hbf.relocation_iter() {
         let raw_data = r.get_raw();
+        buffer.extend_from_slice(raw_data);
+    }
+    // Lastly append dependencies
+    for d in hbf.dependency_iter() {
+        let raw_data = d.get_raw();
         buffer.extend_from_slice(raw_data);
     }
     buffer

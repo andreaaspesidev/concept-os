@@ -1,22 +1,17 @@
 use crate::{common_messages::SerializableMessage, crc::crc8_update};
 
+
+
 #[repr(u8)]
 pub enum ComponentUpdateCommand {
-    SendComponentMetadata = 0x01,
-    SendComponentFixedHeader = 0x02,
-    SendComponentVariableHeader = 0x03,
-    SendComponentPayload = 0x04,
+    SendComponentFixedHeader = 0x01,
+    SendComponentVariableHeader = 0x02,
+    SendComponentPayload = 0x03,
     SendNextFragment = 0xA0
 }
 
 #[repr(u8)]
 pub enum ComponentUpdateResponse {
-    FailedMetadataCheck = 0xE1,
-    NotEnoughSpace = 0xE2,
-    CannotStartComponent = 0xE3,
-    InvalidHBF = 0xE4,
-    FailedHBFValidation = 0xE5,
-    GenericFailure = 0xE6,
     Success = 0xFF
 }
 

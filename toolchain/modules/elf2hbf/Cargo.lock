@@ -75,7 +75,7 @@ dependencies = [
 
 [[package]]
 name = "component_config"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "serde",
  "serde-hex",
@@ -84,7 +84,7 @@ dependencies = [
 
 [[package]]
 name = "elf2hbf"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "bitflags",
  "clap",
@@ -113,7 +113,7 @@ checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
 
 [[package]]
 name = "hbf_rs"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "bitflags",
 ]

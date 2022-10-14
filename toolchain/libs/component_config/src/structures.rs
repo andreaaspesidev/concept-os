@@ -24,7 +24,8 @@ pub enum RegionAttribute {
 pub struct ComponentConfig {
     pub component: Component,
     pub regions: Option<Vec<Region>>,
-    pub interrupts: Option<Vec<Interrupt>>
+    pub interrupts: Option<Vec<Interrupt>>,
+    pub dependencies: Option<Vec<Dependency>>
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -50,4 +51,11 @@ pub struct Interrupt {
     pub irq: u32,
     #[serde(with = "SerHex::<StrictPfx>")]
     pub notification_mask: u32
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct Dependency {
+    pub component_id: u16,
+    pub min_version: u32,
+    pub max_version: u32
 }

@@ -267,9 +267,14 @@ fn extract_variable_header(hbf: &dyn HbfFile) -> Vec<u8> {
         let raw_data = i.get_raw();
         buffer.extend_from_slice(raw_data);
     }
-    // Lastly append relocations
+    // Next append relocations
     for r in hbf.relocation_iter() {
         let raw_data = r.get_raw();
+        buffer.extend_from_slice(raw_data);
+    }
+    // Lastly append dependencies
+    for d in hbf.dependency_iter() {
+        let raw_data = d.get_raw();
         buffer.extend_from_slice(raw_data);
     }
     buffer

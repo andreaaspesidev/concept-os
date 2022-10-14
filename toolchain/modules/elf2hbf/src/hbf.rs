@@ -76,7 +76,7 @@ bitflags::bitflags! {
 #[derive(Clone, Debug, Copy)]
 #[allow(dead_code)]
 enum HbfVersionType {
-    V1 = 1
+    V1 = 1,
 }
 
 /*
@@ -86,7 +86,7 @@ enum HbfVersionType {
 */
 pub struct HbfFile {
     header: HbfHeader,
-    payload: HbfPayload
+    payload: HbfPayload,
 }
 
 struct HbfHeader {
@@ -94,55 +94,64 @@ struct HbfHeader {
     main: HbfHeaderMain,
     regions: Option<Vec<HbfHeaderRegion>>,
     interrupts: Option<Vec<HbfHeaderInterrupt>>,
-    relocations: Option<Vec<HbfHeaderRelocation>>
+    relocations: Option<Vec<HbfHeaderRelocation>>,
+    dependencies: Option<Vec<HbfHeaderDependency>>,
 }
 
-const CHECKSUM_OFFSET: u32 = 32;
+const CHECKSUM_OFFSET: u32 = 36;
 
 struct HbfHeaderBase {
-    magic_number: u32,          // 0
-    version: HbfVersionType,    // 4
-    total_size: u32,            // 6
-    component_id: u16,          // 10
-    component_version: u32,     // 12
-    main_offset: u16,           // 16
-    region_offset: u16,         // 18
-    region_count: u16,          // 20
-    interrupt_offset: u16,      // 22
-    interrupt_count: u16,       // 24
-    relocation_offset: u16,     // 26
-    relocation_count: u32,      // 28
-    checksum: u32               // 32
+    magic_number: u32,       // 0
+    version: HbfVersionType, // 4
+    total_size: u32,         // 6
+    component_id: u16,       // 10
+    component_version: u32,  // 12
+    main_offset: u16,        // 16
+    region_offset: u16,      // 18
+    region_count: u16,       // 20
+    interrupt_offset: u16,   // 22
+    interrupt_count: u16,    // 24
+    relocation_offset: u16,  // 26
+    relocation_count: u32,   // 28
+    dependency_offset: u16,  // 32
+    dependency_count: u16,   // 34
+    checksum: u32,           // 36
 }
 
 struct HbfHeaderMain {
-    component_priority: u16,            // 0
-    component_flags: ComponentFlags,    // 2
-    component_min_ram: u32,             // 4
-    entry_point_offset: u32,            // 8
-    data_section_offset: u32,           // 12
-    data_section_size: u32              // 16
+    component_priority: u16,         // 0
+    component_flags: ComponentFlags, // 2
+    component_min_ram: u32,          // 4
+    entry_point_offset: u32,         // 8
+    data_section_offset: u32,        // 12
+    data_section_size: u32,          // 16
 }
 
 struct HbfHeaderRegion {
-    region_base_address: u32,               // 0
-    region_size: u32,                       // 4
-    region_attributes: RegionAttributes     // 8
+    region_base_address: u32,            // 0
+    region_size: u32,                    // 4
+    region_attributes: RegionAttributes, // 8
 }
 
 struct HbfHeaderInterrupt {
-    irq_number: u32,         //0
-    notification_mask: u32   //4
+    irq_number: u32,        //0
+    notification_mask: u32, //4
 }
 
 struct HbfHeaderRelocation {
-    address_offset: u32     //0
+    address_offset: u32, //0
+}
+
+struct HbfHeaderDependency {
+    component_id: u32, //0
+    min_version: u32,  //4
+    max_version: u32,  //8
 }
 
 struct HbfPayload {
     text_section: Vec<u8>,
     rodata_section: Option<Vec<u8>>,
-    data_section: Option<Vec<u8>>
+    data_section: Option<Vec<u8>>,
 }
 
 /*
@@ -182,6 +191,12 @@ impl Validable for HbfHeaderBase {
         if self.relocation_count == 0 && self.relocation_offset > 0 {
             return false;
         }
+        if self.dependency_count > 0 && self.dependency_offset == 0 {
+            return false;
+        }
+        if self.dependency_count == 0 && self.dependency_offset > 0 {
+            return false;
+        }
         if self.checksum == 0 {
             return false;
         }
@@ -199,7 +214,8 @@ impl Validable for HbfHeaderMain {
         if self.entry_point_offset == 0 {
             return false;
         }
-        if self.entry_point_offset % 4 != 0 {   // Alignment constraint
+        if self.entry_point_offset % 4 != 0 {
+            // Alignment constraint
             return false;
         }
         if self.data_section_size > 0 && self.data_section_offset == 0 {
@@ -242,6 +258,14 @@ impl Validable for HbfHeaderRelocation {
         return true;
     }
 }
+impl Validable for HbfHeaderDependency {
+    fn is_valid(&self) -> bool {
+        if self.component_id == 0 {
+            return false;
+        }
+        return true;
+    }
+}
 impl Validable for HbfHeader {
     fn is_valid(&self) -> bool {
         // Cascaded checks
@@ -275,6 +299,14 @@ impl Validable for HbfHeader {
                 }
             }
         }
+        if self.dependencies.is_some() {
+            let dependencies = (&self.dependencies).as_ref().unwrap();
+            for r in dependencies.iter() {
+                if !r.is_valid() {
+                    return false;
+                }
+            }
+        }
         // check size
         if self.base.total_size <= core::mem::size_of::<HbfHeader> as u32 {
             return false;
@@ -283,21 +315,34 @@ impl Validable for HbfHeader {
         if self.base.main_offset <= core::mem::size_of::<HbfHeaderBase> as u16 {
             return false;
         }
-        if self.base.region_offset != 0 && self.base.region_offset <= core::mem::size_of::<HbfHeaderBase> as u16 {
+        if self.base.region_offset != 0
+            && self.base.region_offset <= core::mem::size_of::<HbfHeaderBase> as u16
+        {
             return false;
         }
-        if self.base.interrupt_offset != 0 && self.base.interrupt_offset <= core::mem::size_of::<HbfHeaderBase> as u16 {
+        if self.base.interrupt_offset != 0
+            && self.base.interrupt_offset <= core::mem::size_of::<HbfHeaderBase> as u16
+        {
             return false;
         }
-        if self.base.relocation_offset != 0 && self.base.relocation_offset <= core::mem::size_of::<HbfHeaderBase> as u16 {
+        if self.base.relocation_offset != 0
+            && self.base.relocation_offset <= core::mem::size_of::<HbfHeaderBase> as u16
+        {
+            return false;
+        }
+        if self.base.dependency_offset != 0
+            && self.base.dependency_offset <= core::mem::size_of::<HbfHeaderBase> as u16
+        {
             return false;
         }
         if self.main.entry_point_offset <= core::mem::size_of::<HbfHeader> as u32 {
             return false;
         }
-        if self.main.data_section_offset != 0 && self.main.data_section_offset <= core::mem::size_of::<HbfHeader> as u32 {
+        if self.main.data_section_offset != 0
+            && self.main.data_section_offset <= core::mem::size_of::<HbfHeader> as u32
+        {
             return false;
-        } 
+        }
         if self.relocations.is_some() {
             let relocs = (&self.relocations).as_ref().unwrap();
             for r in relocs.iter() {
@@ -333,7 +378,7 @@ impl Validable for HbfFile {
 
 impl Sizeable for HbfHeaderBase {
     fn size(&self) -> u32 {
-        return 36;
+        return 40;
     }
 }
 impl Sizeable for HbfHeaderMain {
@@ -356,6 +401,11 @@ impl Sizeable for HbfHeaderRelocation {
         return 4;
     }
 }
+impl Sizeable for HbfHeaderDependency {
+    fn size(&self) -> u32 {
+        return 12;
+    }
+}
 impl Sizeable for HbfHeader {
     fn size(&self) -> u32 {
         let mut size: u32 = 0;
@@ -373,7 +423,7 @@ impl Sizeable for HbfHeader {
         }
         // interrupts
         if self.interrupts.is_some() {
-            let ints  = (&self.interrupts).as_ref().unwrap();
+            let ints = (&self.interrupts).as_ref().unwrap();
             if ints.len() == 0 {
                 panic!("Empty interrupt array");
             }
@@ -381,11 +431,19 @@ impl Sizeable for HbfHeader {
         }
         // relocs
         if self.relocations.is_some() {
-            let rels  = (&self.relocations).as_ref().unwrap();
+            let rels = (&self.relocations).as_ref().unwrap();
             if rels.len() == 0 {
                 panic!("Empty relocation array");
             }
             size += rels[0].size() * (rels.len() as u32);
+        }
+        // dependencies
+        if self.dependencies.is_some() {
+            let deps = (&self.dependencies).as_ref().unwrap();
+            if deps.len() == 0 {
+                panic!("Empty dependency array");
+            }
+            size += deps[0].size() * (deps.len() as u32);
         }
         return size;
     }
@@ -426,7 +484,9 @@ impl Serializable for HbfHeaderBase {
             interrupt_count: u16,       // 24
             relocation_offset: u16,     // 26
             relocation_count: u32,      // 28
-            checksum: u32               // 32
+            dependency_offset: u16,     // 32
+            dependency_count: u16,      // 34
+            checksum: u32               // 36
         */
         let mut buffer = Vec::<u8>::new();
         buffer.extend_from_slice(&self.magic_number.to_le_bytes());
@@ -441,6 +501,8 @@ impl Serializable for HbfHeaderBase {
         buffer.extend_from_slice(&self.interrupt_count.to_le_bytes());
         buffer.extend_from_slice(&self.relocation_offset.to_le_bytes());
         buffer.extend_from_slice(&self.relocation_count.to_le_bytes());
+        buffer.extend_from_slice(&self.dependency_offset.to_le_bytes());
+        buffer.extend_from_slice(&self.dependency_count.to_le_bytes());
         buffer.extend_from_slice(&self.checksum.to_le_bytes());
         return buffer;
     }
@@ -501,6 +563,20 @@ impl Serializable for HbfHeaderRelocation {
         return buffer;
     }
 }
+impl Serializable for HbfHeaderDependency {
+    fn as_bytes(&self) -> Vec<u8> {
+        /*
+            component_id: u32,     //0
+            min_version: u32,      //4
+            max_version: u32       //8
+        */
+        let mut buffer = Vec::<u8>::new();
+        buffer.extend_from_slice(&self.component_id.to_le_bytes());
+        buffer.extend_from_slice(&self.min_version.to_le_bytes());
+        buffer.extend_from_slice(&self.max_version.to_le_bytes());
+        return buffer;
+    }
+}
 impl Serializable for HbfHeader {
     fn as_bytes(&self) -> Vec<u8> {
         /*
@@ -508,27 +584,34 @@ impl Serializable for HbfHeader {
             main: HbfHeaderMain,
             regions: Option<Vec<HbfHeaderRegion>>,
             interrupts: Option<Vec<HbfHeaderInterrupt>>,
-            relocations: Option<Vec<HbfHeaderRelocation>>
+            relocations: Option<Vec<HbfHeaderRelocation>>,
+            dependencies: Option<Vec<HbfHeaderDependency>>
         */
         let mut buffer = Vec::<u8>::new();
         buffer.extend(self.base.as_bytes());
         buffer.extend(self.main.as_bytes());
-        if self.regions.is_some(){
+        if self.regions.is_some() {
             let regs = (&self.regions).as_ref().unwrap();
             for r in regs {
                 buffer.extend(r.as_bytes());
             }
         }
-        if self.interrupts.is_some(){
+        if self.interrupts.is_some() {
             let ints = (&self.interrupts).as_ref().unwrap();
             for int in ints {
                 buffer.extend(int.as_bytes());
             }
         }
-        if self.relocations.is_some(){
+        if self.relocations.is_some() {
             let rels = (&self.relocations).as_ref().unwrap();
             for rel in rels {
                 buffer.extend(rel.as_bytes());
+            }
+        }
+        if self.dependencies.is_some() {
+            let deps = (&self.dependencies).as_ref().unwrap();
+            for dep in deps {
+                buffer.extend(dep.as_bytes());
             }
         }
         return buffer;
@@ -543,11 +626,11 @@ impl Serializable for HbfPayload {
         */
         let mut buffer = Vec::<u8>::new();
         buffer.extend_from_slice(self.text_section.as_slice());
-        if self.rodata_section.is_some(){
+        if self.rodata_section.is_some() {
             let ro_data = (&self.rodata_section).as_ref().unwrap();
             buffer.extend_from_slice(ro_data.as_slice());
         }
-        if self.data_section.is_some(){
+        if self.data_section.is_some() {
             let data = (&self.data_section).as_ref().unwrap();
             buffer.extend_from_slice(data.as_slice());
         }
@@ -571,12 +654,12 @@ const HBF_MAGIC: u32 = 0x464248_7F;
 impl HbfFile {
     /// Create a new structure with default initialization
     pub fn new() -> Self {
-        Self { 
+        Self {
             header: HbfHeader {
                 base: HbfHeaderBase {
                     magic_number: HBF_MAGIC,
                     version: HbfVersionType::V1,
-                    total_size: 52, // Header only
+                    total_size: 60, // Header only
                     component_id: 0,
                     component_version: 0,
                     main_offset: 0,
@@ -586,7 +669,9 @@ impl HbfFile {
                     interrupt_count: 0,
                     relocation_offset: 0,
                     relocation_count: 0,
-                    checksum: 0
+                    dependency_offset: 0,
+                    dependency_count: 0,
+                    checksum: 0,
                 },
                 main: HbfHeaderMain {
                     component_priority: 0,
@@ -594,25 +679,22 @@ impl HbfFile {
                     component_min_ram: 0,
                     entry_point_offset: 0,
                     data_section_offset: 0,
-                    data_section_size: 0
+                    data_section_size: 0,
                 },
                 regions: None,
                 interrupts: None,
-                relocations: None
-            }
-            , 
-            payload: HbfPayload { 
-                text_section: Vec::new(), 
-                rodata_section: None, 
-                data_section: None 
-            }
+                relocations: None,
+                dependencies: None,
+            },
+            payload: HbfPayload {
+                text_section: Vec::new(),
+                rodata_section: None,
+                data_section: None,
+            },
         }
     }
 
-    pub fn initialize_header(
-        &mut self,
-        config: &ComponentConfig
-    ) {
+    pub fn initialize_header(&mut self, config: &ComponentConfig) {
         // Copy component data
         self.header.base.component_id = config.component.id;
         self.header.base.component_version = config.component.version;
@@ -631,10 +713,10 @@ impl HbfFile {
             let mut regs = Vec::<HbfHeaderRegion>::new();
             let conf_regs = (&config.regions).as_ref().unwrap();
             for region in conf_regs.iter() {
-                regs.push(HbfHeaderRegion{
+                regs.push(HbfHeaderRegion {
                     region_base_address: region.base_address,
                     region_size: region.size,
-                    region_attributes: convert_config_region_attributes(&region.attributes)
+                    region_attributes: convert_config_region_attributes(&region.attributes),
                 });
             }
             self.header.regions = Some(regs);
@@ -644,29 +726,42 @@ impl HbfFile {
             let mut ints = Vec::<HbfHeaderInterrupt>::new();
             let conf_ints = (&config.interrupts).as_ref().unwrap();
             for interrupt in conf_ints.iter() {
-                ints.push(HbfHeaderInterrupt{
+                ints.push(HbfHeaderInterrupt {
                     irq_number: interrupt.irq,
-                    notification_mask: interrupt.notification_mask
+                    notification_mask: interrupt.notification_mask,
                 });
             }
             self.header.interrupts = Some(ints);
         }
+        // Read dependencies
+        if config.dependencies.is_some() {
+            let mut deps = Vec::<HbfHeaderDependency>::new();
+            let conf_deps = (&config.dependencies).as_ref().unwrap();
+            for dependency in conf_deps.iter() {
+                deps.push(HbfHeaderDependency {
+                    component_id: dependency.component_id as u32,
+                    min_version: dependency.min_version,
+                    max_version: dependency.max_version,
+                });
+            }
+            self.header.dependencies = Some(deps);
+        }
     }
 
     pub fn add_readonly(
-        &mut self, 
-        text_section: &ElfSection, 
+        &mut self,
+        text_section: &ElfSection,
         rodata_section: Option<&ElfSection>,
-        rel_entrypoint: u32,                 // Base start .text
-        rodata_rels: Option<&Vec<u32>>,      // Base start .rodata
-        data_rels: Option<&Vec<u32>>,        // Base start .data
+        rel_entrypoint: u32,            // Base start .text
+        rodata_rels: Option<&Vec<u32>>, // Base start .rodata
+        data_rels: Option<&Vec<u32>>,   // Base start .data
     ) {
         let mut ro_len: u32 = 0;
         let mut rodata_size: u32 = 0;
         // Append section data
         self.payload.text_section = text_section.content.clone();
         ro_len += text_section.size;
-        if rodata_section.is_some(){
+        if rodata_section.is_some() {
             let rodata = rodata_section.unwrap();
             self.payload.rodata_section = Some(rodata.content.clone());
             ro_len += rodata.size; // TODO: is aligned? Check addresses and sizes
@@ -677,16 +772,16 @@ impl HbfFile {
         if rodata_rels.is_some() {
             let comp_rels = rodata_rels.unwrap();
             for r in comp_rels {
-                rels.push(HbfHeaderRelocation{
-                    address_offset: text_section.size + r // MUST BE FIXED in finalize + self.header.size()
+                rels.push(HbfHeaderRelocation {
+                    address_offset: text_section.size + r, // MUST BE FIXED in finalize + self.header.size()
                 });
             }
         }
         if data_rels.is_some() {
             let comp_rels = data_rels.unwrap();
             for r in comp_rels {
-                rels.push(HbfHeaderRelocation{
-                    address_offset: text_section.size + rodata_size + r
+                rels.push(HbfHeaderRelocation {
+                    address_offset: text_section.size + rodata_size + r,
                 });
             }
         }
@@ -705,11 +800,7 @@ impl HbfFile {
         self.header.main.entry_point_offset += 1; // OR 1: ARM Thumb Mode
     }
 
-    pub fn add_data(
-        &mut self,
-        data_section: Option<&ElfSection>,
-        bss_size: u32
-    ) {
+    pub fn add_data(&mut self, data_section: Option<&ElfSection>, bss_size: u32) {
         let mut data_size = 0u32;
         // Append section data
         if data_section.is_some() {
@@ -722,7 +813,7 @@ impl HbfFile {
         // Update sizes
         self.header.main.data_section_size = data_size + bss_size;
     }
-    
+
     fn finalize(&mut self) {
         // Main structure
         self.header.base.main_offset = self.header.base.size() as u16;
@@ -740,7 +831,8 @@ impl HbfFile {
         // Interrupt structure
         if self.header.interrupts.is_some() {
             self.header.base.interrupt_offset = current_pos;
-            self.header.base.interrupt_count = (&self.header.interrupts).as_ref().unwrap().len() as u16;
+            self.header.base.interrupt_count =
+                (&self.header.interrupts).as_ref().unwrap().len() as u16;
             let interr_size = (&self.header.interrupts).as_ref().unwrap()[0].size() as u16;
             current_pos += interr_size * self.header.base.interrupt_count;
         } else {
@@ -750,12 +842,27 @@ impl HbfFile {
         // Relocations structure
         if self.header.relocations.is_some() {
             self.header.base.relocation_offset = current_pos;
-            self.header.base.relocation_count = (&self.header.relocations).as_ref().unwrap().len() as u32;
+            self.header.base.relocation_count =
+                (&self.header.relocations).as_ref().unwrap().len() as u32;
+            let reloc_size = (&self.header.relocations).as_ref().unwrap()[0].size() as u16;
+            current_pos += reloc_size * self.header.base.relocation_count as u16;
         } else {
             self.header.base.relocation_offset = 0;
             self.header.base.relocation_count = 0;
         }
+        // Dependencies structure
+        if self.header.dependencies.is_some() {
+            self.header.base.dependency_offset = current_pos;
+            self.header.base.dependency_count =
+                (&self.header.dependencies).as_ref().unwrap().len() as u16;
+            // let dep_size = (&self.header.dependencies).as_ref().unwrap()[0].size() as u16;
+            // current_pos += dep_size * self.header.base.dependency_count;
+        } else {
+            self.header.base.dependency_offset = 0;
+            self.header.base.dependency_count = 0;
+        }
         // Relocation entries
+        // --> Must be put at the end of the header, to get offsets right
         if self.header.relocations.is_some() {
             let header_size = self.header.size();
             let relocs = (&mut self.header.relocations).as_mut().unwrap();
@@ -776,7 +883,7 @@ impl HbfFile {
         let mut bytes_cur = Cursor::new(bytes);
         // Generate checksum
         bytes_cur.seek(SeekFrom::Start(0))?;
-       
+
         let mut wordbuf = [0_u8; 4];
         let mut checksum: u32 = 0;
         loop {
@@ -788,7 +895,8 @@ impl HbfFile {
                 word |= u32::from(*c) << (8 * i);
             }
             checksum ^= word;
-            if count != 4 { //TODO: check != 0 plus 0<count<4 panic?
+            if count != 4 {
+                //TODO: check != 0 plus 0<count<4 panic?
                 break;
             }
         }
@@ -804,7 +912,6 @@ impl HbfFile {
     }
 }
 
-
 /*
     Util methods
 */
@@ -814,16 +921,16 @@ fn convert_config_region_attributes(attributes: &Vec<RF>) -> RegionAttributes {
         match *a {
             RF::READ => {
                 attr |= RegionAttributes::READ;
-            },
+            }
             RF::WRITE => {
                 attr |= RegionAttributes::WRITE;
-            },
+            }
             RF::EXECUTE => {
                 attr |= RegionAttributes::EXECUTE;
-            },
+            }
             RF::DEVICE => {
                 attr |= RegionAttributes::DEVICE;
-            },
+            }
             RF::DMA => {
                 attr |= RegionAttributes::DMA;
             }

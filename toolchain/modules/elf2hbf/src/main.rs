@@ -187,6 +187,18 @@ mod test {
         // TODO: more extensive check
         let total_relocs: usize = relocs.rodata.unwrap_or_else(|| vec![]).len() + relocs.data.unwrap_or_else(|| vec![]).len();
         assert_eq!(total_relocs, hbf_parsed.header_base().num_relocations() as usize);
+        // [[dependencies]]
+        assert_eq!(component_config.dependencies.is_some(), hbf_parsed.header_base().num_dependencies() > 0);
+        assert_eq!(component_config.dependencies.is_none(), hbf_parsed.header_base().num_dependencies() == 0);
+        if component_config.dependencies.is_some() {
+            let dependencies = (&component_config.dependencies).as_ref().unwrap();
+            assert_eq!(dependencies.len(), hbf_parsed.header_base().num_dependencies() as usize);
+            for (i, d) in dependencies.iter().enumerate() {
+                assert_eq!(d.component_id, hbf_parsed.dependency_nth(i).unwrap().component_id());
+                assert_eq!(d.min_version, hbf_parsed.dependency_nth(i).unwrap().min_version());
+                assert_eq!(d.max_version, hbf_parsed.dependency_nth(i).unwrap().max_version());
+            }
+        }
     }
 
     fn check_payload(
@@ -241,6 +253,8 @@ mod test {
             &get_test_file_path("component1/output/image.data"),
             &parsed_hbf
         );
+        // Check checksum
+        assert!(parsed_hbf.validate());
         // Check entrypoint
         let entry_point_bytes = entrypoint_bytes(&component_elf_file, 4).unwrap();
         let start = (parsed_hbf.header_main().entry_point_offset()-1) as usize;
@@ -276,6 +290,8 @@ mod test {
             &get_test_file_path("component2/output/image.data"),
             &parsed_hbf
         );
+        // Check checksum
+        assert!(parsed_hbf.validate());
         // Check entrypoint
         let entry_point_bytes = entrypoint_bytes(&component_elf_file, 4).unwrap();
         let start = (parsed_hbf.header_main().entry_point_offset()-1) as usize;
@@ -311,6 +327,8 @@ mod test {
             &get_test_file_path("component3/output/image.data"),
             &parsed_hbf
         );
+        // Check checksum
+        assert!(parsed_hbf.validate());
         // Check entrypoint
         let entry_point_bytes = entrypoint_bytes(&component_elf_file, 4).unwrap();
         let start = (parsed_hbf.header_main().entry_point_offset()-1) as usize;
@@ -346,6 +364,8 @@ mod test {
             &get_test_file_path("component4/output/image.data"),
             &parsed_hbf
         );
+        // Check checksum
+        assert!(parsed_hbf.validate());
         // Check entrypoint
         let entry_point_bytes = entrypoint_bytes(&component_elf_file, 4).unwrap();
         let start = (parsed_hbf.header_main().entry_point_offset()-1) as usize;

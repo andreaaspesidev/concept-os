@@ -1,14 +1,50 @@
+use std::fmt;
+
 use crate::crc::crc8_update;
 
 pub const SERIAL_BAUDRATE: u32 = 115_200;
 const PACKET_BUFFER_SIZE: usize = 64;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum MessageError {
     InvalidSize,
-    InvalidMessage,
     InvalidCRC,
     InvalidOperation,
+    CannotReadHBF,
+    NotEnoughSpace,
+    FlashError,
+    TimeoutError,
+    FailedHBFValidation,
+    DependencyError,
+    MissingDependency,
+    IllegalDowngrade,
+    //CannotFindComponent = 0xEC,
+    //CannotFindVersion = 0xED,
+}
+
+impl From<u8> for MessageError {
+    fn from(x: u8) -> Self {
+        match x {
+            0xE1 => Self::InvalidSize,
+            0xE2 => Self::InvalidCRC,
+            0xE3 => Self::InvalidOperation,
+            0xE4 => Self::CannotReadHBF,
+            0xE5 => Self::NotEnoughSpace,
+            0xE6 => Self::FlashError,
+            0xE7 => Self::TimeoutError,
+            0xE8 => Self::FailedHBFValidation,
+            0xE9 => Self::DependencyError,
+            0xEA => Self::MissingDependency,
+            0xEB => Self::IllegalDowngrade,
+            _ => panic!("Unknown response")
+        }
+    }
+}
+
+impl fmt::Display for MessageError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self.to_string())
+    }
 }
 
 pub trait SerializableMessage<'a> {
@@ -43,14 +79,12 @@ impl TryFrom<u8> for OperationType {
 
 pub struct HelloMessage {
     operation: OperationType,
-    aes_key: [u8; 16]
 }
 
 impl HelloMessage {
-    pub fn new(operation: OperationType, aes_key: [u8; 16]) -> Self {
+    pub fn new(operation: OperationType) -> Self {
         Self {
             operation: operation,
-            aes_key: aes_key
         }
     }
 }
@@ -59,9 +93,6 @@ impl<'a> SerializableMessage<'a> for HelloMessage {
     fn get_raw(&self) -> Vec<u8> {
         let mut buffer = Vec::<u8>::new();
         buffer.push(self.operation as u8);
-        for i in 0..self.aes_key.len() {
-            buffer.push(self.aes_key[i]);
-        }
         // Compute and append crc
         let mut crc: u8 = 0x00;
         for i in 0..buffer.len() {
@@ -99,7 +130,7 @@ impl<'a> HelloResponseMessage<'a> {
             buffer[2] != 'L' as u8 ||
             buffer[3] != 'E' as u8 ||
             buffer[4] != 'H' as u8 {
-                return Err(MessageError::InvalidMessage);
+                return Err(MessageError::InvalidOperation);
             }
         // Check OP
         let op = OperationType::try_from(buffer[5])?;

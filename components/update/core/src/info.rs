@@ -11,11 +11,7 @@ pub fn system_info(
     // Get storage
     let storage = Storage::new();
     // Get block stats
-    let status_res = storage.report_status();
-    if status_res.is_err() {
-        return Err(MessageError::FlashError);
-    }
-    let status = status_res.unwrap();
+    let status = storage.report_status().map_err(|_| MessageError::FlashError)?;
     // Iterate all blocks
     for block_num in 0..status.blocks {
         // Get block

@@ -12,3 +12,13 @@ notification_mask = '0x00000001'
 [[interrupts]]
 irq = 2
 notification_mask = '0x00000002'
+
+[[dependencies]]
+component_id = 1
+min_version = 1
+max_version = 0
+
+[[dependencies]]
+component_id = 2
+min_version = 1
+max_version = 10

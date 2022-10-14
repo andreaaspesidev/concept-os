@@ -51,9 +51,15 @@ start of HBF ->  +---------------------+ 0x00
                  |        ....         |
                  +---------------------+
                  |  Header Reloc. #R   |
+                 +---------------------+ 
+                 | Comp. Dependency #1 |
+                 +---------------------+ 
+                 |        ....         |
+                 +---------------------+
+                 | Comp. Dependency #D |
 end of header -> +---------------------+ 
 ```
-*Total size: 36 (base) + 20 (main) + 12*N (region) + 8*I (interrupts) + 4*R (relocs) = 56 + 12*N + 8*I + 4*R [bytes]*
+*Total size: 40 (base) + 20 (main) + 12*N (region) + 8*I (interrupts) + 4*R (relocs) + 12*D (dependencies)  = 60 + 12*N + 8*I + 4*R +12*D [bytes]*
 **(must be multiple of 4 for alignment problems)**
 
 ### HBF Header Base
@@ -72,9 +78,11 @@ Offset    | Size (bytes)  |  Field Name        |    Content    |
 0x18      |       2       | Interrupt Count    | Number of entries of the prev. structure
 0x1A      |       2       | Relocation Offset  | Offset in bytes (from the start of the HBF) of the first Header Relocation structure
 0x1C      |       4       | Relocation Count   | Number of entries of the prev. structure
-0x20      |       4       | Checksum           | CRC-32b of the whole HBF (except this field)
+0x20      |       2       | Dependencies Offset| Offset in bytes (from the start of the HBF) of the first Component Dependency structure
+0x22      |       2       | Dependencies Count   | Number of entries of the prev. structure
+0x24      |       4       | Checksum           | CRC-32b of the whole HBF (except this field)
 
-*Total size: 36 bytes*
+*Total size: 40 bytes*
 
 ### HBF Header Main
 This structure encodes all the information needed to start and schedule the component
@@ -153,6 +161,17 @@ Offset    | Size (bytes)  |  Field Name        |    Content    |
 *Total size: 4 bytes* (**must be multiple of 4 to avoid alignment problems**)
 
 Note: relocations offsets must be placed in ascending order.
+
+### HBF Header Component Dependency
+This structure contains data regarding each component on which this component depends on. This is used during update and removal of components to keep the system running correctly.
+
+Offset    | Size (bytes)  |  Field Name            |    Content    |
+----------|---------------|------------------------|---------------|
+0x00      |       4       | Component ID           | Identifier of the component
+0x04      |       4       | Component Min Version  | Minimum version of the component. Put 0 to disable
+0x08      |       4       | Component Max Version  | Maximum version of the component. Put 0 to disable 
+
+*Total size: 12 bytes* (**must be multiple of 4 to avoid alignment problems**)
 
 ## HBF Payload
 This section of HBF contains `.data`, `.text`, `.rodata`  sections.

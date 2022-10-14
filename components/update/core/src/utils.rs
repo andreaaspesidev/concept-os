@@ -1,9 +1,8 @@
 use crate::consts::*;
-use crate::messages::{MessageError, TIMEOUT_ERROR};
+use crate::messages::{MessageError};
 use hbf_lite::BufferReader;
 use storage_api::*;
 use uart_channel_api::*;
-use userlib::flash::BlockType;
 
 /**
  * Flash Reader
@@ -53,18 +52,6 @@ pub fn channel_write(channel: &mut UartChannel, buff: &[u8]) -> Result<(), Messa
         .map_err(|_| MessageError::ChannelError)?)
 }
 
-pub fn channel_read(channel: &mut UartChannel, buffer: &mut [u8]) -> Result<(), MessageError> {
-    Ok(channel
-        .read_block_timed(buffer, READ_TIMEOUT_TICKS)
-        .map_err(|e| {
-            if e == ChannelError::ReadTimeOut {
-                channel_write_single(channel, TIMEOUT_ERROR);
-                return MessageError::TimeoutError;
-            }
-            return MessageError::ChannelError;
-        })?)
-}
-
 pub fn channel_ask(
     channel: &mut UartChannel,
     cmd: u8,
@@ -75,7 +62,6 @@ pub fn channel_ask(
         .transmit_timed(&buffer_out, buffer, READ_TIMEOUT_TICKS)
         .map_err(|e| {
             if e == ChannelError::ReadTimeOut {
-                channel_write_single(channel, TIMEOUT_ERROR);
                 return MessageError::TimeoutError;
             }
             return MessageError::ChannelError;
@@ -91,13 +77,15 @@ pub fn u32_from_le_bytes(buff: &[u8]) -> u32 {
 
 pub fn wrap_hbf_error<T, E>(r: Result<T, E>) -> Result<T, MessageError> {
     r.map_err(|_| {
-        return MessageError::InvalidHBF;
+        return MessageError::CannotReadHBF;
     })
 }
 
+/*
 /**
  * Component operations
  */
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum SearchError {
     CannotFindComponent,
@@ -176,3 +164,4 @@ pub fn search_component(
         false => Err(SearchError::CannotFindComponent),
     };
 }
+ */

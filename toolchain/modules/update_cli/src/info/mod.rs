@@ -27,7 +27,7 @@ pub fn info(serial_port: String, verbose: bool) {
 
 fn begin_communication(serial: &mut TTYPort, verbose: bool) {
     // Send hello message
-    let hello_msg = HelloMessage::new(OperationType::SystemInfo, [0x00; 16]);
+    let hello_msg = HelloMessage::new(OperationType::SystemInfo);
     flush_read(serial);
     serial_write(serial, &hello_msg.get_raw());
     // Read hello response

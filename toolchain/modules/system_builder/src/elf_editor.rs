@@ -269,7 +269,6 @@ fn perform_allocation(
             const FLASH_BLOCK_SIZE: usize = stm32f303re::FLASH_BLOCK_SIZE;
             const FLASH_NUM_BLOCKS: usize = stm32f303re::FLASH_NUM_BLOCKS;
             const FLASH_NUM_SLOTS: usize = stm32f303re::FLASH_NUM_SLOTS;
-            assert_eq!(stm32f303re::FLASH_FLAG_SIZE, 2);
             // Create fake flash memory
             flash_buffer.change_base_address(FLASH_START_ADDR);
             // Create the standard allocator
@@ -280,7 +279,6 @@ fn perform_allocation(
                 FLASH_BLOCK_SIZE,
                 FLASH_NUM_BLOCKS,
                 FLASH_NUM_SLOTS,
-                2,
             >::from_flash(flash_buffer, false);
             // Perform the allocation
             let flash_block = flash_alloc
@@ -309,7 +307,6 @@ fn perform_allocation(
                 FLASH_ALLOCATOR_SCAN,
                 FLASH_NUM_SLOTS,
                 FLASH_BLOCK_SIZE,
-                2,
             >::from_flash(flash_buffer);
 
             let ram_block = ram_alloc
@@ -319,7 +316,7 @@ fn perform_allocation(
             drop(ram_alloc);
 
             // Now finalize the block header
-            flash_allocator::flash::utils::finalize_block::<FLASH_START_ADDR, FLASH_NUM_SLOTS, 2>(
+            flash_allocator::flash::utils::finalize_block::<FLASH_START_ADDR, FLASH_NUM_SLOTS>(
                 flash_buffer,
                 flash_block,
             )
@@ -327,7 +324,8 @@ fn perform_allocation(
 
             let actual_base = flash_block.get_base_address() - 12;
             let actual_size = flash_block.get_size() + 12;
-            let header_bytes = flash_buffer.read(actual_base, 12 + 8).unwrap();
+            let mut header_bytes: [u8; 12 + 8] = [0x00; 12 + 8];
+            flash_buffer.read(actual_base, &mut header_bytes).unwrap();
 
             return AllocatedComponent {
                 flash_address: actual_base,
@@ -350,25 +348,32 @@ impl BufferFlash {
     pub fn change_base_address(&mut self, new_base_addr: u32) {
         self.base_addr = new_base_addr;
     }
-}
-
-impl<'a> FlashMethods<'a> for BufferFlash {
-    fn read(&self, address: u32, len: usize) -> Result<&'a [u8], ()> {
-        if address < self.base_addr || address > self.base_addr + self.buffer.len() as u32 {
-            return Err(());
-        }
-        let offset = (address - self.base_addr) as usize;
-        Ok(unsafe {
-            core::slice::from_raw_parts(self.buffer.as_ptr().add(offset) as *const u8, len)
-        })
-    }
-
-    fn write(&mut self, address: u32, value: u8) -> Result<(), ()> {
+    fn write_u8(&mut self, address: u32, value: u8) -> Result<(), ()> {
         if address < self.base_addr || address > self.base_addr + self.buffer.len() as u32 {
             return Err(());
         }
         let offset = (address - self.base_addr) as usize;
         self.buffer[offset] = value;
+        Ok(())
+    }
+}
+
+impl<'a> FlashMethods<'a> for BufferFlash {
+    fn read(&self, address: u32, buffer: &mut [u8]) -> Result<(), ()> {
+        if address < self.base_addr || address > self.base_addr + self.buffer.len() as u32 {
+            return Err(());
+        }
+        let offset = (address - self.base_addr) as usize;
+        for i in 0..buffer.len() {
+            buffer[i] = self.buffer[offset + i];
+        }
+        Ok(())
+    }
+
+    fn write(&mut self, address: u32, data: &[u8]) -> Result<(), ()> {
+        for i in 0..data.len() {
+            self.write_u8(address + i as u32, data[i])?;
+        }
         Ok(())
     }
 

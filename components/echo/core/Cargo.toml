@@ -9,6 +9,7 @@ stm32f303re = []
 [dependencies]
 userlib = {path = "../../../sys/userlib", features = ["log-itm"]}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
+# Component dependencies
 uart-channel-api = {path = "../../uart-channel/api"}
 
 # This section is here to discourage RLS/rust-analyzer from doing test builds,

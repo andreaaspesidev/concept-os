@@ -4,3 +4,15 @@ version = 1
 priority = 21
 flags = ['START_AT_BOOT']
 min_ram = 4096
+
+# Storage
+[[dependencies]]
+component_id = 4
+min_version = 1
+max_version = 1
+
+# UART
+[[dependencies]]
+component_id = 3
+min_version = 1
+max_version = 1

@@ -40,3 +40,9 @@ attributes = [
 [[interrupts]]
 irq = 13    # DMA1 - Channel 3
 notification_mask = '0x00000002'
+
+# RCC
+[[dependencies]]
+component_id = 2
+min_version = 1
+max_version = 1

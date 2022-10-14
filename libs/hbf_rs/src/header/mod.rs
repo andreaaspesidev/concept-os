@@ -11,12 +11,13 @@ pub use self::hbf_header::HbfHeaderMainGen;
 pub use self::hbf_header::HbfHeaderRegionGen;
 pub use self::hbf_header::HbfHeaderInterruptGen;
 pub use self::hbf_header::HbfHeaderRelocationGen;
+pub use self::hbf_header::HbfHeaderDependencyGen;
 
 mod hbf_header;
 
 pub const HBF_MAGIC : [u8; 4] = [0x7f, b'H', b'B', b'F'];
 pub const HBF_HEADER_MIN_SIZE: usize = core::mem::size_of::<HbfHeaderBaseGen>();
-pub const HBF_CHECKSUM_OFFSET: usize = 0x20;
+pub const HBF_CHECKSUM_OFFSET: usize = 0x24;
 pub const FIXED_HEADER_SIZE: usize = core::mem::size_of::<HbfHeaderBaseGen>()+ core::mem::size_of::<HbfHeaderMainGen>();
 
 bitflags::bitflags! {
@@ -80,6 +81,9 @@ pub trait HbfHeaderBase<'a> {
 
     fn num_relocations(&self) -> u32;
     fn offset_relocation(&self) -> u16;
+
+    fn num_dependencies(&self) -> u16;
+    fn offset_dependencies(&self) -> u16;
     
     fn checksum(&self) -> u32;
 
@@ -120,7 +124,13 @@ pub trait HbfHeaderRelocation<'a> {
     fn get_raw(&self) -> &'a [u8];
 }
 
+pub trait HbfHeaderDependency<'a> {
+    fn component_id(&self) -> u16;
+    fn min_version(&self) -> u32;
+    fn max_version(&self) -> u32;
 
+    fn get_raw(&self) -> &'a [u8];
+}
 
 /*
     Wrappers
@@ -279,6 +289,35 @@ impl<'a> Debug for HbfHeaderRelocationWrapper<'a> {
     }
 }
 
+// Dependency
+pub struct HbfHeaderDependencyWrapper<'a> {
+    _hbf_file: &'a dyn HbfFile,
+    inner: &'a dyn HbfHeaderDependency<'a>,
+}
+impl<'a> HbfHeaderDependencyWrapper<'a> {
+    pub fn new(hbf_file: &'a dyn HbfFile, inner: &'a dyn HbfHeaderDependency<'a>) -> Self {
+        Self {
+            _hbf_file: hbf_file,
+            inner,
+        }
+    }
+}
+impl<'a> Deref for HbfHeaderDependencyWrapper<'a> {
+    type Target = dyn HbfHeaderDependency<'a> + 'a;
+    fn deref(&self) -> &Self::Target {
+        self.inner
+    }
+}
+impl<'a> Debug for HbfHeaderDependencyWrapper<'a> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        f.debug_struct("Hbf Dependency")
+            .field("Component ID", &self.component_id())
+            .field("Min Version", &self.min_version())
+            .field("Max Version", &self.max_version())
+            .finish()
+    }
+}
+
 /*
     Iterators
 */
@@ -334,6 +373,25 @@ impl<'a> Iterator for HbfHeaderRelocationIter<'a> {
     type Item = HbfHeaderRelocationWrapper<'a>;
     fn next(&mut self) -> Option<Self::Item> {
         self.elf_file.relocation_nth(self.index).map(|e| {
+            self.index += 1;
+            e
+        })
+    }
+}
+// Dependency
+pub struct HbfHeaderDependencyIter<'a> {
+    elf_file: &'a dyn HbfFile,
+    index: usize,
+}
+impl<'a> HbfHeaderDependencyIter<'a> {
+    pub fn new(elf_file: &'a dyn HbfFile) -> Self {
+        Self { elf_file, index: 0 }
+    }
+}
+impl<'a> Iterator for HbfHeaderDependencyIter<'a> {
+    type Item = HbfHeaderDependencyWrapper<'a>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.elf_file.dependency_nth(self.index).map(|e| {
             self.index += 1;
             e
         })

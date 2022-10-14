@@ -29,6 +29,13 @@ fn open_file(file_path: PathBuf) -> Result<(), ()> {
             hbf.relocation_nth(relocation_num).unwrap()
         );
     }
+    // dependencies
+    for dependency_num in 0..hbf.header_base().unwrap().num_dependencies() {
+        println!(
+            "dependency: {:?}",
+            hbf.dependency_nth(dependency_num).unwrap()
+        );
+    }
     // .text + .rodata
     println!(".text + .rodata: {:?}", hbf.get_readonly_payload().unwrap());
     // .data
