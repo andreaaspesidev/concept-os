@@ -1,49 +1,48 @@
 mod messages;
 
+use crossbeam_channel::Receiver;
+use crossbeam_channel::Sender;
 use hbf_rs::HbfFile;
 use pbr::ProgressBar;
-use serialport::{SerialPort, TTYPort};
-use std::{io::Stdout, path::PathBuf, time::Duration};
+use std::{io::Stdout, path::PathBuf};
 
 use self::messages::*;
 use crate::common_messages::*;
 use crate::utils::*;
 
-pub fn flash_component(serial_port: String, hbf_file: String, verbose: bool) {
+pub fn flash_component(
+    channel_in_consumer: Receiver<u8>,
+    channel_out_producer: Sender<Vec<u8>>,
+    hbf_file: String,
+    verbose: bool,
+) {
     if verbose {
         println!("---> Flashing Component");
     }
     // First, check the hbf path
     let hbf_path = PathBuf::from(hbf_file.clone());
     if !hbf_path.exists() {
-        eprintln!("Cannot find the HBF at '{}'", hbf_file);
-        return;
+        panic!("Cannot find the HBF at '{}'", hbf_file);
     }
     // Read the whole hbf in memory (surely small for a PC)
-    let read_result = std::fs::read(hbf_path);
-    if read_result.is_err() {
-        eprintln!("Cannot open the HBF at '{}'", hbf_file);
-        return;
-    }
-    let hbf_bytes = read_result.unwrap();
+    let hbf_bytes =
+        std::fs::read(hbf_path).expect(&format!("Cannot open the HBF at '{}'", hbf_file));
     // Parse the hbf
     let hbf_result = hbf_rs::parse_hbf(&hbf_bytes);
     if hbf_result.is_err() {
         match hbf_result.unwrap_err() {
             hbf_rs::Error::BufferTooShort | hbf_rs::Error::InvalidMagic => {
-                eprintln!("HBF file not valid!")
+                panic!("HBF file not valid!")
             }
             hbf_rs::Error::UnsupportedVersion => {
-                eprintln!("HBF version still not supported by the tool")
+                panic!("HBF version still not supported by the tool")
             }
         }
-        return;
     }
     let hbf = hbf_result.unwrap();
     // Validate hbf
     if !hbf.validate() {
-        eprintln!("HBF file integrity test failed!");
-        return;
+        panic!("HBF file integrity test failed!");
     }
     // If verbose, print some info
     if verbose {
@@ -58,16 +57,6 @@ pub fn flash_component(serial_port: String, hbf_file: String, verbose: bool) {
             hbf.header_main().component_min_ram()
         );
     }
-    // Open Serial Port
-    let serial_result = serialport::new(&serial_port.clone(), SERIAL_BAUDRATE).open_native();
-    if serial_result.is_err() {
-        eprintln!(
-            "The port '{}' cannot be opened. Check permissions!",
-            serial_port
-        );
-    }
-    let mut serial_port = serial_result.unwrap();
-    serial_port.set_timeout(Duration::from_secs(10)).unwrap();
     // Send hello
     println!("");
     let mut progress = ProgressBar::new((hbf.header_base().total_size() + 4) as u64);
@@ -75,11 +64,18 @@ pub fn flash_component(serial_port: String, hbf_file: String, verbose: bool) {
     progress.show_counter = false;
     progress.show_time_left = false;
     progress.set_width(Some(80));
-    begin_communication(&mut serial_port, &hbf, &mut progress, verbose);
+    begin_communication(
+        &channel_in_consumer,
+        &channel_out_producer,
+        &hbf,
+        &mut progress,
+        verbose,
+    );
 }
 
 fn begin_communication(
-    serial: &mut TTYPort,
+    channel_in_consumer: &Receiver<u8>,
+    channel_out_producer: &Sender<Vec<u8>>,
     hbf: &dyn HbfFile,
     progress: &mut ProgressBar<Stdout>,
     verbose: bool,
@@ -87,11 +83,11 @@ fn begin_communication(
     // Send hello message
     progress.message("Connection Setup   ");
     let hello_msg = HelloMessage::new(OperationType::ComponentUpdate);
-    flush_read(serial);
-    serial_write(serial, &hello_msg.get_raw());
+    channel_flush_read(channel_in_consumer);
+    channel_write(channel_out_producer, &hello_msg.get_raw());
     // Read hello response
     let mut buff: [u8; HelloResponseMessage::get_size()] = [0x00; HelloResponseMessage::get_size()];
-    serial_read(serial, &mut buff);
+    channel_read(channel_in_consumer, &mut buff);
     // Validate hello response
     let hello_response = HelloResponseMessage::from(&buff);
     if hello_response.is_err() {
@@ -105,7 +101,7 @@ fn begin_communication(
     // Wait for header request
     let mut buff: [u8; 1] = [0x00; 1];
     //flush_read(serial);
-    serial_read(serial, &mut buff);
+    channel_read(channel_in_consumer, &mut buff);
     if buff[0] != ComponentUpdateCommand::SendComponentFixedHeader as u8 {
         eprintln!(
             "Unexpected response from device at first step (Fixed Header): {:?}",
@@ -113,11 +109,12 @@ fn begin_communication(
         );
         return;
     }
-    send_fixed_header(serial, hbf, progress, verbose);
+    send_fixed_header(channel_in_consumer, channel_out_producer, hbf, progress, verbose);
 }
 
 fn send_fixed_header(
-    serial: &mut TTYPort,
+    channel_in_consumer: &Receiver<u8>,
+    channel_out_producer: &Sender<Vec<u8>>,
     hbf: &dyn HbfFile,
     progress: &mut ProgressBar<Stdout>,
     verbose: bool,
@@ -136,12 +133,12 @@ fn send_fixed_header(
     // Construct packet and send
     progress.message("Header   ");
     let fixed_header_msg = FixedHeaderMessage::new(&out_buff);
-    serial_write(serial, &fixed_header_msg.get_raw());
+    channel_write(channel_out_producer, &fixed_header_msg.get_raw());
     // Update progress
-    progress.add((out_buff.len() -1) as u64);
+    progress.add((out_buff.len() - 1) as u64);
     // Wait for variable header request
     let mut buff: [u8; 1] = [0x00; 1];
-    serial_read(serial, &mut buff);
+    channel_read(channel_in_consumer, &mut buff);
     if buff[0] != ComponentUpdateCommand::SendComponentVariableHeader as u8 {
         eprintln!(
             "Unexpected response from device at second step (Variable Header): {:?}",
@@ -149,11 +146,12 @@ fn send_fixed_header(
         );
         return;
     }
-    send_variable_header(serial, hbf, progress, verbose);
+    send_variable_header(channel_in_consumer, channel_out_producer, hbf, progress, verbose);
 }
 
 fn send_variable_header(
-    serial: &mut TTYPort,
+    channel_in_consumer: &Receiver<u8>,
+    channel_out_producer: &Sender<Vec<u8>>,
     hbf: &dyn HbfFile,
     progress: &mut ProgressBar<Stdout>,
     verbose: bool,
@@ -169,7 +167,7 @@ fn send_variable_header(
     loop {
         let mut buff: [u8; 1] = [0x00; 1];
         // Wait for next request
-        serial_read(serial, &mut buff);
+        channel_read(channel_in_consumer, &mut buff);
 
         if buff[0] == ComponentUpdateCommand::SendComponentPayload as u8 {
             // Check we actually finished sending the variable header
@@ -193,15 +191,16 @@ fn send_variable_header(
         ));
         //println!("\tSending Fragment {}/{}", pkt.get_next_fragment_number().unwrap(), pkt.get_total_fragments());
         let fragment_data = pkt.get_next_fragment().unwrap();
-        serial_write(serial, &fragment_data);
+        channel_write(channel_out_producer, &fragment_data);
         // Update progress
-        progress.add((fragment_data.len() -1) as u64);
+        progress.add((fragment_data.len() - 1) as u64);
     }
-    send_payload(serial, hbf, progress, verbose);
+    send_payload(channel_in_consumer, channel_out_producer, hbf, progress, verbose);
 }
 
 fn send_payload(
-    serial: &mut TTYPort,
+    channel_in_consumer: &Receiver<u8>,
+    channel_out_producer: &Sender<Vec<u8>>,
     hbf: &dyn HbfFile,
     progress: &mut ProgressBar<Stdout>,
     verbose: bool,
@@ -222,7 +221,7 @@ fn send_payload(
     loop {
         // Wait for next request
         let mut buff: [u8; 1] = [0x00; 1];
-        serial_read(serial, &mut buff);
+        channel_read(channel_in_consumer, &mut buff);
 
         if buff[0] == ComponentUpdateResponse::Success as u8 {
             // Check we actually finished sending the variable header
@@ -246,9 +245,9 @@ fn send_payload(
             pkt.get_total_fragments()
         ));
         let fragment_data = pkt.get_next_fragment().unwrap();
-        serial_write(serial, &fragment_data);
+        channel_write(channel_out_producer, &fragment_data);
         // Update progress
-        progress.add((fragment_data.len() -1) as u64);
+        progress.add((fragment_data.len() - 1) as u64);
     }
     progress.finish();
 

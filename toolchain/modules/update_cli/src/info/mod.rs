@@ -1,8 +1,7 @@
 mod messages;
 
-use std::time::Duration;
-
-use serialport::{SerialPort, TTYPort};
+use crossbeam_channel::Receiver;
+use crossbeam_channel::Sender;
 
 use crate::common_messages::*;
 use crate::utils::*;
@@ -10,56 +9,49 @@ use crate::utils::*;
 use self::messages::ComponentInfoMessage;
 use self::messages::ComponentInfoResult;
 
-pub fn info(serial_port: String, verbose: bool) {
-    // Open Serial Port
-    let serial_result = serialport::new(&serial_port.clone(), SERIAL_BAUDRATE).open_native();
-    if serial_result.is_err() {
-        eprintln!(
-            "The port '{}' cannot be opened. Check permissions!",
-            serial_port
-        );
-    }
-    let mut serial_port = serial_result.unwrap();
-    serial_port.set_timeout(Duration::from_secs(5)).unwrap();
-    // Send hello
-    begin_communication(&mut serial_port, verbose);
-}
-
-fn begin_communication(serial: &mut TTYPort, verbose: bool) {
+pub fn info(
+    channel_in_consumer: Receiver<u8>,
+    channel_out_producer: Sender<Vec<u8>>,
+    verbose: bool,
+) {
     // Send hello message
     let hello_msg = HelloMessage::new(OperationType::SystemInfo);
-    flush_read(serial);
-    serial_write(serial, &hello_msg.get_raw());
+    channel_write(&channel_out_producer, &hello_msg.get_raw());
     // Read hello response
     let mut buff: [u8; HelloResponseMessage::get_size()] = [0x00; HelloResponseMessage::get_size()];
-    serial_read(serial, &mut buff);
+    channel_read(&channel_in_consumer, &mut buff);
     // Validate hello response
-    let hello_response = HelloResponseMessage::from(&buff);
-    if hello_response.is_err() {
-        eprintln!("Wrong response from device at HELLO");
-        return;
-    }
+    HelloResponseMessage::from(&buff).expect("Wrong response from device at HELLO");
     if verbose {
         println!("Got HELLO!");
     }
-    read_system_info(serial);
+    read_system_info(&channel_in_consumer, &channel_out_producer);
 }
 
-fn read_system_info(serial: &mut TTYPort) {
+fn read_system_info(channel_in_consumer: &Receiver<u8>, _channel_out_producer: &Sender<Vec<u8>>) {
     println!("----------- System Status -----------");
     let mut at_least_one: bool = false;
     loop {
         // Start two read the first bytes
-        let mut buff: [u8; ComponentInfoMessage::max_size()] = [0x00; ComponentInfoMessage::max_size()];
-        serial_read(serial, &mut buff[..ComponentInfoMessage::min_size()]);
+        let mut buff: [u8; ComponentInfoMessage::max_size()] =
+            [0x00; ComponentInfoMessage::max_size()];
+        channel_read(
+            &channel_in_consumer,
+            &mut buff[..ComponentInfoMessage::min_size()],
+        );
         let parse_res = ComponentInfoMessage::from(&buff[..ComponentInfoMessage::min_size()]);
         if parse_res.is_err() {
             match parse_res.unwrap_err() {
                 ComponentInfoResult::NoMoreComponents => break, // Finished
-                ComponentInfoResult::InvalidMessage | ComponentInfoResult::InvalidCRC => panic!("Got invalid message"),
+                ComponentInfoResult::InvalidMessage | ComponentInfoResult::InvalidCRC => {
+                    panic!("Got invalid message")
+                }
                 ComponentInfoResult::NeedMoreBytes => {
                     // Read missing bytes
-                    serial_read(serial, &mut buff[ComponentInfoMessage::min_size()..]);
+                    channel_read(
+                        &channel_in_consumer,
+                        &mut buff[ComponentInfoMessage::min_size()..],
+                    );
                     // Try to parse now
                     let msg_result = ComponentInfoMessage::from(&buff);
                     if msg_result.is_err() {
@@ -68,7 +60,7 @@ fn read_system_info(serial: &mut TTYPort) {
                     let msg = msg_result.unwrap();
                     println!("{:?}", msg);
                     at_least_one = true;
-                },
+                }
             }
         }
     }

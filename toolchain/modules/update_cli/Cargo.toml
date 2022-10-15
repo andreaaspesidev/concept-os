@@ -17,6 +17,7 @@ pbr = "1.0.3"
 app_config = {path = "../../libs/app_config"}
 itm = "0.3.1"
 signal-hook = "0.3.14"
+cfg-if = "1.0.0"
 # Serial port dependencies
 serialport = "4.2.0"
 # MQTT dependencies

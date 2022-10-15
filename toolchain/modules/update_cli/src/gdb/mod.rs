@@ -1,10 +1,6 @@
 use crate::utils::*;
-use std::fs::File;
-use std::io::{BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Child, Command};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 pub fn gdb(app_config: String, verbose: bool) {
     // Validate paths
@@ -22,7 +18,7 @@ pub fn gdb(app_config: String, verbose: bool) {
     // Start gdb
     let mut gdb = gdb_start();
     // Wait gdb
-    gdb.wait();
+    gdb.wait().unwrap();
     // Terminate childs
     openocd.kill().unwrap();
 }

@@ -1218,6 +1218,7 @@ version = "0.0.2"
 dependencies = [
  "app_config",
  "bitflags",
+ "cfg-if",
  "clap 3.2.20",
  "crossbeam-channel",
  "hbf_rs",

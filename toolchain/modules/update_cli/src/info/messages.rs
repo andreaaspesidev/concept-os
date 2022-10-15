@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 
 use crate::{
-    common_messages::MessageError,
     crc::crc8_update,
     utils::{u16_from_le_bytes, u32_from_le_bytes},
 };

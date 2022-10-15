@@ -21,13 +21,13 @@ pub struct FixedHeaderMessage<'a> {
 
 impl<'a> FixedHeaderMessage<'a> {
     pub fn new(buffer: &'a [u8]) -> Self {
+        if buffer.len() != hbf_rs::FIXED_HEADER_SIZE {
+            panic!();
+        }
         // Return instance
         Self {
             buffer: buffer
         }
-    }
-    pub const fn get_size() -> usize {
-        hbf_rs::FIXED_HEADER_SIZE + 1
     }
 }
 

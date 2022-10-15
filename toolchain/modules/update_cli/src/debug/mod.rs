@@ -31,7 +31,7 @@ pub fn debug(app_config: String, verbose: bool) {
     // Parsing loop
     let mut reader = BufReader::new(File::open(channel).expect("Cannot open itm channel pipe"));
     let mut tmp_buff: Vec<u8> = Vec::new();
-    reader.read_to_end(&mut tmp_buff);
+    reader.read_to_end(&mut tmp_buff).unwrap();
     let mut decoder = itm::Decoder::new(reader, true);
     while !should_terminate.load(Ordering::Relaxed) {
         let packet_result = decoder.read_packet();

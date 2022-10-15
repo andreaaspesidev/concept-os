@@ -2,7 +2,6 @@ use std::fmt;
 
 use crate::crc::crc8_update;
 
-pub const SERIAL_BAUDRATE: u32 = 115_200;
 const PACKET_BUFFER_SIZE: usize = 64;
 
 #[derive(Clone, Copy, Debug)]
@@ -36,7 +35,7 @@ impl From<u8> for MessageError {
             0xE9 => Self::DependencyError,
             0xEA => Self::MissingDependency,
             0xEB => Self::IllegalDowngrade,
-            _ => panic!("Unknown response")
+            _ => panic!("Unknown response"),
         }
     }
 }
@@ -53,7 +52,7 @@ pub trait SerializableMessage<'a> {
 }
 
 pub trait FragmentedMessage<'a> {
-    fn get_next_fragment(&mut self) -> Option<Vec<u8>>; 
+    fn get_next_fragment(&mut self) -> Option<Vec<u8>>;
     fn get_next_fragment_number(&self) -> Option<usize>;
     fn get_total_fragments(&self) -> usize;
 }
@@ -103,18 +102,14 @@ impl<'a> SerializableMessage<'a> for HelloMessage {
     }
 }
 
-pub struct HelloResponseMessage<'a> {
-    buffer: &'a [u8]
-}
+pub struct HelloResponseMessage<> {}
 
-impl<'a> HelloResponseMessage<'a> {
+impl<'a> HelloResponseMessage<> {
     pub fn from(buffer: &'a [u8]) -> Result<Self, MessageError> {
         // Validate buffer
-        let op = Self::validate(buffer)?;
+        Self::validate(buffer)?;
         // Return instance
-        Ok(Self {
-            buffer: buffer,
-        })
+        Ok(Self {})
     }
     pub const fn get_size() -> usize {
         7
@@ -125,13 +120,14 @@ impl<'a> HelloResponseMessage<'a> {
             return Err(MessageError::InvalidSize);
         }
         // Check static data
-        if buffer[0] != 'O' as u8 ||
-            buffer[1] != 'L' as u8 ||
-            buffer[2] != 'L' as u8 ||
-            buffer[3] != 'E' as u8 ||
-            buffer[4] != 'H' as u8 {
-                return Err(MessageError::InvalidOperation);
-            }
+        if buffer[0] != 'O' as u8
+            || buffer[1] != 'L' as u8
+            || buffer[2] != 'L' as u8
+            || buffer[3] != 'E' as u8
+            || buffer[4] != 'H' as u8
+        {
+            return Err(MessageError::InvalidOperation);
+        }
         // Check OP
         let op = OperationType::try_from(buffer[5])?;
         // Check CRC
@@ -147,17 +143,16 @@ impl<'a> HelloResponseMessage<'a> {
     }
 }
 
-
 pub struct RawPacket<'a> {
     buffer: &'a [u8],
-    current_pos: usize
+    current_pos: usize,
 }
 
 impl<'a> RawPacket<'a> {
     pub fn new(buffer: &'a [u8]) -> Self {
-        Self{
+        Self {
             buffer: buffer,
-            current_pos: 0
+            current_pos: 0,
         }
     }
 }
@@ -169,8 +164,9 @@ impl<'a> FragmentedMessage<'a> for RawPacket<'a> {
             return None;
         }
         // Otherwise extract the new fragment
-        let fragment_size = core::cmp::min(PACKET_BUFFER_SIZE, self.buffer.len() - self.current_pos);
-        let fragment = &self.buffer[self.current_pos..self.current_pos+fragment_size];
+        let fragment_size =
+            core::cmp::min(PACKET_BUFFER_SIZE, self.buffer.len() - self.current_pos);
+        let fragment = &self.buffer[self.current_pos..self.current_pos + fragment_size];
         // Append to buffer
         let mut buffer = Vec::<u8>::new();
         buffer.extend_from_slice(fragment);
