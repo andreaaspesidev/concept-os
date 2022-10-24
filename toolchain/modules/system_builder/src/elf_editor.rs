@@ -5,6 +5,32 @@ use ram_allocator::{RAMAllocator, RAMAllocatorImpl};
 use std::process::Command;
 use std::{collections::BTreeMap, path::PathBuf};
 
+/// Maximum size of the kernel during an update operation.
+/// This value was calculated reading memory with the debugger,
+/// after initially 0xff clearing it
+const DEFAULT_KERNEL_STACK_SIZE: u32 = 2900;
+
+#[derive(Debug, Clone)]
+pub struct AllocStatEntry {
+    pub name: String,
+    pub component_id: u16,
+    pub flash_address: u32,
+    pub flash_size: u32,
+    pub flash_needed_size: u32,
+    pub ram_address: u32,
+    pub ram_size: u32,
+    pub ram_needed_size: u32,
+}
+
+pub struct AllocStats {
+    pub flash_start: u32,
+    pub flash_size: u32,
+    pub ram_start: u32,
+    pub ram_size: u32,
+    pub kernel_reserved_ram: u32,
+    pub entries: Vec<AllocStatEntry>,
+}
+
 pub struct ElfEditor<'a> {
     dest_path: &'a PathBuf,
     output_sections: BTreeMap<u32, Vec<u8>>,
@@ -12,10 +38,25 @@ pub struct ElfEditor<'a> {
     board_name: &'a String,
     kentry: u32,
     flash_buffer: BufferFlash,
+    allocation_stats: AllocStats,
 }
 
 impl<'a> ElfEditor<'a> {
     pub fn new(dest_path: &'a PathBuf, board_name: &'a String) -> Self {
+        let (flash_start, flash_size, ram_start, ram_size, kernel_ram) = match board_name.as_str() {
+            "stm32f303re" => (
+                stm32f303re::FLASH_START_ADDR,
+                stm32f303re::FLASH_END_ADDR - stm32f303re::FLASH_START_ADDR + 1,
+                stm32f303re::SRAM_START_ADDR,
+                stm32f303re::SRAM_END_ADDR - stm32f303re::SRAM_START_ADDR + 1,
+                stm32f303re::SRAM_RESERVED,
+            ),
+            _ => panic!("Unsupported board"),
+        };
+        println!("Flash Start: {:#010x}", flash_start);
+        println!("Flash Size: {}", flash_size);
+        println!("RAM Start: {:#010x}", ram_start);
+        println!("RAM Size: {}", ram_size);
         Self {
             dest_path: dest_path,
             output_sections: BTreeMap::new(),
@@ -24,9 +65,25 @@ impl<'a> ElfEditor<'a> {
             board_name: board_name,
             flash_buffer: BufferFlash {
                 base_addr: 0,
-                buffer: vec![0xFF; 1048576],
+                buffer: vec![0xFF; flash_size as usize],
+            },
+            allocation_stats: AllocStats {
+                flash_start: flash_start,
+                flash_size: flash_size,
+                ram_start: ram_start,
+                ram_size: ram_size,
+                kernel_reserved_ram: kernel_ram,
+                entries: Vec::new(),
             },
         }
+    }
+    fn is_in_flash(&self, addr: u32) -> bool {
+        addr >= self.allocation_stats.flash_start
+            && addr < self.allocation_stats.flash_start + self.allocation_stats.flash_size
+    }
+    fn is_in_sram(&self, addr: u32) -> bool {
+        addr >= self.allocation_stats.ram_start
+            && addr < self.allocation_stats.ram_start + self.allocation_stats.ram_size
     }
     pub fn add_kernel(&mut self, elf_path: &PathBuf) {
         // Read bytes
@@ -40,6 +97,8 @@ impl<'a> ElfEditor<'a> {
         if elf.header.e_machine != goblin::elf::header::EM_ARM {
             panic!("The ELF must be ARM");
         }
+        let mut flash_used: u32 = 0;
+        let mut sram_used: u32 = 0;
         for phdr in &elf.program_headers {
             if phdr.p_type != PT_LOAD {
                 continue; // Ignore
@@ -47,6 +106,14 @@ impl<'a> ElfEditor<'a> {
             let offset = phdr.p_offset as usize;
             let size = phdr.p_filesz as usize;
             let addr = phdr.p_paddr as u32;
+            let dest_addr = phdr.p_vaddr as u32;
+            let mem_size = phdr.p_memsz as usize;
+            if self.is_in_flash(addr) {
+                flash_used += size as u32;
+            }
+            if self.is_in_sram(dest_addr) || self.is_in_sram(addr) {
+                sram_used += mem_size as u32;
+            }
             // Update stats
             self.current_flash_size += size;
             // Add to our structure
@@ -54,6 +121,24 @@ impl<'a> ElfEditor<'a> {
                 .insert(addr, elf_bytes[offset..offset + size].to_vec());
         }
         self.kentry = elf.header.e_entry as u32;
+        // Add stat
+        self.allocation_stats.entries.push(AllocStatEntry {
+            name: String::from("Kernel"),
+            component_id: 0,
+            flash_address: self.allocation_stats.flash_start,
+            flash_size: flash_used,
+            flash_needed_size: flash_used,
+            ram_address: self.allocation_stats.ram_start,
+            ram_size: self.allocation_stats.kernel_reserved_ram,
+            ram_needed_size: sram_used + DEFAULT_KERNEL_STACK_SIZE,
+        });
+        /*if self.allocation_stats.kernel_reserved_ram < sram_used + DEFAULT_KERNEL_STACK_SIZE {
+            panic!(
+                "Not enough memory for kernel: {} bytes available, but {} bytes needed",
+                self.allocation_stats.kernel_reserved_ram,
+                sram_used + DEFAULT_KERNEL_STACK_SIZE
+            );
+        }*/
     }
 
     pub fn add_component(&mut self, hbf_path: &PathBuf) {
@@ -84,6 +169,22 @@ impl<'a> ElfEditor<'a> {
             alloc_result.sram_address,
             alloc_result.sram_size
         );
+
+        // Add stat
+        self.allocation_stats.entries.push(AllocStatEntry {
+            name: format!(
+                "Component: {} [v {}]",
+                hbf.header_base().component_id(),
+                hbf.header_base().component_version()
+            ),
+            component_id: hbf.header_base().component_id(),
+            flash_address: alloc_result.flash_address,
+            flash_size: alloc_result.flash_size,
+            flash_needed_size: needed_flash,
+            ram_address: alloc_result.sram_address,
+            ram_size: alloc_result.sram_size,
+            ram_needed_size: needed_ram,
+        });
 
         let block_base_addr: u32 = alloc_result.flash_address;
         // Generate bytes
@@ -136,7 +237,7 @@ impl<'a> ElfEditor<'a> {
         srec_file_path
     }
 
-    pub fn finish(mut self) {
+    pub fn finish(mut self) -> AllocStats {
         // Generate SREC
         let srec_path = PathBuf::from(self.write_srec());
         let mut elf_file_path = String::from(self.dest_path.to_str().unwrap());
@@ -154,6 +255,8 @@ impl<'a> ElfEditor<'a> {
         ihex_path += ".ihex";
         let ihex_path_buff = PathBuf::from(ihex_path);
         objcopy_translate_format("srec", &srec_path, "ihex", &ihex_path_buff);
+        // Return stats
+        self.allocation_stats
     }
 }
 

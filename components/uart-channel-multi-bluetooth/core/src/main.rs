@@ -54,10 +54,10 @@ struct TransmitterState {
 fn update_handler() -> ! {
     // Power down and reset everything
     let mut rcc = rcc_api::RCC::new();
-    rcc.enter_reset(rcc_api::Peripheral::DMA1).unwrap_lite();
-    rcc.enter_reset(rcc_api::Peripheral::USART3).unwrap_lite();
-    rcc.disable_clock(rcc_api::Peripheral::DMA1).unwrap_lite();
-    rcc.disable_clock(rcc_api::Peripheral::USART3).unwrap_lite();
+    rcc.enter_reset(rcc_api::Peripheral::DMA1).ok();
+    rcc.enter_reset(rcc_api::Peripheral::USART3).ok();
+    rcc.disable_clock(rcc_api::Peripheral::DMA1).ok();
+    rcc.disable_clock(rcc_api::Peripheral::USART3).ok();
     hl::transfer_state(1u32);
 }
 

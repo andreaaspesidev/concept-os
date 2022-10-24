@@ -187,9 +187,11 @@ fn add_task_to_system(
         if task.descriptor().component_version()
             > other_task.descriptor().component_version()
         {
+            sys_log!("Found an newer task for {}", use_id);
             // Delete the old task
             remove_task_from_system(task_map, irq_map, use_id);
         } else {
+            sys_log!("Found an older task for {}", use_id);
             // Ignore this task
             return Ok(()); // TODO: maybe an error is better here?
         }

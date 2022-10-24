@@ -45,10 +45,10 @@ fn update_handler() -> ! {
     //dma_stop_receive(dma1, usart);
     // Power down and reset everything
     let mut rcc = rcc_api::RCC::new();
-    rcc.enter_reset(rcc_api::Peripheral::DMA1);
-    rcc.enter_reset(rcc_api::Peripheral::USART2);
-    rcc.disable_clock(rcc_api::Peripheral::DMA1);
-    rcc.disable_clock(rcc_api::Peripheral::USART2);
+    rcc.enter_reset(rcc_api::Peripheral::DMA1).ok();
+    rcc.enter_reset(rcc_api::Peripheral::USART2).ok();
+    rcc.disable_clock(rcc_api::Peripheral::DMA1).ok();
+    rcc.disable_clock(rcc_api::Peripheral::USART2).ok();
     hl::transfer_state(1u32);
 }
 

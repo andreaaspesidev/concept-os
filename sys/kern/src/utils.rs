@@ -50,6 +50,13 @@ pub fn log_task(task: &Task) {
         sys_log!("   Size: {}", r.size);
         sys_log!("   Attr: {:?}", r.attributes);
     }
+    // Print component irqs
+    sys_log!("  Interrupts:");
+    for interrupt_num in 0..task.descriptor().num_interrupts() {
+        let interrupt = task.descriptor().interrupt_nth(interrupt_num);
+        sys_log!("  -IRQ: {}", interrupt.irq_num);
+        sys_log!("   Mask: {:#010x}", interrupt.notification);
+    }
 }
 
 pub fn log_structures(

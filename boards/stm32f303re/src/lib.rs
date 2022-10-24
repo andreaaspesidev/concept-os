@@ -53,6 +53,7 @@ pub const FLASH_WRITES_PER_MS: u32 = 1000 / 60 * 2;
 
 // Compile time checks
 static_assertions::const_assert_eq!(2 << (FLASH_NUM_SLOTS - 2), FLASH_NUM_BLOCKS);
+static_assertions::const_assert!(FLASH_NUM_SLOTS <= 8);
 
 /**
  * STM32 F303RE
@@ -65,13 +66,14 @@ pub const SRAM_START_ADDR: u32 = 0x2000_0000;
 pub const SRAM_END_ADDR: u32 = 0x2000_FFFF;
 pub const SRAM_SIZE: usize = (SRAM_END_ADDR - SRAM_START_ADDR + 1) as usize; // 64Kb
 
-pub const SRAM_RESERVED: u32 = 8192;
+pub const SRAM_RESERVED: u32 = 6144;    // Kernel memory
 pub const SRAM_BLOCK_SIZE: usize = 512;
 pub const SRAM_NUM_BLOCKS: usize = SRAM_SIZE / SRAM_BLOCK_SIZE as usize; // 128
 pub const SRAM_NUM_SLOTS: usize = 7 + 1; // clog2(NUM_BLOCKS) + 1
 
 // Compile time checks
 static_assertions::const_assert_eq!(2 << (SRAM_NUM_SLOTS - 2), SRAM_NUM_BLOCKS);
+static_assertions::const_assert!(SRAM_NUM_SLOTS <= 8);
 
 /**
  * STM32 F303RE

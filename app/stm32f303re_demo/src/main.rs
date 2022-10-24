@@ -4,13 +4,33 @@
 
 #![no_std]
 #![no_main]
+#![feature(asm_const)]
+#![feature(asm_sym)]
 
 // We have to do this if we don't otherwise use it to ensure its vector table
 // gets linked in.
 extern crate stm32f303re;
 extern crate panic_itm;
 
+use core::arch::asm;
+
 use cortex_m_rt::entry;
+use cortex_m_rt::pre_init;
+
+#[pre_init]
+unsafe fn clear_ram() {
+    asm!("
+        ldr r0,=__sheap
+        ldr r1,=_stack_start
+        movw r2,#65535
+        movt r2,#65535
+     0: cmp r1, r0
+        beq 1f
+        stm r0!, {{r2}}
+        b 0b
+     1: 
+    ");
+}
 
 #[entry]
 fn main() -> ! {

@@ -5,6 +5,7 @@ use clap::Parser;
 use std::{path::PathBuf, process::Command, str::FromStr};
 
 mod elf_editor;
+mod visualize_stats;
 
 #[derive(Parser)]
 #[clap(version, about)]
@@ -81,7 +82,7 @@ fn build_system(app_config_path: String, output_path: String, verbose: bool) {
         elf_edit.add_component(&hbf_path);
     }
     // Generate ELF
-    elf_edit.finish();
+    visualize_stats::visualize(elf_edit.finish(), &app_root);
     println!("Final image placed in: {}", system_out.display());
 }
 

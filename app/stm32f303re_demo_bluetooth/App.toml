@@ -1,6 +1,6 @@
 name = "stm32f303re_demo_bluetooth"
 board = "stm32f303re"
-kernel_ram = 8192
+kernel_ram = 6144
 components = [
     "idle", "test_a", "test_b", "rcc", "storage", "uart-channel-multi-bluetooth", "update"
 ]

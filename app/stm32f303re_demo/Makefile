@@ -14,14 +14,14 @@ debug:
 gdb:
 	../../toolchain/modules/update_cli/update-cli-uart gdb --app-config $(current_dir)/App.toml
 
-disassemble: build
+disassemble:
 	arm-none-eabi-readelf -l build/kernel.elf > build/headers.disass
 	arm-none-eabi-objdump -h build/kernel.elf > build/sections.disass
 	arm-none-eabi-objdump -s -j .data build/kernel.elf > build/data.disass
 	arm-none-eabi-objdump -s -j .rodata build/kernel.elf > build/rodata.disass
 	arm-none-eabi-objdump -d build/kernel.elf --visualize-jumps > build/text.asm
 
-dump: build
+dump:
 	arm-none-eabi-objcopy -O binary --only-section=.text build/kernel.elf build/image.text
 	arm-none-eabi-objcopy -O binary --only-section=.rodata build/kernel.elf build/image.rodata
 	arm-none-eabi-objcopy -O binary --only-section=.data build/kernel.elf build/image.data
