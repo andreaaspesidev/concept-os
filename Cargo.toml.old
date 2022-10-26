@@ -1,0 +1,13 @@
+cargo-features = ["resolver", "named-profiles"]
+
+[workspace]
+members = [
+    "sys/*",
+    "app/*",
+    "components/*/*",
+    "toolchain/modules/*",
+    "toolchain/libs/*",
+    "boards/*"
+]
+default-members = []
+resolver = "2"
