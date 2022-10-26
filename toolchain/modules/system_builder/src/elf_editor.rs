@@ -28,6 +28,7 @@ pub struct AllocStats {
     pub ram_start: u32,
     pub ram_size: u32,
     pub kernel_reserved_ram: u32,
+    pub kernel_reserved_flash: u32,
     pub entries: Vec<AllocStatEntry>,
 }
 
@@ -43,13 +44,14 @@ pub struct ElfEditor<'a> {
 
 impl<'a> ElfEditor<'a> {
     pub fn new(dest_path: &'a PathBuf, board_name: &'a String) -> Self {
-        let (flash_start, flash_size, ram_start, ram_size, kernel_ram) = match board_name.as_str() {
+        let (flash_start, flash_size, ram_start, ram_size, kernel_ram, kernel_flash) = match board_name.as_str() {
             "stm32f303re" => (
                 stm32f303re::FLASH_START_ADDR,
-                stm32f303re::FLASH_END_ADDR - stm32f303re::FLASH_START_ADDR + 1,
+                stm32f303re::FLASH_ALLOCATOR_SIZE as u32,
                 stm32f303re::SRAM_START_ADDR,
                 stm32f303re::SRAM_END_ADDR - stm32f303re::SRAM_START_ADDR + 1,
                 stm32f303re::SRAM_RESERVED,
+                stm32f303re::FLASH_ALLOCATOR_START_SCAN_ADDR - stm32f303re::FLASH_ALLOCATOR_START_ADDR
             ),
             _ => panic!("Unsupported board"),
         };
@@ -73,6 +75,7 @@ impl<'a> ElfEditor<'a> {
                 ram_start: ram_start,
                 ram_size: ram_size,
                 kernel_reserved_ram: kernel_ram,
+                kernel_reserved_flash: kernel_flash,
                 entries: Vec::new(),
             },
         }
@@ -126,7 +129,7 @@ impl<'a> ElfEditor<'a> {
             name: String::from("Kernel"),
             component_id: 0,
             flash_address: self.allocation_stats.flash_start,
-            flash_size: flash_used,
+            flash_size: self.allocation_stats.kernel_reserved_flash,
             flash_needed_size: flash_used,
             ram_address: self.allocation_stats.ram_start,
             ram_size: self.allocation_stats.kernel_reserved_ram,

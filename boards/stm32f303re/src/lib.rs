@@ -27,15 +27,15 @@ use flash_allocator::flash::{page::FlashPage, FlashMethods};
  *     For this reason, let's impose that FLASH_ALLOCATOR_START_SCAN_ADDR points to the
  *     beginning of the first free page after the one containing the last kernel code.
  */
-pub const FLASH_ALLOCATOR_START_ADDR: u32 = 0x0804_0000; // Page 0x0080
-pub const FLASH_ALLOCATOR_END_ADDR: u32 = 0x0807_FFFF;
+pub const FLASH_ALLOCATOR_START_ADDR: u32 = 0x0800_0000; // Page 0
+pub const FLASH_ALLOCATOR_END_ADDR: u32 = 0x0803_FFFF;
 pub const FLASH_ALLOCATOR_SIZE: usize =
     (FLASH_ALLOCATOR_END_ADDR - FLASH_ALLOCATOR_START_ADDR + 1) as usize; // 0x40000 -> 262144
 
 // This value needs to be fixed (automatically during build),
-// and (FLASH_ALLOCATOR_START_SCAN_ADDR - FLASH_ALLOCATOR_START_ADDR) must be a valid power of 2
+// and (FLASH_ALLOCATOR_START_SCAN_ADDR - FLASH_ALLOCATOR_START_ADDR) must be a valid multiple of FLASH_PAGE_SIZE
 // (even 0 is fine)
-pub const FLASH_ALLOCATOR_START_SCAN_ADDR: u32 = 0x0804_0000;
+pub const FLASH_ALLOCATOR_START_SCAN_ADDR: u32 = 0x0800_8800; // 34816 bytes for the kernel
 
 pub const FLASH_START_ADDR: u32 = 0x0800_0000;
 pub const FLASH_END_ADDR: u32 = 0x0807_FFFF;

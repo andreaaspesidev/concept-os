@@ -20,7 +20,6 @@ fn visualize_flash(stats: &AllocStats, root: &PathBuf) {
     let mut flash_report_path = PathBuf::from(root);
     flash_report_path.push("FlashReport.html");
     let file = File::create(flash_report_path).unwrap();
-    let mut writer = StatWriter::new(file, stats.flash_size, TOTAL_WIDTH, flash_info);
     // First sort stats by address
     let mut ordered_entries = stats.entries.to_vec();
     ordered_entries.sort_by(|a, b| a.flash_address.cmp(&b.flash_address));
@@ -28,6 +27,7 @@ fn visualize_flash(stats: &AllocStats, root: &PathBuf) {
     let mut curr_address: u32 = stats.flash_start;
     let mut curr_ptr: usize = 0;
     let mut blocks: Vec<Block> = Vec::new();
+    let mut used_flash: u32 = 0;
     // Iterate over all flash
     let flash_end = stats.flash_start + stats.flash_size;
     while curr_address < flash_end {
@@ -51,6 +51,7 @@ fn visualize_flash(stats: &AllocStats, root: &PathBuf) {
                     size: curr_entry.flash_size,
                     entry: Some(curr_entry.clone()),
                 });
+                used_flash += curr_entry.flash_size;
                 curr_ptr += 1;
                 curr_address = curr_entry.flash_address + curr_entry.flash_size;
             } else {
@@ -68,6 +69,7 @@ fn visualize_flash(stats: &AllocStats, root: &PathBuf) {
         }
     }
     // Print flash
+    let mut writer = StatWriter::new(file, stats.flash_size, used_flash, TOTAL_WIDTH, flash_info);
     for b in blocks {
         writer.add_block(b);
     }
@@ -79,7 +81,6 @@ fn visualize_ram(stats: &AllocStats, root: &PathBuf) {
     let mut ram_report_path = PathBuf::from(root);
     ram_report_path.push("RAMReport.html");
     let file = File::create(ram_report_path).unwrap();
-    let mut writer = StatWriter::new(file, stats.ram_size, TOTAL_WIDTH, ram_info);
     // First sort stats by address
     let mut ordered_entries = stats.entries.to_vec();
     ordered_entries.sort_by(|a, b| a.ram_address.cmp(&b.ram_address));
@@ -87,7 +88,8 @@ fn visualize_ram(stats: &AllocStats, root: &PathBuf) {
     let mut curr_address: u32 = stats.ram_start;
     let mut curr_ptr: usize = 0;
     let mut blocks: Vec<Block> = Vec::new();
-    // Iterate over all flash
+    let mut used_ram: u32 = 0;
+    // Iterate over all ram
     let ram_end = stats.ram_start + stats.ram_size;
     while curr_address < ram_end {
         // Check whether we have an allocation
@@ -96,7 +98,7 @@ fn visualize_ram(stats: &AllocStats, root: &PathBuf) {
             let curr_entry = &ordered_entries[curr_ptr];
             // We have three cases
             if curr_entry.ram_address > curr_address {
-                // This is free flash
+                // This is free ram
                 blocks.push(Block {
                     //start_addr: curr_address,
                     size: curr_entry.ram_address - curr_address,
@@ -110,6 +112,7 @@ fn visualize_ram(stats: &AllocStats, root: &PathBuf) {
                     size: curr_entry.ram_size,
                     entry: Some(curr_entry.clone()),
                 });
+                used_ram += curr_entry.ram_size;
                 curr_ptr += 1;
                 curr_address = curr_entry.ram_address + curr_entry.ram_size;
             } else {
@@ -126,7 +129,8 @@ fn visualize_ram(stats: &AllocStats, root: &PathBuf) {
             break;
         }
     }
-    // Print flash
+    // Print ram
+    let mut writer = StatWriter::new(file, stats.ram_size, used_ram, TOTAL_WIDTH, ram_info);
     for b in blocks {
         writer.add_block(b);
     }
@@ -166,6 +170,7 @@ struct StatWriter {
     file: File,
     width: usize,
     total_size: u32,
+    used_size: u32,
     blocks: Vec<Block>,
     info_gen: fn(&AllocStatEntry) -> String,
 }
@@ -174,6 +179,7 @@ impl StatWriter {
     pub fn new(
         file: File,
         total_size: u32,
+        used_size: u32,
         width: usize,
         info_gen: fn(&AllocStatEntry) -> String,
     ) -> Self {
@@ -181,6 +187,7 @@ impl StatWriter {
             file: file,
             width: width,
             total_size: total_size,
+            used_size: used_size,
             info_gen: info_gen,
             blocks: Vec::new(),
         }
@@ -212,7 +219,13 @@ impl StatWriter {
         }
         out.push_str("</tr>");
         out.push_str("</table><br>");
-
+        // Put total size
+        out.push_str(&format!(
+            "Used: {} / {} [{}%]<br><hr><br>",
+            self.used_size,
+            self.total_size,
+            self.used_size as f32 / self.total_size as f32 * 100.0
+        ));
         // Put infos
         for b in &self.blocks {
             if let Some(entry) = &b.entry {
