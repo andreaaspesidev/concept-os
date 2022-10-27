@@ -124,6 +124,7 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
     )?;
 
     // Before reading the payload, validate the dependencies of this component
+    sys_log!("Checking dependencies");
     deallocate_on_error(
         validate_version_and_dependencies(&flash_hbf, &mut storage, allocation.flash_base_address),
         &mut storage,
@@ -146,8 +147,9 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
     let mut reloc_buffer: [u32; RELOC_BUFFER_LEN] = [0; RELOC_BUFFER_LEN];
     let mut used_relocs: usize = 0;
     let mut usable_relocs: usize = 0;
-    let mut total_usable_relocs: usize =
-        flash_hbf.header_base().unwrap_lite().num_relocations() as usize;
+    let total_relocs: usize = flash_hbf.header_base().unwrap_lite().num_relocations() as usize;
+    let mut total_used_relocs: usize = 0;
+    let mut total_usable_relocs: usize = total_relocs;
     let mut current_reloc_pos: usize = 0;
 
     deallocate_on_error(
@@ -177,6 +179,8 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
                     &mut usable_relocs,
                     &mut current_reloc_pos,
                     &mut total_usable_relocs,
+                    &mut total_used_relocs,
+                    total_relocs,
                     &flash_hbf,
                 )?;
                 // After fixes, compute also the new checksum
@@ -312,14 +316,12 @@ fn validate_version_and_dependencies(
     // constraint.
     let hbf_base = wrap_hbf_error(hbf.header_base())?;
     let num_dependencies = hbf_base.num_dependencies();
+    let mut solved_dependencies: u16 = 0;
     // Prepare for iterating over the blocks
     // Get block stats
     let flash_status = storage
         .report_status()
         .map_err(|_| MessageError::FlashError)?;
-    // Some dependencies
-    let mut current_dep = hbf.dependency_nth(0).unwrap_lite(); // At least one must exist
-    let mut current_dep_pos: u16 = 1;
     // Iterate all blocks
     for block_num in 0..flash_status.blocks {
         // Get block
@@ -346,33 +348,35 @@ fn validate_version_and_dependencies(
                 if comp_data.component_version() >= hbf_base.component_version() {
                     return Err(MessageError::IllegalDowngrade);
                 }
-            } else if comp_data.component_id() == current_dep.component_id() {
-                // Check version
-                if current_dep.min_version() > 0
-                    && comp_data.component_version() < current_dep.min_version()
-                {
-                    // Wrong version (lower bound)
-                    return Err(MessageError::DependencyError);
-                } else if current_dep.max_version() > 0
-                    && comp_data.component_version() > current_dep.max_version()
-                {
-                    // Wrong version (upper bound)
-                    return Err(MessageError::DependencyError);
-                }
-                // Advance with the dependency
-                if current_dep_pos < num_dependencies {
-                    // Get next one
-                    current_dep = hbf.dependency_nth(current_dep_pos).unwrap_lite();
-                    current_dep_pos += 1;
-                } else {
-                    // Got all the dependencies
-                    return Ok(());
+            }
+            // Unfortunately, as components are not ordered in flash, we have to iterate over all
+            // dependencies for each block.
+            if solved_dependencies < num_dependencies {
+                // Only makes sense if we miss something
+                for dep_num in 0..num_dependencies {
+                    let dep = wrap_hbf_error(hbf.dependency_nth(dep_num))?;
+                    // Check version
+                    if dep.min_version() > 0 && comp_data.component_version() < dep.min_version() {
+                        // Wrong version (lower bound)
+                        return Err(MessageError::DependencyError);
+                    } else if dep.max_version() > 0
+                        && comp_data.component_version() > dep.max_version()
+                    {
+                        // Wrong version (upper bound)
+                        return Err(MessageError::DependencyError);
+                    }
+                    solved_dependencies += 1;
                 }
             }
         }
     }
-    // Missing dependency
-    return Err(MessageError::MissingDependency);
+    // At the end, the number of solved dependencies gives the result
+    if solved_dependencies == num_dependencies {
+        return Ok(());
+    } else {
+        // Missing dependency
+        return Err(MessageError::MissingDependency);
+    }
 }
 
 /**
@@ -414,10 +418,13 @@ fn apply_relocs(
     usable_relocs: &mut usize,
     current_reloc_pos: &mut usize,
     total_usable_relocs: &mut usize,
+    total_used_relocs: &mut usize,
+    total_relocs: usize,
     hbf: &HbfFile,
 ) -> Result<(), MessageError> {
     // If we have no relocation still available, ignore
-    if *total_usable_relocs == 0usize {
+    if *total_used_relocs == total_relocs {
+        sys_log!("Finished relocs");
         return Ok(());
     }
     let mut pos: usize = 0usize;
@@ -435,6 +442,7 @@ fn apply_relocs(
             *used_relocs = 0usize;
             // Check if we have more relocs
             if *usable_relocs == 0 {
+                sys_log!("No more relocs");
                 assert_eq!(*total_usable_relocs, 0);
                 break;
             }
@@ -444,7 +452,9 @@ fn apply_relocs(
         // As relocs are in-order, check always only the first element
         if hbf_rel_pos == reloc_buffer[*used_relocs] {
             // Update indices
+            sys_log!("Used relocation");
             *used_relocs += 1usize;
+            *total_used_relocs += 1usize;
             // Apply the relocation
             let addr = u32_from_le_bytes(&buffer[pos..pos + 4]);
             let new_addr = addr - ORIGINAL_FLASH_ADDR + new_dest_address;
