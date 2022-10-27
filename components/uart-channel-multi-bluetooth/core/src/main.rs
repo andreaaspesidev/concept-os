@@ -223,8 +223,8 @@ fn main() -> ! {
                     // Validate lease count and buffer sizes first.
                     let ((), caller) = msg.fixed_with_leases(1).ok_or(ChannelError::BadArgument)?;
 
-                    // Deny incoming writes if we're already running one.
-                    if state_ref.transmitter_state.transmitters.is_full() {
+                    // Deny incoming writes if we're already running enough.
+                    if !can_add_writer(state_ref, &caller) {
                         return Err(ChannelError::ChannelBusy);
                     }
 
@@ -246,7 +246,7 @@ fn main() -> ! {
                     let ((), caller) = msg.fixed_with_leases(1).ok_or(ChannelError::BadArgument)?;
 
                     // Deny incoming reads if we're already running too many.
-                    if state_ref.receiver_state.receivers.is_full() {
+                    if !can_add_reader(state_ref, &caller) {
                         return Err(ChannelError::ChannelBusy);
                     }
                     // Check borrow
@@ -269,7 +269,7 @@ fn main() -> ! {
                         .ok_or(ChannelError::BadArgument)?;
 
                     // Deny incoming reads if we're already running too many.
-                    if state_ref.receiver_state.receivers.is_full() {
+                    if !can_add_reader(state_ref, &caller) {
                         return Err(ChannelError::ChannelBusy);
                     }
                     // Check borrow
@@ -300,10 +300,10 @@ fn main() -> ! {
                         .ok_or(ChannelError::BadArgument)?;
 
                     // Check both requisites before proceding
-                    if state_ref.receiver_state.receivers.is_full() {
+                    if !can_add_reader(state_ref, &caller) {
                         return Err(ChannelError::ChannelBusy);
                     }
-                    if state_ref.transmitter_state.transmitters.is_full() {
+                    if !can_add_writer(state_ref, &caller) {
                         return Err(ChannelError::ChannelBusy);
                     }
                     // Check timeout
@@ -343,6 +343,36 @@ fn main() -> ! {
             },
         )
     }
+}
+
+fn can_add_reader(state_ref: &mut DriverState, caller: &Caller<()>) -> bool {
+    // It could happen that an updated component issue again a read. In this case,
+    // discard the old request as surely it's no more valid.
+    let mut result = !state_ref.receiver_state.receivers.is_full();
+    state_ref.receiver_state.receivers.retain(|receiver| {
+        if receiver.caller.task_id().component_id() == caller.task_id().component_id() {
+            // Delete this element, and return true: we have a space no matter what
+            result = true;
+            return false;
+        }
+        return true;
+    });
+    return result;
+}
+
+fn can_add_writer(state_ref: &mut DriverState, caller: &Caller<()>) -> bool {
+    // It could happen that an updated component issue again a read. In this case,
+    // discard the old request as surely it's no more valid.
+    let mut result = !state_ref.transmitter_state.transmitters.is_full();
+    state_ref.transmitter_state.transmitters.retain(|transmitter| {
+        if transmitter.caller.task_id().component_id() == caller.task_id().component_id() {
+            // Delete this element, and return true: we have a space no matter what
+            result = true;
+            return false;
+        }
+        return true;
+    });
+    return result;
 }
 
 fn cancel_expired(state_ref: &mut DriverState) {
