@@ -2,8 +2,7 @@
 
 use core::fmt::{Debug, Error, Formatter};
 
-use header::HbfHeaderDependency;
-pub use header::{HbfHeaderBase, HbfHeaderMain, HbfHeaderRelocation, HbfVersion, HBF_MAGIC};
+pub use header::{HbfHeaderBase, HbfHeaderMain, HbfHeaderRelocation, HbfHeaderDependency, HbfVersion, HBF_MAGIC};
 
 pub use header::{
     HbfHeaderInterrupt, HbfHeaderRegion, FIXED_HEADER_SIZE, HBF_CHECKSUM_OFFSET,
