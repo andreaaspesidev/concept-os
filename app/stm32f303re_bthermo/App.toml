@@ -1,6 +1,6 @@
 name = "stm32f303re_bthermo"
 board = "stm32f303re"
-kernel_ram = 6144
+kernel_ram = 8704
 components = [
     "idle", 
     "rcc", 

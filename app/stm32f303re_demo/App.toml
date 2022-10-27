@@ -1,6 +1,6 @@
 name = "stm32f303re_demo"
 board = "stm32f303re"
-kernel_ram = 6144
+kernel_ram = 8704
 components = [
     "idle", "test_a", "test_b", "rcc", "storage", "uart-channel-usb", "update"
 ]

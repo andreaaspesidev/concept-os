@@ -42,7 +42,7 @@ pub fn populate_kernel_structures(
         // Look into only finalized blocks of components
         if b.is_finalized() && b.get_type() == BlockType::COMPONENT {
             // Load the component
-            let task = get_task_from_block(b).unwrap();
+            let task = get_task_from_block(b, true).unwrap();
             let task_id = task.descriptor().component_id();
             add_task_to_system(task_map, irq_map, task, task_id).unwrap();
         }
@@ -58,7 +58,7 @@ pub enum LoadError {
     TooManyTasks,
 }
 
-fn get_task_from_block(block: FlashBlock) -> Result<Task, LoadError> {
+fn get_task_from_block(block: FlashBlock, validate: bool) -> Result<Task, LoadError> {
     // Let's create an abstraction to read its bytes
     let raw_block_bytes = unsafe {
         core::slice::from_raw_parts(
@@ -74,11 +74,13 @@ fn get_task_from_block(block: FlashBlock) -> Result<Task, LoadError> {
         return Err(LoadError::MalformedHBF);
     }
     let hbf = hbf_parse.unwrap();
-    // Validate this hbf
-    let hbf_valid = hbf.validate().unwrap_or(false);
-    if !hbf_valid {
-        sys_log!("Malformed HBF at {:#010x}", block.get_base_address());
-        return Err(LoadError::MalformedHBF);
+    if validate {
+        // Validate this hbf
+        let hbf_valid = hbf.validate().unwrap_or(false);
+        if !hbf_valid {
+            sys_log!("Malformed HBF at {:#010x}", block.get_base_address());
+            return Err(LoadError::MalformedHBF);
+        }
     }
     Ok(process_hbf(
         &hbf,
@@ -255,7 +257,7 @@ pub fn load_component_at(
         return Err(LoadError::InvalidBlock);
     }
     // Load the component
-    let load_result = get_task_from_block(block);
+    let load_result = get_task_from_block(block, false); // Assume already validated
     if load_result.is_err() {
         return Err(load_result.unwrap_err());
     }

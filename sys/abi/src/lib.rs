@@ -16,7 +16,7 @@ use zerocopy::{AsBytes, FromBytes};
 /// performance. (Though note that changing this alters the ABI.)
 pub const REGIONS_PER_TASK: usize = 8;
 
-pub const HUBRIS_MAX_SUPPORTED_TASKS: usize = 8;
+pub const HUBRIS_MAX_SUPPORTED_TASKS: usize = 16;
 pub const HUBRIS_MAX_IRQS: usize = 16;
 
 pub const SUPERVISOR_ID: u16 = 0;

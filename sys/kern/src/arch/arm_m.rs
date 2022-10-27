@@ -1259,7 +1259,11 @@ impl FlashInterface {
         let result = self.native_methods.write(address, data);
         let lost_ms = data.len() as u32 / FLASH_WRITES_PER_MS;
         let switch = advance_time(tasks, lost_ms);
-        return result.map(|_| switch);
+        // Always try to schedule something else. Watch for a specific, in case some timer fires
+        return match switch {
+            NextTask::Specific(id) => result.map(|_| NextTask::Specific(id)),
+            _ => result.map(|_| NextTask::Other)
+        };
     }
     pub fn erase_timed(
         &mut self,
@@ -1268,7 +1272,11 @@ impl FlashInterface {
     ) -> Result<NextTask, ()> {
         let result = self.native_methods.erase(page_num);
         let switch = advance_time(tasks, FLASH_ERASE_MS);
-        return result.map(|_| switch);
+        // Always try to schedule something else. Watch for a specific, in case some timer fires
+        return match switch {
+            NextTask::Specific(id) => result.map(|_| NextTask::Specific(id)),
+            _ => result.map(|_| NextTask::Other)
+        };
     }
 }
 
