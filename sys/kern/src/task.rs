@@ -1030,13 +1030,14 @@ pub fn force_fault(
             }
         }
     };
-    let supervisor_id: u16 = 1;
-    let supervisor_awoken = tasks
-        .get_mut(&supervisor_id)
-        .expect("Cannot find supervisor")
-        .post(NotificationSet(HUBRIS_FAULT_NOTIFICATION));
+    let supervisor_awoken: bool;
+    if let Some(supervisor) = tasks.get_mut(&abi::SUPERVISOR_ID) {
+        supervisor_awoken = supervisor.post(NotificationSet(HUBRIS_FAULT_NOTIFICATION))
+    } else {
+        supervisor_awoken = false;
+    }
     if supervisor_awoken {
-        NextTask::Specific(supervisor_id)
+        NextTask::Specific(abi::SUPERVISOR_ID)
     } else {
         NextTask::Other
     }
