@@ -3,7 +3,7 @@ FROM ubuntu:latest
 # Install generic
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install -y build-essential curl gdb-multiarch
+    && apt-get install -y build-essential curl gdb-multiarch cmake openocd
 
 # Install Rust
 RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
@@ -16,8 +16,8 @@ RUN apt-get install -y python3 python3-pip
 RUN apt-get install pkg-config libudev-dev binutils-arm-none-eabi
 
 RUN $HOME/.cargo/bin/rustup install nightly
-RUN $HOME/.cargo/bin/rustup target add thumbv7em-none-eabihf 
-RUN $HOME/.cargo/bin/rustup component add rust-src
+RUN $HOME/.cargo/bin/rustup target add thumbv7em-none-eabihf --toolchain nightly
+RUN $HOME/.cargo/bin/rustup component add rust-src --toolchain nightly
 
 RUN cp $HOME/.bashrc $HOME/.profile
 
