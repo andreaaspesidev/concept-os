@@ -1,9 +1,9 @@
 # ConceptOS
 This repository contains the code of ConceptOS, a micro-kernel-based operating system for embedded devices based on [Hubris](https://hubris.oxide.computer/) and completely written in Rust. It was the product of my master's Thesis.
 
-<div style="display:flex;flex-direction:column;height:200px;">
-   <img src="docs/images/concept-os-logo.svg">
-</div>
+<p align="center">
+   <img height="200px" src="docs/images/concept-os-logo.svg" >
+</p>
 
 It's capable to allow OTA directly in NAND-type flash memory on the same bank from which the code is executing, without dedicated hardware support. Only a Flash IAP is required.
 
