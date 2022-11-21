@@ -10,7 +10,7 @@ stm32f303re = []
 userlib = {path = "../../../sys/userlib", features = ["log-itm"]}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
 # Component dependencies
-uart-channel-api = {path = "../../uart-channel/api"}
+uart-channel-api = {path = "../../uart-channel-usb/api"}
 
 # This section is here to discourage RLS/rust-analyzer from doing test builds,
 # since test builds don't work for cross compilation.
