@@ -8,6 +8,7 @@ use crate::{
         HbfHeaderRelocationWrapper,
     },
     section::HbfPayloadSectionWrapper,
+    trailer::HbfTrailerWrapper,
 };
 
 pub mod hbf;
@@ -17,6 +18,7 @@ pub trait HbfFile: Debug {
 
     fn header_base(&self) -> HbfHeaderBaseWrapper;
     fn header_main(&self) -> HbfHeaderMainWrapper;
+    fn trailer(&self) -> HbfTrailerWrapper;
 
     fn region_nth(&self, index: usize) -> Option<HbfHeaderRegionWrapper>;
     fn region_iter(&self) -> HbfHeaderRegionIter;
@@ -34,6 +36,8 @@ pub trait HbfFile: Debug {
     fn data_section(&self) -> Option<HbfPayloadSectionWrapper>;
     fn bss_size(&self) -> u32;
     fn payload_size(&self) -> u32;
+
+    fn checksum_offset(&self) -> u32;
 
     fn validate(&self) -> bool;
 }

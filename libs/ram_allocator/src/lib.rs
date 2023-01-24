@@ -1,7 +1,7 @@
 #![no_std]
 
 use abi::flash::BlockType;
-use buddy_allocator::{BuddyAllocator, BuddyAllocatorImpl};
+use buddy_allocator::{BinaryBuddyImpl, BuddyAllocator};
 use core::fmt::Formatter;
 use flash_allocator::flash::{self, walker::FlashWalkerImpl, FlashBlock, FlashMethods};
 
@@ -16,8 +16,7 @@ pub mod utils {
         const FLASH_START_ADDR: u32,
         const FLASH_END_ADDR: u32,
         const FLASH_START_SCAN_ADDR: u32,
-        const FLASH_NUM_SLOTS: usize,
-        const FLASH_BLOCK_SIZE: usize,
+        const SMALLEST_BLOCK_LEVEL: usize,
     >(
         flash: &'a dyn FlashMethods<'a>,
         block_base_address: u32,
@@ -27,8 +26,7 @@ pub mod utils {
             FLASH_START_ADDR,
             FLASH_END_ADDR,
             FLASH_START_SCAN_ADDR,
-            FLASH_NUM_SLOTS,
-            FLASH_BLOCK_SIZE,
+            SMALLEST_BLOCK_LEVEL,
         >(flash, block_base_address, false);
         if block_search.is_none() {
             return None;
@@ -102,15 +100,22 @@ pub struct RAMAllocatorImpl<
     const END_ADDR: u32,     // Allocator end address
     const BLOCK_SIZE: usize, // Minimum granularity of the allocator
     const NUM_BLOCKS: usize,
-    const NUM_SLOTS: usize,
+    const SMALLEST_BLOCK_LEVEL: usize,
+    const NUMBER_OF_NODES: usize,
     const KERNEL_RESERVED: u32, // Initial RAM block reserved to the kernel
     const FLASH_ALLOCATOR_START_ADDR: u32,
     const FLASH_ALLOCATOR_END_ADDR: u32,
     const FLASH_ALLOCATOR_START_SCAN_ADDR: u32,
-    const FLASH_NUM_SLOTS: usize,
-    const FLASH_BLOCK_SIZE: usize,
+    const FLASH_SMALLEST_BLOCK_LEVEL: usize,
 > {
-    buddy_allocator: BuddyAllocatorImpl<START_ADDR, END_ADDR, BLOCK_SIZE, NUM_BLOCKS, NUM_SLOTS>,
+    buddy_allocator: BinaryBuddyImpl<
+        START_ADDR,
+        END_ADDR,
+        BLOCK_SIZE,
+        NUM_BLOCKS,
+        SMALLEST_BLOCK_LEVEL,
+        NUMBER_OF_NODES,
+    >,
     flash_methods: &'a mut dyn FlashMethods<'a>,
 }
 
@@ -120,13 +125,13 @@ impl<
         const END_ADDR: u32,     // Allocator end address
         const BLOCK_SIZE: usize, // Minimum granularity of the allocator
         const NUM_BLOCKS: usize,
-        const NUM_SLOTS: usize,
+        const SMALLEST_BLOCK_LEVEL: usize,
+        const NUMBER_OF_NODES: usize,
         const KERNEL_RESERVED: u32, // Initial RAM block reserved to the kernel
         const FLASH_ALLOCATOR_START_ADDR: u32,
         const FLASH_ALLOCATOR_END_ADDR: u32,
         const FLASH_ALLOCATOR_START_SCAN_ADDR: u32,
-        const FLASH_NUM_SLOTS: usize,
-        const FLASH_BLOCK_SIZE: usize,
+        const FLASH_SMALLEST_BLOCK_LEVEL: usize,
     >
     RAMAllocatorImpl<
         'a,
@@ -134,13 +139,13 @@ impl<
         END_ADDR,
         BLOCK_SIZE,
         NUM_BLOCKS,
-        NUM_SLOTS,
-        KERNEL_RESERVED,
+        SMALLEST_BLOCK_LEVEL,
+        NUMBER_OF_NODES,
+        KERNEL_RESERVED, // Initial RAM block reserved to the kernel
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
+        FLASH_SMALLEST_BLOCK_LEVEL,
     >
 {
     const ALLOCATOR_SIZE: usize = (END_ADDR - START_ADDR + 1) as usize;
@@ -149,10 +154,14 @@ impl<
         // Some asserts
         assert!(START_ADDR < END_ADDR);
         // Create a new allocator
-        let mut allocator =
-            BuddyAllocatorImpl::<START_ADDR, END_ADDR, BLOCK_SIZE, NUM_BLOCKS, NUM_SLOTS>::new(
-                true,
-            );
+        let mut allocator = BinaryBuddyImpl::<
+            START_ADDR,
+            END_ADDR,
+            BLOCK_SIZE,
+            NUM_BLOCKS,
+            SMALLEST_BLOCK_LEVEL,
+            NUMBER_OF_NODES,
+        >::new(true);
         // Scan flash to populate the buddy allocator
         let mut curr_addr: u32 = START_ADDR + KERNEL_RESERVED; // Skip the segment reserved
         while curr_addr <= END_ADDR {
@@ -161,8 +170,7 @@ impl<
                 FLASH_ALLOCATOR_START_ADDR,
                 FLASH_ALLOCATOR_END_ADDR,
                 FLASH_ALLOCATOR_START_SCAN_ADDR,
-                FLASH_NUM_SLOTS,
-                FLASH_BLOCK_SIZE,
+                FLASH_SMALLEST_BLOCK_LEVEL,
             >::new(flash_methods);
             // Scan the whole flash again
             let mut occupied = false;
@@ -199,7 +207,7 @@ impl<
             if !occupied {
                 // Add as free
                 let block_number = (curr_addr - START_ADDR) / (BLOCK_SIZE as u32);
-                allocator.add_free_block(block_number as u8);
+                allocator.add_free_block(block_number as usize);
                 // Move one step
                 curr_addr += BLOCK_SIZE as u32;
             }
@@ -217,15 +225,14 @@ impl<
             FLASH_ALLOCATOR_START_ADDR,
             FLASH_ALLOCATOR_END_ADDR,
             FLASH_ALLOCATOR_START_SCAN_ADDR,
-            FLASH_NUM_SLOTS,
-            FLASH_BLOCK_SIZE,
+            FLASH_SMALLEST_BLOCK_LEVEL,
         >(self.flash_methods, block_base_address, false);
         // Check if this block is valid
         if flash_block_res.is_none() {
             return Err(AllocatorError::InvalidBlock);
         }
         let flash_block = flash_block_res.unwrap();
-        if flash_block.get_type() != BlockType::NONE {
+        if flash_block.get_type() != BlockType::COMPONENT {
             return Err(AllocatorError::InvalidBlock);
         }
         // Get a new block of RAM
@@ -251,14 +258,6 @@ impl<
         // Flush write buffer
         self.flash_methods.flush_write_buffer().unwrap();
 
-        // Mark the block as a component
-        flash_allocator::flash::utils::mark_block::<FLASH_ALLOCATOR_START_ADDR, FLASH_NUM_SLOTS>(
-            self.flash_methods,
-            flash_block,
-            BlockType::COMPONENT,
-        )
-        .unwrap();
-
         // Return the allocation
         return Ok(RAMBlock {
             block_base_address: addr,
@@ -280,13 +279,13 @@ impl<
         const END_ADDR: u32,     // Allocator end address
         const BLOCK_SIZE: usize, // Minimum granularity of the allocator
         const NUM_BLOCKS: usize,
-        const NUM_SLOTS: usize,
+        const SMALLEST_BLOCK_LEVEL: usize,
+        const NUMBER_OF_NODES: usize,
         const KERNEL_RESERVED: u32, // Initial RAM block reserved to the kernel
         const FLASH_ALLOCATOR_START_ADDR: u32,
         const FLASH_ALLOCATOR_END_ADDR: u32,
         const FLASH_ALLOCATOR_START_SCAN_ADDR: u32,
-        const FLASH_NUM_SLOTS: usize,
-        const FLASH_BLOCK_SIZE: usize,
+        const FLASH_SMALLEST_BLOCK_LEVEL: usize,
     > RAMAllocator
     for RAMAllocatorImpl<
         'a,
@@ -294,13 +293,13 @@ impl<
         END_ADDR,
         BLOCK_SIZE,
         NUM_BLOCKS,
-        NUM_SLOTS,
-        KERNEL_RESERVED,
+        SMALLEST_BLOCK_LEVEL,
+        NUMBER_OF_NODES,
+        KERNEL_RESERVED, // Initial RAM block reserved to the kernel
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
+        FLASH_SMALLEST_BLOCK_LEVEL,
     >
 {
     fn allocate(&mut self, block_base_address: u32, size: u32) -> Result<RAMBlock, AllocatorError> {

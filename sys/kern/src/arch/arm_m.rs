@@ -1317,8 +1317,7 @@ pub fn get_flash_block(
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
+        FLASH_TREE_MAX_LEVEL
     >(flash_methods, base_address, is_base_exact)
 }
 
@@ -1329,7 +1328,7 @@ pub fn finalize_block(block_base_address: u32) -> Result<(), ()> {
     let flash_methods = get_flash_interface();
     flash_allocator::flash::utils::finalize_block::<
         FLASH_ALLOCATOR_START_ADDR,
-        FLASH_NUM_SLOTS,
+        FLASH_TREE_MAX_LEVEL,
     >(flash_methods, block)
 }
 
@@ -1341,7 +1340,7 @@ pub unsafe fn dismiss_block(block_base_address: u32) -> Result<(), ()> {
     unsafe {
         flash_allocator::flash::utils::mark_block_dismissed::<
             FLASH_ALLOCATOR_START_ADDR,
-            FLASH_NUM_SLOTS,
+            FLASH_TREE_MAX_LEVEL,
         >(flash_methods, block)
     }
 }
@@ -1353,8 +1352,7 @@ pub struct FlashWalkerFacade {
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
+        FLASH_TREE_MAX_LEVEL
     >,
 }
 
@@ -1380,8 +1378,7 @@ pub fn get_flash_walker() -> FlashWalkerFacade {
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
+        FLASH_TREE_MAX_LEVEL
     >::new(flash_methods);
     FlashWalkerFacade {
         native_walker: naive_walker,

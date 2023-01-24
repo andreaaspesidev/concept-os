@@ -49,7 +49,6 @@ impl From<StorageError> for u32 {
 pub enum Operation {
     // Allocation Operations
     AllocateComponent = 1,
-    AllocateGeneric = 2,
     // Deallocation Operations
     DeallocateBlock = 10,
     // Block Operations
@@ -82,24 +81,6 @@ impl hl::Call for AllocateComponentRequest {
     type Err = StorageError;
 }
 
-/// Generic Allocation
-#[derive(FromBytes, AsBytes)]
-#[repr(C)]
-pub struct AllocateGenericRequest {
-    pub flash_size: u32,
-}
-#[derive(Debug, FromBytes, AsBytes)]
-#[repr(C)]
-pub struct AllocateGenericResponse {
-    pub flash_base_address: u32,
-    pub flash_size: u32,
-}
-impl hl::Call for AllocateGenericRequest {
-    const OP: u16 = Operation::AllocateGeneric as u16;
-    type Response = AllocateGenericResponse;
-    type Err = StorageError;
-}
-
 /// Block Deallocation
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
@@ -118,6 +99,7 @@ impl hl::Call for DeallocateBlockRequest {
 pub struct WriteStreamRequest {
     pub block_base_address: u32, // Data must be in a readable buffer at lease 0
     pub offset: u32,
+    pub flush_after: u32
 }
 impl hl::Call for WriteStreamRequest {
     const OP: u16 = Operation::WriteStream as u16;
@@ -216,18 +198,6 @@ impl Storage {
             &[],
         )
     }
-    pub fn allocate_generic(
-        &mut self,
-        flash_size: u32,
-    ) -> Result<AllocateGenericResponse, StorageError> {
-        hl::send_with_retry(
-            &self.0,
-            &AllocateGenericRequest {
-                flash_size: flash_size,
-            },
-            &[],
-        )
-    }
 
     pub fn deallocate_block(&mut self, block_base_address: u32) -> Result<(), StorageError> {
         hl::send_with_retry(
@@ -244,12 +214,14 @@ impl Storage {
         block_base_address: u32,
         offset: u32,
         data: &[u8],
+        flush_after: bool,
     ) -> Result<(), StorageError> {
         hl::send_with_retry(
             &self.0,
             &WriteStreamRequest {
                 block_base_address: block_base_address,
                 offset: offset,
+                flush_after: flush_after as u32
             },
             &[Lease::read_only(data)],
         )

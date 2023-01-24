@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "byteorder",
+ "hbf_lite",
  "serde",
  "zerocopy",
 ]
@@ -237,6 +238,7 @@ version = "0.0.1"
 dependencies = [
  "abi",
  "buddy_allocator",
+ "cfg-if",
  "heapless",
  "serde",
 ]
@@ -268,10 +270,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
+name = "hbf_lite"
+version = "0.0.1"
+dependencies = [
+ "bitflags",
+]
+
+[[package]]
 name = "hbf_rs"
 version = "0.0.2"
 dependencies = [
  "bitflags",
+ "static_assertions",
 ]
 
 [[package]]

@@ -9,7 +9,9 @@ use userlib::sys_log;
 use userlib::UnwrapLite;
 
 pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageError> {
-    // Ask fixed header
+    // -----------------------------
+    //    Step 1: Fixed Header
+    // -----------------------------
     let mut hbf_header_buff: [u8; FixedHeaderMessage::get_size()] =
         [0; FixedHeaderMessage::get_size()];
     channel_ask(
@@ -40,51 +42,49 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
 
     // Snap header base
     let header_base = hbf.header_base().unwrap_lite(); // Already read, safe to get
+    let checksum_offset = hbf.checksum_offset().unwrap_lite();
     drop(hbf); // Force ourselves not to use this object anymore
 
-    // Start by flushing hbf header on flash
-    // NOTE: we must skip the checksum field, as we will modify the HBF. As last operation, we will write
-    // this field and only then we will validate everything. For now, we leave 0xFFFF_FFFF
-    let checksum_offset = hbf_lite::HBF_CHECKSUM_OFFSET as usize;
-    let original_checksum =
-        u32_from_le_bytes(&hbf_header_buff[checksum_offset..checksum_offset + 4]);
+    let mut validation_checksum: u32 = 0; // Contains the checksum before any relocation is applied, to ensure data is received correctly
+    let mut new_checksum: u32; // Contains the new checksum, computed after such relocations
 
-    let mut validation_checksum: u32 = 0;
-    let mut new_checksum: u32;
-    // Change checksum
-    for i in 0..4usize {
-        hbf_header_buff[checksum_offset + i] = 0x00;
-    }
+    // Start computing the new checksum from the untouched bytes of the fixed header.
     update_checksum(
         &mut validation_checksum,
         &hbf_header_buff[0..hbf_header_buff.len() - 1],
-    ); // TODO: fix this
+    );
 
-    // Change again
-    for i in 0..4usize {
-        hbf_header_buff[checksum_offset + i] = 0xFF;
-    }
-
+    // ------------------------------------------------------------------------------
+    //    Step 2: Flush such fixed header to flash.
+    //            This is needed as we cannot store in SRAM the variable
+    //            header, containing the dependencies needed for the validation.
+    // -------------------------------------------------------------------------------
     let mut curr_pos: u32 = 0;
-
+    // TODO: this step is critical. We cannot force flush now as otherwise we risk problems
+    // due to the write granularity. Still we don't access fields of the main header, so
+    // it's safe.
     deallocate_on_error(
         storage
             .write_stream(
                 allocation.flash_base_address,
                 curr_pos,
                 &hbf_header_buff[0..hbf_header_buff.len() - 1],
+                false  
             )
             .map_err(|_| MessageError::FlashError),
         &mut storage,
         allocation.flash_base_address,
     )?;
-
     curr_pos += hbf_header_buff.len() as u32 - 1;
 
+    // -------------------------------------
+    //    Step 3: Ask for variable header
+    // -------------------------------------
     let mut to_read: usize = hbf_lite::REGION_SIZE * header_base.num_regions() as usize
         + hbf_lite::INTERRUPT_SIZE * header_base.num_interrupts() as usize
         + hbf_lite::RELOC_SIZE * header_base.num_relocations() as usize
-        + hbf_lite::DEPENDENCY_SIZE * header_base.num_dependencies() as usize;
+        + hbf_lite::DEPENDENCY_SIZE * header_base.num_dependencies() as usize
+        + header_base.padding_bytes() as usize;
 
     deallocate_on_error(
         channel_write_single(
@@ -106,13 +106,16 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
             allocation.flash_base_address,
             &mut validation_checksum,
             |_, _| Ok(()),
+            true   // !! -> critical here, as in the next step all the header should be correctly readeable
         ),
         &mut storage,
         allocation.flash_base_address,
     )?;
 
-    // Now, with the whole header intact, let's generate a version of the hbf that is actually
-    // able to read all its data
+    // --------------------------------------------------------------------------------
+    //    Step 4: Now the entire header has been received and it's stored on flash.
+    //            Perform all the validations (i.e. dependencies check).
+    // --------------------------------------------------------------------------------
     let flash_reader = FlashReader::from(allocation.flash_base_address, allocation.flash_size);
 
     sys_log!("Reading HBF from flash");
@@ -131,7 +134,12 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
         allocation.flash_base_address,
     )?;
 
-    // From this point on, the validation and new checksum are different
+    // ------------------------------------------------------------------------
+    //    Step 5: Receive the HBF payload, and apply the needed relocations.
+    // ------------------------------------------------------------------------
+
+    // From this point on, the validation and new checksum are different.
+    // This is because of the relocations applied to the data.
     new_checksum = validation_checksum;
 
     // Now at the same way, read the payload
@@ -187,21 +195,38 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
                 update_checksum(&mut new_checksum, buffer);
                 Ok(())
             },
+            false
         ),
         &mut storage,
         allocation.flash_base_address,
     )?;
 
-    sys_log!("Checksum validation");
+    // -----------------------------------------------------------------
+    //    Step 6: Receive the HBF trailer, and validate total checksum
+    // -----------------------------------------------------------------
+    static_assertions::const_assert_eq!(hbf_lite::HBF_TRAILER_SIZE, 4);
 
-    // Checksum validation
+    let mut hbf_trailer_buff: [u8; 4] = [0x00; 4];
+    sys_log!("Waiting for trailer");
+
+    channel_ask(
+        channel,
+        ComponentUpdateCommand::SendComponentTrailer as u8,
+        &mut hbf_trailer_buff,
+    )?;
+
+    // Read the trailer (raw)
+    let original_checksum = u32::from_le_bytes(hbf_trailer_buff);
+    
+    // Validate checksum and write the new checksum in flash
     let new_checksum_bytes = new_checksum.to_le_bytes();
     if validation_checksum != original_checksum
         || storage
             .write_stream(
                 allocation.flash_base_address,
-                hbf_lite::HBF_CHECKSUM_OFFSET,
+                checksum_offset,
                 &new_checksum_bytes,
+                true    // !!--- important to flush, as later the validation will need the whole hbf stored
             )
             .is_err()
     {
@@ -211,6 +236,10 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
             .unwrap_lite();
         return Err(MessageError::FailedHBFValidation);
     }
+
+    // -----------------------------------------------------------------
+    //    Step 7: Flush write buffer and validate using library
+    // -----------------------------------------------------------------
 
     // Validate the HBF (last one, to ensure the library reads it correctly)
     let hbf_validation = deallocate_on_error(
@@ -257,6 +286,7 @@ fn read_bytes<F>(
     flash_base: u32,
     validation_checksum: &mut u32,
     mut buffer_process: F,
+    flush_after: bool,
 ) -> Result<(), MessageError>
 where
     F: FnMut(&mut [u8], u32) -> Result<(), MessageError>,
@@ -292,7 +322,7 @@ where
 
         // Save stream to flash
         storage
-            .write_stream(flash_base, *curr_pos, &data[0..min_to_read])
+            .write_stream(flash_base, *curr_pos, &data[0..min_to_read], flush_after)
             .map_err(|_| MessageError::FlashError)?;
 
         *curr_pos += pkt.get_raw().len() as u32;

@@ -156,6 +156,7 @@ pub enum ComponentUpdateCommand {
     SendComponentFixedHeader = 0x01,
     SendComponentVariableHeader = 0x02,
     SendComponentPayload = 0x03,
+    SendComponentTrailer = 0x04,
     SendNextFragment = 0xA0,
 }
 

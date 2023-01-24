@@ -206,16 +206,16 @@ mod test {
         assert_eq!(result.rel_entrypoint, 0);
         // .text section
         assert_eq!(result.text_section.address, 0x08000000);
-        assert_eq!(result.text_section.size, 0x004e0);
+        assert_eq!(result.text_section.size, 0x0109c);
         assert_eq!(result.text_section.content.as_slice(), read_test_file_binary("component2/output/image.text").as_slice());
         // .rodata section
         let rodata_section = result.rodata_section.unwrap();
-        assert_eq!(rodata_section.size, 0x00058);
+        assert_eq!(rodata_section.size, 0x00168);
         assert_eq!(rodata_section.content.as_slice(), read_test_file_binary("component2/output/image.rodata").as_slice());
         // .data section
         assert!(result.data_section.is_none());
         // .bss section
-        assert_eq!(result.bss_size, 0);
+        assert_eq!(result.bss_size, 8);
     }
     #[test]
     fn read_example3() {
@@ -225,7 +225,7 @@ mod test {
         assert_eq!(result.rel_entrypoint, 0);
         // .text section
         assert_eq!(result.text_section.address, 0x08000000);
-        assert_eq!(result.text_section.size, 0x00148);
+        assert_eq!(result.text_section.size, 0x00144);
         assert_eq!(result.text_section.content.as_slice(), read_test_file_binary("component3/output/image.text").as_slice());
         // .rodata section
         let rodata_section = result.rodata_section.unwrap();

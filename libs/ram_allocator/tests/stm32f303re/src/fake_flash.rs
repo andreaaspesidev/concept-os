@@ -8,7 +8,6 @@ use flash_allocator::flash::FlashMethods;
 pub struct Flash<
     'b,
     const BLOCK_SIZE: usize,
-    const BLOCK_MAX_LEVEL: u16,
     const ALLOCATOR_SIZE: usize,
 > {
     content: &'b mut [u8],
@@ -19,9 +18,8 @@ pub struct Flash<
 impl<
         'b,
         const BLOCK_SIZE: usize,
-        const BLOCK_MAX_LEVEL: u16,
         const ALLOCATOR_SIZE: usize,
-    > Flash<'b, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE>
+    > Flash<'b, BLOCK_SIZE, ALLOCATOR_SIZE>
 {
     pub fn new(start_addr: u32, page_mapping: &'static [FlashPage], content: &'b mut [u8]) -> Self {
         Self {
@@ -51,10 +49,9 @@ impl<
         'a,
         'b,
         const BLOCK_SIZE: usize,
-        const BLOCK_MAX_LEVEL: u16,
         const ALLOCATOR_SIZE: usize
     > FlashMethods<'a>
-    for Flash<'b, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE>
+    for Flash<'b, BLOCK_SIZE, ALLOCATOR_SIZE>
 {
     fn read(&self, address: u32, buffer: &mut [u8]) -> Result<(),()> {
         let offset = (address - self.start_addr) as usize;

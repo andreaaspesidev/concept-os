@@ -5,7 +5,7 @@ use userlib::{sys_send, TaskId};
 pub fn print(text: &str) {
     // Mock call
     sys_send(
-        TaskId::UNBOUND, 
+        TaskId(4), 
         1, 
         text.as_bytes(), 
         &mut [],

@@ -8,6 +8,7 @@
 
 pub mod flash;
 
+use hbf_lite::{BufferReaderImpl, HbfHeaderBase, HbfHeaderInterrupt, HbfHeaderMain};
 use serde::{Deserialize, Serialize};
 use zerocopy::{AsBytes, FromBytes};
 
@@ -23,7 +24,7 @@ pub const SUPERVISOR_ID: u16 = 0;
 pub const STORAGE_ID: u16 = 4;
 pub const UPDATE_TEMP_ID: u16 = 1023;
 pub const REVERT_UPDATE_TIMEOUT: u64 = 30_000;
-pub const STATE_TRANSFER_REQUESTED_MASK: u32 = 1 << 31; 
+pub const STATE_TRANSFER_REQUESTED_MASK: u32 = 1 << 31;
 
 /// Names a particular incarnation of a task.
 ///
@@ -126,34 +127,67 @@ impl Priority {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct TaskDescriptor {
     block_start_address: u32,
+    block_size: u32,
 }
 
 impl TaskDescriptor {
-    pub fn new(block_start_address: u32) -> Self {
+    pub fn new(block_start_address: u32, block_size: u32) -> Self {
         Self {
             block_start_address: block_start_address,
+            block_size: block_size,
         }
+    }
+    fn get_hbf_base(&self) -> HbfHeaderBase {
+        let raw_block_bytes = unsafe {
+            core::slice::from_raw_parts(
+                (self.block_start_address + 8) as *const u8,
+                self.block_size as usize,
+            )
+        };
+        let block_reader = BufferReaderImpl::from(raw_block_bytes);
+        // Let's read the hbf
+        let hbf = hbf_lite::HbfFile::from_reader(&block_reader).unwrap();
+        hbf.header_base().unwrap()
+    }
+    fn get_hbf_main(&self) -> HbfHeaderMain {
+        let raw_block_bytes = unsafe {
+            core::slice::from_raw_parts(
+                (self.block_start_address + 8) as *const u8,
+                self.block_size as usize,
+            )
+        };
+        let block_reader = BufferReaderImpl::from(raw_block_bytes);
+        // Let's read the hbf
+        let hbf = hbf_lite::HbfFile::from_reader(&block_reader).unwrap();
+        hbf.header_main().unwrap()
+    }
+    fn get_hbf_interrupt_nth(&self, interrupt_num: u16) -> HbfHeaderInterrupt {
+        let raw_block_bytes = unsafe {
+            core::slice::from_raw_parts(
+                (self.block_start_address + 8) as *const u8,
+                self.block_size as usize,
+            )
+        };
+        let block_reader = BufferReaderImpl::from(raw_block_bytes);
+        // Let's read the hbf
+        let hbf = hbf_lite::HbfFile::from_reader(&block_reader).unwrap();
+        hbf.interrupt_nth(interrupt_num).unwrap()
     }
     pub fn get_descriptor_block(&self) -> u32 {
         self.block_start_address
     }
     pub fn component_id(&self) -> u16 {
-        unsafe { u16_from_le_bytes_raw(self.block_start_address + 8 + 0x0A) }
+        self.get_hbf_base().component_id()
     }
     pub fn component_version(&self) -> u32 {
-        unsafe { u32_from_le_bytes_raw(self.block_start_address + 8 + 0x0C) }
+        self.get_hbf_base().component_version()
     }
     pub fn entry_point(&self) -> u32 {
-        unsafe {
-            let hbf_start_addr = self.block_start_address + 8;
-            let main_offset = u16_from_le_bytes_raw(hbf_start_addr + 0x10) as u32;
-            let entry_offset: u32 = u32_from_le_bytes_raw(hbf_start_addr + main_offset + 0x08);
-            let entry_addr = hbf_start_addr + entry_offset;
-            return entry_addr;
-        }
+        let offset = self.get_hbf_main().entry_point_offset();
+        return self.block_start_address + 8 + offset;
     }
     pub fn initial_stack(&self) -> u32 {
         let sram_base = unsafe { u32_from_le_bytes_raw(self.block_start_address) };
@@ -161,35 +195,23 @@ impl TaskDescriptor {
         sram_base + sram_size - 8 // Keep some margin from the top, to avoid alignment problems
     }
     pub fn priority(&self) -> u16 {
-        unsafe {
-            let hbf_start_addr = self.block_start_address + 8;
-            let main_offset = u16_from_le_bytes_raw(hbf_start_addr + 0x10) as u32;
-            let priority: u16 = u16_from_le_bytes_raw(hbf_start_addr + main_offset);
-            return priority;
-        }
+        self.get_hbf_main().component_priority()
     }
     pub fn flags(&self) -> TaskFlags {
         unsafe {
-            let hbf_start_addr = self.block_start_address + 8;
-            let main_offset = u16_from_le_bytes_raw(hbf_start_addr + 0x10) as u32;
-            let flags = u16_from_le_bytes_raw(hbf_start_addr + main_offset + 0x02) as u32;
-            return TaskFlags::from_bits_unchecked(flags);
+            return TaskFlags::from_bits_unchecked(
+                self.get_hbf_main().component_flags().bits() as u32
+            );
         }
     }
     pub fn num_interrupts(&self) -> u16 {
-        unsafe { u16_from_le_bytes_raw(self.block_start_address + 8 + 0x18) }
+        self.get_hbf_base().num_interrupts()
     }
     pub fn interrupt_nth(&self, interrupt_num: u16) -> InterruptDescriptor {
-        unsafe {
-            let hbf_start_addr = self.block_start_address + 8;
-            let interr_offset = u16_from_le_bytes_raw(hbf_start_addr + 0x16) as u32;
-            let interrupt_ptr = hbf_start_addr + interr_offset + interrupt_num as u32 * 8;
-            let irq = u32_from_le_bytes_raw(interrupt_ptr);
-            let mask = u32_from_le_bytes_raw(interrupt_ptr + 4);
-            InterruptDescriptor {
-                irq_num: irq,
-                notification: mask,
-            }
+        let interrupt = self.get_hbf_interrupt_nth(interrupt_num);
+        InterruptDescriptor {
+            irq_num: interrupt.irq_number(),
+            notification: interrupt.notification_mask(),
         }
     }
 }

@@ -1,10 +1,8 @@
 use core::fmt::{Debug, Error, Formatter};
 use core::slice::from_raw_parts;
 
-use crate::header::{
-    HbfHeaderDependencyGen, HbfHeaderDependencyIter, HbfHeaderDependencyWrapper,
-    HBF_CHECKSUM_OFFSET,
-};
+use crate::header::{HbfHeaderDependencyGen, HbfHeaderDependencyIter, HbfHeaderDependencyWrapper};
+use crate::trailer::{HbfTrailerGen, HbfTrailerWrapper, HBF_CHECKSUM_OFFSET};
 use crate::{
     header::{
         HbfHeaderBaseGen, HbfHeaderBaseWrapper, HbfHeaderInterruptGen, HbfHeaderInterruptIter,
@@ -46,10 +44,17 @@ impl<'a> HbfGen<'a> {
         unsafe { &*(self.content().as_ptr() as *const HbfHeaderBaseGen) }
     }
     fn hbf_header_main_raw(&self) -> &HbfHeaderMainGen {
-        let offset = self.header_base().offset_main() as usize;
+        let offset = core::mem::size_of::<HbfHeaderBaseGen>();
         unsafe {
             let main_ptr = self.content().as_ptr().add(offset);
             &*(main_ptr as *const HbfHeaderMainGen)
+        }
+    }
+    fn hbf_trailer_raw(&'a self) -> &HbfTrailerGen {
+        let offset = self.header_base().offset_trailer() as usize;
+        unsafe {
+            let main_ptr = self.content().as_ptr().add(offset);
+            &*(main_ptr as *const HbfTrailerGen)
         }
     }
     fn hbf_header_region_raw(&'a self) -> &'a [HbfHeaderRegionGen] {
@@ -84,8 +89,8 @@ impl<'a> HbfGen<'a> {
             from_raw_parts(rel_ptr as *const HbfHeaderDependencyGen, num)
         }
     }
-    fn hbf_payload_read_only_gen(&self) -> HbfPayloadSectionGen {
-        let offset = core::mem::size_of::<HbfHeaderBaseGen>()
+    fn hbf_payload_offset(&self) -> usize {
+        core::mem::size_of::<HbfHeaderBaseGen>()
             + core::mem::size_of::<HbfHeaderMainGen>()
             + core::mem::size_of::<HbfHeaderRegionGen>()
                 * self.header_base().num_regions() as usize
@@ -94,9 +99,13 @@ impl<'a> HbfGen<'a> {
             + core::mem::size_of::<HbfHeaderRelocationGen>()
                 * self.header_base().num_relocations() as usize
             + core::mem::size_of::<HbfHeaderDependencyGen>()
-                * self.header_base().num_dependencies() as usize;
+                * self.header_base().num_dependencies() as usize
+            + self.header_base().padding_bytes() as usize
+    }
+    fn hbf_payload_read_only_gen(&self) -> HbfPayloadSectionGen {
+        let offset = self.hbf_payload_offset();
         let size = match self.header_main().data_offset() {
-            0 => self.header_base().total_size() - offset as u32,
+            0 => self.header_base().total_size() - core::mem::size_of::<HbfTrailerGen>() as u32 - offset as u32,
             data_offset => data_offset - offset as u32,
         };
         return HbfPayloadSectionGen {
@@ -125,7 +134,7 @@ impl<'a> HbfGen<'a> {
         if offset == 0 {
             return 0;
         } else {
-            return self.header_base().total_size() - offset;
+            return self.header_base().total_size() - core::mem::size_of::<HbfTrailerGen>() as u32 - offset;
         }
     }
 
@@ -135,17 +144,8 @@ impl<'a> HbfGen<'a> {
     }
 
     fn payload_size(&self) -> u32 {
-        let offset = core::mem::size_of::<HbfHeaderBaseGen>()
-            + core::mem::size_of::<HbfHeaderMainGen>()
-            + core::mem::size_of::<HbfHeaderRegionGen>()
-                * self.header_base().num_regions() as usize
-            + core::mem::size_of::<HbfHeaderInterruptGen>()
-                * self.header_base().num_interrupts() as usize
-            + core::mem::size_of::<HbfHeaderRelocationGen>()
-                * self.header_base().num_relocations() as usize
-            + core::mem::size_of::<HbfHeaderDependencyGen>()
-                * self.header_base().num_dependencies() as usize;
-        self.header_base().total_size() - offset as u32
+        let offset = self.hbf_payload_offset();
+        self.header_base().total_size() - core::mem::size_of::<HbfTrailerGen>() as u32 - offset as u32
     }
 
     /*
@@ -195,6 +195,8 @@ impl<'a> HbfGen<'a> {
         let bytes = self.content();
         let mut index: usize = 0;
         let mut checksum: u32 = 0;
+        let chechsum_offset: usize =
+            self.header_base().offset_trailer() as usize + HBF_CHECKSUM_OFFSET;
         loop {
             let mut word: u32 = 0;
             let mut available: usize = 4;
@@ -205,7 +207,7 @@ impl<'a> HbfGen<'a> {
                     break;
                 }
             }
-            if index == HBF_CHECKSUM_OFFSET {
+            if index == chechsum_offset {
                 // Consider the checksum field as zeros
                 word = 0;
             } else {
@@ -219,7 +221,7 @@ impl<'a> HbfGen<'a> {
             checksum ^= word;
             index += available;
         }
-        return self.header_base().checksum() == checksum;
+        return self.trailer().checksum() == checksum;
     }
 }
 
@@ -234,6 +236,14 @@ impl<'a> HbfFile for HbfGen<'a> {
 
     fn header_main(&self) -> crate::header::HbfHeaderMainWrapper {
         HbfHeaderMainWrapper::new(self, self.hbf_header_main_raw())
+    }
+
+    fn trailer(&self) -> crate::trailer::HbfTrailerWrapper {
+        HbfTrailerWrapper::new(self, self.hbf_trailer_raw())
+    }
+
+    fn checksum_offset(&self) -> u32 {
+        self.header_base().offset_trailer() + HBF_CHECKSUM_OFFSET as u32
     }
 
     fn region_nth(&self, index: usize) -> Option<HbfHeaderRegionWrapper> {

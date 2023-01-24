@@ -1,3 +1,5 @@
+#![feature(generic_const_exprs)]
+
 /**
  * The following tests takes as scenarios the examples presented graphically
  * in docs/FlashMemory.md (section Non-Uniform Flash Page Sizes/Swapping/Examples).
@@ -12,11 +14,11 @@ mod tests {
     use abi::flash::BlockType;
 
     use crate::fake_flash::Flash;
-    use crate::flash_allocator::flash::header::BlockHeader;
+    use crate::flash_allocator::flash::header::{self, BlockHeader};
     use crate::flash_allocator::flash::page::FlashPage;
     use crate::flash_allocator::flash::walker::{FlashWalker, FlashWalkerImpl};
     use crate::flash_allocator::flash::{
-        utils, FlashAllocator, FlashAllocatorImpl, FlashBlock, FlashMethods,
+        utils, FlashAllocator, FlashAllocatorImpl, FlashBlock, FlashMethods, self,
     };
     use std::fmt;
 
@@ -44,13 +46,13 @@ mod tests {
 
     /// Fills the flash memory with a known byte (usually the page number)
     fn fill_block_region(flash: &mut [u8], start_addr: usize, block_size: usize, fill_with: u8) {
-        for i in start_addr..(start_addr + block_size - 12) {
+        for i in start_addr..(start_addr + block_size - flash::HEADER_SIZE) {
             flash[i - ALLOCATOR_START_ADDR as usize] = fill_with;
         }
     }
 
     fn check_block_region(flash: &mut [u8], start_addr: usize, block_size: usize, filled_with: u8) {
-        for i in start_addr..(start_addr + block_size - 12) {
+        for i in start_addr..(start_addr + block_size - flash::HEADER_SIZE) {
             if flash[i - ALLOCATOR_START_ADDR as usize] != filled_with {
                 panic!("Broken block");
             }
@@ -68,9 +70,10 @@ mod tests {
 
     /// Force the mark of a block as deallocated, to check recovery procedures
     fn mark_deallocated(flash: &mut [u8], start_addr: usize) {
-        let header_start: usize = start_addr - ALLOCATOR_START_ADDR as usize - 12;
-        flash[header_start + 2] = 0x00;
-        flash[header_start + 3] = 0x00;
+        let header_start: usize = start_addr - ALLOCATOR_START_ADDR as usize - flash::HEADER_SIZE;
+        for i in 0..FLAG_BYTES {
+            flash[header_start + 2 + i] = 0x00;
+        }
     }
 
     /*
@@ -93,7 +96,10 @@ mod tests {
 
     const BLOCK_SIZE: usize = 2048;
     const NUM_BLOCKS: usize = ALLOCATOR_SIZE / BLOCK_SIZE as usize; // 16
-    const NUM_SLOTS: usize = 4 + 1; // clog2(NUM_BLOCKS) + 1
+    const TREE_MAX_LEVEL: usize = 4; // log2(num_blocks) = log2(memory_area / block_size)
+    const NUM_NODES: usize = 2 * NUM_BLOCKS - 1; // 2^(log2(num_blocks) +1) -1 = 2*num_blocks - 1
+
+    const FLAG_BYTES: usize = 8; // 64 bits
 
     const SWAP_PAGE_NUM: u16 = 5;
 
@@ -113,8 +119,9 @@ mod tests {
             ALLOCATOR_START_SCAN_ADDR,
             BLOCK_SIZE,
             NUM_BLOCKS,
-            NUM_SLOTS,
-        >::from_flash(flash, false);
+            TREE_MAX_LEVEL,
+            NUM_NODES
+        >::from_flash(flash, false, false);
         println!(
             "Required memory bytes: {}",
             core::mem::size_of::<
@@ -124,7 +131,8 @@ mod tests {
                     ALLOCATOR_START_SCAN_ADDR,
                     BLOCK_SIZE,
                     NUM_BLOCKS,
-                    NUM_SLOTS,
+                    TREE_MAX_LEVEL,
+                    NUM_NODES
                 >,
             >()
         );
@@ -134,21 +142,20 @@ mod tests {
     /// Perform a simple allocation/deallocation to check the basic functionality works
     #[test]
     fn test_basic_functionality() {
-        const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
+        const BLOCK_MAX_LEVEL: u16 = TREE_MAX_LEVEL as u16;
         let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
-        let mut flash = Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>::new(
-            FLASH_START_ADDR,
+        let mut flash = Flash::<FLASH_START_ADDR, FLASH_END_ADDR, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM, FLAG_BYTES>::new(
             &FLASH_PAGES,
             &mut flash_content,
         );
         let mut flash_allocator = init_allocator(&mut flash);
         // Allocation 1
         let alloc1 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
-        assert_eq!(alloc1.get_size(), BLOCK_SIZE as u32 - 12);
+        assert_eq!(alloc1.get_size(), BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32);
         println!(
-            "Allocated at: {:#010x}, actual size: {}",
+            "Allocated at: {:#010x}, actual usable size: {}",
             alloc1.get_base_address(),
             alloc1.get_size()
         );
@@ -165,21 +172,21 @@ mod tests {
         println!("{:?}", &Fmt(|f| flash_allocator_rec.dump(f)));
         // Allocate 2
         let alloc2 = flash_allocator_rec
-            .allocate(3 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(3 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
-        assert_eq!(alloc2.get_size(), 4 * BLOCK_SIZE as u32 - 12);
+        assert_eq!(alloc2.get_size(), 4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32);
         println!(
-            "Allocated at: {:#010x}, actual size: {}",
+            "Allocated at: {:#010x}, actual usable size: {}",
             alloc2.get_base_address(),
             alloc2.get_size()
         );
         // Allocate 3
         let alloc3 = flash_allocator_rec
-            .allocate(4 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
-        assert_eq!(alloc3.get_size(), 4 * BLOCK_SIZE as u32 - 12);
+        assert_eq!(alloc3.get_size(), 4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32);
         println!(
-            "Allocated at: {:#010x}, actual size: {}",
+            "Allocated at: {:#010x}, actual usable size: {}",
             alloc3.get_base_address(),
             alloc3.get_size()
         );
@@ -213,15 +220,14 @@ mod tests {
 
     #[test]
     fn test_basic_functionality_start_end() {
-        const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
+        const BLOCK_MAX_LEVEL: u16 = TREE_MAX_LEVEL as u16;
         let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
         let mut shadow_copy: &mut [u8];
         unsafe {
             let ptr = flash_content.as_mut_ptr();
             shadow_copy = core::slice::from_raw_parts_mut(ptr, FLASH_SIZE);
         }
-        let mut flash = Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>::new(
-            FLASH_START_ADDR,
+        let mut flash = Flash::<FLASH_START_ADDR, FLASH_END_ADDR, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM, FLAG_BYTES>::new(
             &FLASH_PAGES,
             &mut flash_content,
         );
@@ -232,8 +238,9 @@ mod tests {
             SCAN_START,
             BLOCK_SIZE,
             NUM_BLOCKS,
-            NUM_SLOTS,
-        >::from_flash(&mut flash, false);
+            TREE_MAX_LEVEL,
+            NUM_NODES
+        >::from_flash(&mut flash, false, false);
         // Safely color the prev. space
         fill_block_region(
             &mut shadow_copy,
@@ -244,11 +251,11 @@ mod tests {
         println!("{:?}", &Fmt(|f| flash_allocator.dump(f)));
         // Allocation 1
         let alloc1 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
-        assert_eq!(alloc1.get_size(), BLOCK_SIZE as u32 - 12);
+        assert_eq!(alloc1.get_size(), BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32);
         println!(
-            "Allocated at: {:#010x}, actual size: {}",
+            "Allocated at: {:#010x}, actual usable size: {}",
             alloc1.get_base_address(),
             alloc1.get_size()
         );
@@ -274,11 +281,11 @@ mod tests {
         );
         // Allocate 2
         let alloc2 = flash_allocator
-            .allocate(3 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(3 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
-        assert_eq!(alloc2.get_size(), 4 * BLOCK_SIZE as u32 - 12);
+        assert_eq!(alloc2.get_size(), 4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32);
         println!(
-            "Allocated at: {:#010x}, actual size: {}",
+            "Allocated at: {:#010x}, actual usable size: {}",
             alloc2.get_base_address(),
             alloc2.get_size()
         );
@@ -291,11 +298,11 @@ mod tests {
         );
         // Allocate 3
         let alloc3 = flash_allocator
-            .allocate(4 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
-        assert_eq!(alloc3.get_size(), 4 * BLOCK_SIZE as u32 - 12);
+        assert_eq!(alloc3.get_size(), 4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32);
         println!(
-            "Allocated at: {:#010x}, actual size: {}",
+            "Allocated at: {:#010x}, actual usable size: {}",
             alloc3.get_base_address(),
             alloc3.get_size()
         );
@@ -351,90 +358,78 @@ mod tests {
 
     #[test]
     fn test_block_attributes() {
-        const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
+        const BLOCK_MAX_LEVEL: u16 = TREE_MAX_LEVEL as u16;
         let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
-        let mut flash = Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>::new(
-            FLASH_START_ADDR,
+        let mut flash = Flash::<FLASH_START_ADDR, FLASH_END_ADDR, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM, FLAG_BYTES>::new(
             &FLASH_PAGES,
             &mut flash_content,
         );
         let mut flash_allocator = init_allocator(&mut flash);
         // Allocation 1
         let alloc1 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::COMPONENT)
             .unwrap();
-        assert_eq!(alloc1.get_size(), BLOCK_SIZE as u32 - 12);
-        assert_eq!(alloc1.get_type(), BlockType::NONE);
+        assert_eq!(alloc1.get_size(), BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32 - 8);
+        assert_eq!(alloc1.get_type(), BlockType::COMPONENT);
         assert!(!alloc1.is_finalized());
         // Allocation 2
         let alloc1 = flash_allocator
-            .allocate(3 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(3 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
-        assert_eq!(alloc1.get_size(), 4 * BLOCK_SIZE as u32 - 12);
+        assert_eq!(alloc1.get_size(), 4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32);
         assert_eq!(alloc1.get_type(), BlockType::NONE);
         assert!(!alloc1.is_finalized());
     }
 
     #[test]
     fn test_block_refresh() {
-        const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
+        const BLOCK_MAX_LEVEL: u16 = TREE_MAX_LEVEL as u16;
         let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
-        let mut flash = Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>::new(
-            FLASH_START_ADDR,
+        let mut flash = Flash::<FLASH_START_ADDR, FLASH_END_ADDR, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM, FLAG_BYTES>::new(
             &FLASH_PAGES,
             &mut flash_content,
         );
         let mut flash_allocator = init_allocator(&mut flash);
         // Allocation 1
         let mut block1 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
-        assert_eq!(block1.get_size(), BLOCK_SIZE as u32 - 12);
+        assert_eq!(block1.get_size(), BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32);
         assert_eq!(block1.get_type(), BlockType::NONE);
-        assert!(!block1.is_finalized());
-        // Mark as component
-        drop(flash_allocator);
-        utils::mark_block::<FLASH_START_ADDR, NUM_SLOTS>(&mut flash, block1, BlockType::COMPONENT)
-            .unwrap();
-        let flash_allocator1 = init_allocator(&mut flash);
-        assert_eq!(block1.get_type(), BlockType::NONE);
-        flash_allocator1.refresh(&mut block1);
-        assert_eq!(block1.get_type(), BlockType::COMPONENT);
         assert!(!block1.is_finalized());
         // Finalize component
-        drop(flash_allocator1);
-        utils::finalize_block::<FLASH_START_ADDR, NUM_SLOTS>(&mut flash, block1).unwrap();
-        let flash_allocator2 = init_allocator(&mut flash);
-        flash_allocator2.refresh(&mut block1);
-        assert_eq!(block1.get_type(), BlockType::COMPONENT);
+        drop(flash_allocator);
+        utils::finalize_block::<FLASH_START_ADDR, TREE_MAX_LEVEL>(&mut flash, block1).unwrap();
+        let flash_allocator1 = init_allocator(&mut flash);
+        flash_allocator1.refresh(&mut block1);
+        assert_eq!(block1.get_type(), BlockType::NONE);
         assert!(block1.is_finalized());
     }
 
     #[test]
     fn test_block_iterator() {
-        const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
+        const BLOCK_MAX_LEVEL: u16 = TREE_MAX_LEVEL as u16;
         let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
-        let mut flash = Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>::new(
-            FLASH_START_ADDR,
+        let mut flash = Flash::<FLASH_START_ADDR, FLASH_END_ADDR, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM, FLAG_BYTES>::new(
             &FLASH_PAGES,
             &mut flash_content,
         );
         let mut flash_allocator = init_allocator(&mut flash);
         // Allocation 1
         let block1 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         // Allocation 2
         let block2 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         // Allocation 3
         let block3 = flash_allocator
-            .allocate(3 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(3 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         // Allocation 4
         let block4 = flash_allocator
-            .allocate(4 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         // Deallocate block 2
         flash_allocator
@@ -446,8 +441,7 @@ mod tests {
             ALLOCATOR_START_ADDR,
             ALLOCATOR_END_ADDR,
             ALLOCATOR_START_SCAN_ADDR,
-            NUM_SLOTS,
-            BLOCK_SIZE,
+            TREE_MAX_LEVEL
         >::new(&mut flash);
         let b1 = iterator.next();
         assert!(b1.is_some());
@@ -476,15 +470,14 @@ mod tests {
     #[test]
     fn test_deallocate_block1() {
         println!("\n====================== Example 1 ======================\n");
-        const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
+        const BLOCK_MAX_LEVEL: u16 = TREE_MAX_LEVEL as u16;
         let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
         let mut shadow_copy: &mut [u8];
         unsafe {
             let ptr = flash_content.as_mut_ptr();
             shadow_copy = core::slice::from_raw_parts_mut(ptr, FLASH_SIZE);
         }
-        let mut flash = Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>::new(
-            FLASH_START_ADDR,
+        let mut flash = Flash::<FLASH_START_ADDR, FLASH_END_ADDR, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM, FLAG_BYTES>::new(
             &FLASH_PAGES,
             &mut flash_content,
         );
@@ -492,7 +485,7 @@ mod tests {
         let mut flash_allocator = init_allocator(&mut flash);
         // Construct initial layout
         let block1 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -502,7 +495,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block1, 0x01);
         let alloc2 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -512,7 +505,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &alloc2, 0x02);
         let block2 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -522,7 +515,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block2, 0x03);
         let alloc4 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -532,7 +525,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &alloc4, 0x04);
         let block3 = flash_allocator
-            .allocate(4 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -542,7 +535,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block3, 0x05);
         let block4 = flash_allocator
-            .allocate(8 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(8 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -592,15 +585,14 @@ mod tests {
     #[test]
     fn test_deallocate_block2() {
         println!("\n====================== Example 2 ======================\n");
-        const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
+        const BLOCK_MAX_LEVEL: u16 = TREE_MAX_LEVEL as u16;
         let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
         let mut shadow_copy: &mut [u8];
         unsafe {
             let ptr = flash_content.as_mut_ptr();
             shadow_copy = core::slice::from_raw_parts_mut(ptr, FLASH_SIZE);
         }
-        let mut flash = Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>::new(
-            FLASH_START_ADDR,
+        let mut flash = Flash::<FLASH_START_ADDR, FLASH_END_ADDR, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM, FLAG_BYTES>::new(
             &FLASH_PAGES,
             &mut flash_content,
         );
@@ -608,7 +600,7 @@ mod tests {
         let mut flash_allocator = init_allocator(&mut flash);
         // Construct initial layout
         let block1 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -618,7 +610,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block1, 0x01);
         let alloc2 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -628,7 +620,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &alloc2, 0x02);
         let block2 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -638,7 +630,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block2, 0x03);
         let alloc4 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -648,7 +640,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &alloc4, 0x04);
         let block3 = flash_allocator
-            .allocate(4 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -658,7 +650,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block3, 0x05);
         let block4 = flash_allocator
-            .allocate(8 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(8 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -708,15 +700,14 @@ mod tests {
     #[test]
     fn test_deallocate_block3() {
         println!("\n====================== Example 3 ======================\n");
-        const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
+        const BLOCK_MAX_LEVEL: u16 = TREE_MAX_LEVEL as u16;
         let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
         let mut shadow_copy: &mut [u8];
         unsafe {
             let ptr = flash_content.as_mut_ptr();
             shadow_copy = core::slice::from_raw_parts_mut(ptr, FLASH_SIZE);
         }
-        let mut flash = Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>::new(
-            FLASH_START_ADDR,
+        let mut flash = Flash::<FLASH_START_ADDR, FLASH_END_ADDR, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM, FLAG_BYTES>::new(
             &FLASH_PAGES,
             &mut flash_content,
         );
@@ -724,7 +715,7 @@ mod tests {
         let mut flash_allocator = init_allocator(&mut flash);
         // Construct initial layout
         let block1 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -734,7 +725,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block1, 0x01);
         let alloc2 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -744,7 +735,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &alloc2, 0x02);
         let block2 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -754,7 +745,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block2, 0x03);
         let alloc4 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -764,7 +755,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &alloc4, 0x04);
         let block3 = flash_allocator
-            .allocate(4 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -774,7 +765,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block3, 0x05);
         let block4 = flash_allocator
-            .allocate(8 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(8 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -824,15 +815,14 @@ mod tests {
     #[test]
     fn test_deallocate_block4() {
         println!("\n====================== Example 4 ======================\n");
-        const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
+        const BLOCK_MAX_LEVEL: u16 = TREE_MAX_LEVEL as u16;
         let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
         let mut shadow_copy: &mut [u8];
         unsafe {
             let ptr = flash_content.as_mut_ptr();
             shadow_copy = core::slice::from_raw_parts_mut(ptr, FLASH_SIZE);
         }
-        let mut flash = Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>::new(
-            FLASH_START_ADDR,
+        let mut flash = Flash::<FLASH_START_ADDR, FLASH_END_ADDR, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM, FLAG_BYTES>::new(
             &FLASH_PAGES,
             &mut flash_content,
         );
@@ -840,7 +830,7 @@ mod tests {
         let mut flash_allocator = init_allocator(&mut flash);
         // Construct initial layout
         let block1 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -850,7 +840,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block1, 0x01);
         let alloc2 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -860,7 +850,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &alloc2, 0x02);
         let block2 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -870,7 +860,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block2, 0x03);
         let alloc4 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -880,7 +870,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &alloc4, 0x04);
         let block3 = flash_allocator
-            .allocate(4 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -890,7 +880,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block3, 0x05);
         let block4 = flash_allocator
-            .allocate(8 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(8 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -939,15 +929,14 @@ mod tests {
     #[test]
     fn test_deallocate_all() {
         println!("\n====================== Example All ======================\n");
-        const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
+        const BLOCK_MAX_LEVEL: u16 = TREE_MAX_LEVEL as u16;
         let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
         let mut shadow_copy: &mut [u8];
         unsafe {
             let ptr = flash_content.as_mut_ptr();
             shadow_copy = core::slice::from_raw_parts_mut(ptr, FLASH_SIZE);
         }
-        let mut flash = Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>::new(
-            FLASH_START_ADDR,
+        let mut flash = Flash::<FLASH_START_ADDR, FLASH_END_ADDR, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM, FLAG_BYTES>::new(
             &FLASH_PAGES,
             &mut flash_content,
         );
@@ -955,7 +944,7 @@ mod tests {
         let mut flash_allocator = init_allocator(&mut flash);
         // Construct initial layout
         let block1 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -965,7 +954,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block1, 0x01);
         let alloc2 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -975,7 +964,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &alloc2, 0x02);
         let block2 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -985,7 +974,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block2, 0x03);
         let alloc4 = flash_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -995,7 +984,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &alloc4, 0x04);
         let block3 = flash_allocator
-            .allocate(4 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -1005,7 +994,7 @@ mod tests {
         );
         check_block(&mut shadow_copy, &block3, 0x05);
         let block4 = flash_allocator
-            .allocate(8 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(8 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -1052,15 +1041,14 @@ mod tests {
     /// Tests whether a block still not allocated is safely removed upon first scan
     #[test]
     fn test_recovery_remove_unallocated_on_start() {
-        const BLOCK_MAX_LEVEL: u16 = (NUM_SLOTS - 1) as u16;
+        const BLOCK_MAX_LEVEL: u16 = TREE_MAX_LEVEL as u16;
         let mut flash_content: [u8; FLASH_SIZE] = [0xFF; FLASH_SIZE];
         let mut shadow_copy: &mut [u8];
         unsafe {
             let ptr = flash_content.as_mut_ptr();
             shadow_copy = core::slice::from_raw_parts_mut(ptr, FLASH_SIZE);
         }
-        let mut flash = Flash::<BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM>::new(
-            FLASH_START_ADDR,
+        let mut flash = Flash::<FLASH_START_ADDR, FLASH_END_ADDR, BLOCK_SIZE, BLOCK_MAX_LEVEL, ALLOCATOR_SIZE, SWAP_PAGE_NUM, FLAG_BYTES>::new(
             &FLASH_PAGES,
             &mut flash_content,
         );
@@ -1068,7 +1056,7 @@ mod tests {
         // Create the initial layout
         let mut initial_allocator = init_allocator(&mut flash);
         let block1 = initial_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -1077,7 +1065,7 @@ mod tests {
             0x01,
         );
         let alloc2 = initial_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -1086,7 +1074,7 @@ mod tests {
             0x02,
         );
         let block2 = initial_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -1095,7 +1083,7 @@ mod tests {
             0x03,
         );
         let alloc4 = initial_allocator
-            .allocate(BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -1104,7 +1092,7 @@ mod tests {
             0x04,
         );
         let block3 = initial_allocator
-            .allocate(4 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(4 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,
@@ -1113,7 +1101,7 @@ mod tests {
             0x05,
         );
         let block4 = initial_allocator
-            .allocate(8 * BLOCK_SIZE as u32 - BlockHeader::HEADER_SIZE as u32)
+            .allocate(8 * BLOCK_SIZE as u32 - flash::HEADER_SIZE as u32, BlockType::NONE)
             .unwrap();
         fill_block_region(
             &mut shadow_copy,

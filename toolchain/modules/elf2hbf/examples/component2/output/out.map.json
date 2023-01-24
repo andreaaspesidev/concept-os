@@ -1,0 +1,402 @@
+{
+ "text": {
+  "vma": "8000000",
+  "lma": "8000000",
+  "size": 4252,
+  "align": 2,
+  "objects": [
+   {
+    "vma": "8000000",
+    "lma": "8000000",
+    "size": 14,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/userlib-0506a3ab1b914bba.o",
+    "name": ".text.start"
+   },
+   {
+    "vma": "800000e",
+    "lma": "800000e",
+    "size": 50,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".text.print"
+   },
+   {
+    "vma": "8000040",
+    "lma": "8000040",
+    "size": 10,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".text.main"
+   },
+   {
+    "vma": "800018c",
+    "lma": "800018c",
+    "size": 138,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".text._ZN10component214frob_it_static17h1223580fb40151bbE"
+   },
+   {
+    "vma": "8000216",
+    "lma": "8000216",
+    "size": 144,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".text._ZN10component214frob_it_static17h94599052a0401ea9E"
+   },
+   {
+    "vma": "80002a6",
+    "lma": "80002a6",
+    "size": 12,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".text._ZN10component215frob_it_dynamic17h22211adbaf86d08aE"
+   },
+   {
+    "vma": "80002b2",
+    "lma": "80002b2",
+    "size": 418,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".text.example12"
+   },
+   {
+    "vma": "80005a4",
+    "lma": "80005a4",
+    "size": 136,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/cortex_m_semihosting-2ef2dffcc1cb1078.o",
+    "name": ".text._ZN20cortex_m_semihosting6export11hstdout_fmt17hfcbeaeddd8276f2eE"
+   },
+   {
+    "vma": "800062c",
+    "lma": "800062c",
+    "size": 2,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/bare_metal-b5876021f594561c.o",
+    "name": ".text._ZN10bare_metal15CriticalSection3new17h66b3e307384ac6b0E"
+   },
+   {
+    "vma": "8000630",
+    "lma": "8000630",
+    "size": 26,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/userlib-0506a3ab1b914bba.o",
+    "name": ".text._ZN7userlib13sys_send_stub17h2444658aabf553a4E"
+   },
+   {
+    "vma": "800064a",
+    "lma": "800064a",
+    "size": 4,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/core-d08984cea9757d3c.o",
+    "name": ".text._ZN4core3ops8function6FnOnce9call_once17hf29a6adbaf16d366E"
+   },
+   {
+    "vma": "800064e",
+    "lma": "800064e",
+    "size": 408,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/core-d08984cea9757d3c.o",
+    "name": ".text._ZN4core3fmt5write17h19a390c2d0bed8bbE"
+   },
+   {
+    "vma": "80007e6",
+    "lma": "80007e6",
+    "size": 722,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/core-d08984cea9757d3c.o",
+    "name": ".text._ZN4core3fmt9Formatter12pad_integral17h5f473887ffb34b0fE"
+   },
+   {
+    "vma": "8000ab8",
+    "lma": "8000ab8",
+    "size": 70,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/core-d08984cea9757d3c.o",
+    "name": ".text._ZN4core3fmt9Formatter12pad_integral12write_prefix17h9893618a3bfbcabbE"
+   },
+   {
+    "vma": "8000afe",
+    "lma": "8000afe",
+    "size": 794,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/core-d08984cea9757d3c.o",
+    "name": ".text._ZN4core3str5count14do_count_chars17h44204b1f6175f776E"
+   },
+   {
+    "vma": "8001028",
+    "lma": "8001028",
+    "size": 110,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/compiler_builtins-e54861b68749d604.o",
+    "name": ".text._ZN17compiler_builtins3mem6memcmp17h2c4c3af3abcfeac7E"
+   },
+   {
+    "vma": "8001096",
+    "lma": "8001096",
+    "size": 4,
+    "align": 2,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/compiler_builtins-e54861b68749d604.o",
+    "name": ".text..L__unnamed_1"
+   },
+   {
+    "vma": "800109a",
+    "lma": "800109a",
+    "size": 2,
+    "align": 1,
+    "obj_file": null,
+    "name": null
+   }
+  ]
+ },
+ "rodata": {
+  "vma": "800109c",
+  "lma": "800109c",
+  "size": 360,
+  "align": 4,
+  "objects": [
+   {
+    "vma": "800109c",
+    "lma": "800109c",
+    "size": 0,
+    "align": 4,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".rodata..L__unnamed_1"
+   },
+   {
+    "vma": "800109c",
+    "lma": "800109c",
+    "size": 10,
+    "align": 1,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".rodata..L__unnamed_14"
+   },
+   {
+    "vma": "80010a6",
+    "lma": "80010a6",
+    "size": 1,
+    "align": 1,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".rodata..L__unnamed_15"
+   },
+   {
+    "vma": "80010a8",
+    "lma": "80010a8",
+    "size": 16,
+    "align": 4,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".rodata..L__unnamed_2"
+   },
+   {
+    "vma": "80010b8",
+    "lma": "80010b8",
+    "size": 10,
+    "align": 1,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".rodata..L__unnamed_3"
+   },
+   {
+    "vma": "80010c2",
+    "lma": "80010c2",
+    "size": 10,
+    "align": 1,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".rodata..L__unnamed_7"
+   },
+   {
+    "vma": "80010cc",
+    "lma": "80010cc",
+    "size": 8,
+    "align": 1,
+    "obj_file": null,
+    "name": null
+   },
+   {
+    "vma": "80010d4",
+    "lma": "80010d4",
+    "size": 10,
+    "align": 1,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".rodata..L__unnamed_16"
+   },
+   {
+    "vma": "80010e0",
+    "lma": "80010e0",
+    "size": 16,
+    "align": 4,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".rodata..L__unnamed_4"
+   },
+   {
+    "vma": "80010f0",
+    "lma": "80010f0",
+    "size": 10,
+    "align": 1,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".rodata..L__unnamed_5"
+   },
+   {
+    "vma": "80010fa",
+    "lma": "80010fa",
+    "size": 10,
+    "align": 1,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".rodata..L__unnamed_9"
+   },
+   {
+    "vma": "8001104",
+    "lma": "8001104",
+    "size": 9,
+    "align": 1,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/component2-e08b22f09ce95c8c.o",
+    "name": ".rodata..L__unnamed_8"
+   },
+   {
+    "vma": "8001110",
+    "lma": "8001110",
+    "size": 20,
+    "align": 4,
+    "obj_file": null,
+    "name": null
+   },
+   {
+    "vma": "8001124",
+    "lma": "8001124",
+    "size": 24,
+    "align": 4,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/cortex_m_semihosting-2ef2dffcc1cb1078.o",
+    "name": ".rodata..L__unnamed_1"
+   },
+   {
+    "vma": "800113c",
+    "lma": "800113c",
+    "size": 0,
+    "align": 4,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/core-d08984cea9757d3c.o",
+    "name": ".rodata..L__unnamed_13"
+   },
+   {
+    "vma": "800113c",
+    "lma": "800113c",
+    "size": 200,
+    "align": 1,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/core-d08984cea9757d3c.o",
+    "name": ".rodata..L__unnamed_81"
+   },
+   {
+    "vma": "8001204",
+    "lma": "8001204",
+    "size": 0,
+    "align": 1,
+    "obj_file": null,
+    "name": null
+   }
+  ]
+ },
+ "data": {
+  "vma": "20000000",
+  "lma": "20000000",
+  "size": 0,
+  "align": 4,
+  "objects": [
+   {
+    "vma": "20000000",
+    "lma": "20000000",
+    "size": 0,
+    "align": 1,
+    "obj_file": null,
+    "name": null
+   },
+   {
+    "vma": "20000000",
+    "lma": "20000000",
+    "size": 0,
+    "align": 1,
+    "obj_file": null,
+    "name": null
+   }
+  ]
+ },
+ "bss": {
+  "vma": "20000000",
+  "lma": "20000000",
+  "size": 8,
+  "align": 4,
+  "objects": [
+   {
+    "vma": "20000000",
+    "lma": "20000000",
+    "size": 0,
+    "align": 1,
+    "obj_file": null,
+    "name": null
+   },
+   {
+    "vma": "20000000",
+    "lma": "20000000",
+    "size": 8,
+    "align": 4,
+    "obj_file": "/home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component2/target/thumbv7em-none-eabihf/release/deps/cortex_m_semihosting-2ef2dffcc1cb1078.o",
+    "name": ".bss._ZN20cortex_m_semihosting6export7HSTDOUT17ha11d3efe0335e6c5E"
+   },
+   {
+    "vma": "20000008",
+    "lma": "20000008",
+    "size": 0,
+    "align": 1,
+    "obj_file": null,
+    "name": null
+   }
+  ]
+ },
+ "symtab": {
+  "vma": "0",
+  "lma": "0",
+  "size": 1392,
+  "align": 4,
+  "objects": [
+   {
+    "vma": "0",
+    "lma": "0",
+    "size": 1392,
+    "align": 4,
+    "obj_file": null,
+    "name": null
+   }
+  ]
+ },
+ "shstrtab": {
+  "vma": "0",
+  "lma": "0",
+  "size": 52,
+  "align": 1,
+  "objects": [
+   {
+    "vma": "0",
+    "lma": "0",
+    "size": 52,
+    "align": 1,
+    "obj_file": null,
+    "name": null
+   }
+  ]
+ },
+ "strtab": {
+  "vma": "0",
+  "lma": "0",
+  "size": 2545,
+  "align": 1,
+  "objects": [
+   {
+    "vma": "0",
+    "lma": "0",
+    "size": 2545,
+    "align": 1,
+    "obj_file": null,
+    "name": null
+   }
+  ]
+ }
+}

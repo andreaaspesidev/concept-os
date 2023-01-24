@@ -146,6 +146,7 @@ version = "0.0.1"
 dependencies = [
  "abi",
  "buddy_allocator",
+ "cfg-if 1.0.0",
  "heapless",
  "serde",
 ]

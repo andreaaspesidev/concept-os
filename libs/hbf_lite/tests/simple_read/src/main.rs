@@ -36,12 +36,17 @@ fn open_file(file_path: PathBuf) -> Result<(), ()> {
             hbf.dependency_nth(dependency_num).unwrap()
         );
     }
+    // padding
+    println!("padding: {:?}", hbf.header_base().unwrap().padding_bytes());
     // .text + .rodata
     println!(".text + .rodata: {:?}", hbf.get_readonly_payload().unwrap());
     // .data
     println!(".data: {:?}", hbf.get_data_payload());
     // .bss
     println!(".bss size: {:?}", hbf.get_bss_payload());
+
+    // trailer
+    println!("trailer: {:?}", hbf.trailer());
 
     Ok(())
 }

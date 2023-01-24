@@ -11,6 +11,8 @@
 use heapless::String;
 extern crate userlib;
 
+mod print_utils;
+
 #[export_name = "main"]
 fn main() -> ! {
     loop {
@@ -28,6 +30,8 @@ pub struct Foo {
 
 impl Frobber for Foo {
     fn frob(&self, add: u32) -> String<50> {
+        cortex_m_semihosting::hprintln!("Foo.var1: {}", self.var1);
+        print_utils::print("[Foo.frob]");
         if self.var1 + add == 10 {
             return String::from("[Foo.10]");
         } else {
@@ -42,6 +46,8 @@ pub struct Bar {
 
 impl Frobber for Bar {
     fn frob(&self, add: u32) -> String<50> {
+        cortex_m_semihosting::hprintln!("Bar.var2: {}", self.var2);
+        print_utils::print("[Bar.frob]");
         if self.var2 + add as i32 == -10 {
             return String::from("[Bar.-10]");
         } else {

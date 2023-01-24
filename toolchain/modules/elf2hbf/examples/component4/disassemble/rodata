@@ -1,0 +1,6 @@
+
+output/image.elf:     file format elf32-littlearm
+
+Contents of section .rodata:
+ 80000d8 54657374 20537472 696e6720 31546573  Test String 1Tes
+ 80000e8 74205374 72696e67 20320000           t String 2..    

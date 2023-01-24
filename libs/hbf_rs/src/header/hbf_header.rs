@@ -10,7 +10,7 @@ pub struct HbfHeaderBaseGen {
     total_size: u32,          // 6
     component_id: u16,        // 10
     component_version: u32,   // 12
-    main_offset: u16,         // 16
+    padding_bytes: u16,       // 16
     region_offset: u16,       // 18
     region_count: u16,        // 20
     interrupt_offset: u16,    // 22
@@ -19,7 +19,7 @@ pub struct HbfHeaderBaseGen {
     relocation_count: u32,    // 28
     dependencies_offset: u16, // 32
     dependencies_count: u16,  // 34
-    checksum: u32,            // 36
+    trailer_offset: u32,      // 36
 }
 
 impl<'a> HbfHeaderBase<'a> for HbfHeaderBaseGen {
@@ -41,8 +41,8 @@ impl<'a> HbfHeaderBase<'a> for HbfHeaderBaseGen {
         unsafe { p.read_unaligned() }
     }
 
-    fn offset_main(&self) -> u16 {
-        let p = core::ptr::addr_of!(self.main_offset);
+    fn padding_bytes(&self) -> u16 {
+        let p = core::ptr::addr_of!(self.padding_bytes);
         unsafe { p.read_unaligned() }
     }
 
@@ -82,8 +82,8 @@ impl<'a> HbfHeaderBase<'a> for HbfHeaderBaseGen {
         unsafe { p.read_unaligned() }
     }
 
-    fn checksum(&self) -> u32 {
-        let p = core::ptr::addr_of!(self.checksum);
+    fn offset_trailer(&self) -> u32 {
+        let p = core::ptr::addr_of!(self.trailer_offset);
         unsafe { p.read_unaligned() }
     }
 

@@ -13,13 +13,12 @@ cfg_if::cfg_if! {
 }
 
 use flash::FlashInterface;
-use flash_allocator::flash::{header, walker::FlashWalkerImpl, FlashAllocatorImpl, FlashMethods};
+use flash_allocator::flash::{walker::FlashWalkerImpl, FlashAllocatorImpl, FlashMethods};
 use ram_allocator::{AllocatorError, RAMAllocator, RAMAllocatorImpl};
 use storage_api::{
-    AllocateComponentRequest, AllocateComponentResponse, AllocateGenericRequest,
-    AllocateGenericResponse, DeallocateBlockRequest, FinalizeBlockRequest, GetNthBlockRequest,
-    GetNthBlockResponse, Operation, ReadStreamRequest, ReportStatusRequest, ReportStatusResponse,
-    StorageError, WriteStreamRequest,
+    AllocateComponentRequest, AllocateComponentResponse, DeallocateBlockRequest,
+    FinalizeBlockRequest, GetNthBlockRequest, GetNthBlockResponse, Operation, ReadStreamRequest,
+    ReportStatusRequest, ReportStatusResponse, StorageError, WriteStreamRequest,
 };
 use userlib::{flash::BlockType, hl::Borrow, *};
 
@@ -40,7 +39,8 @@ fn main() -> ! {
                     .fixed::<AllocateComponentRequest, AllocateComponentResponse>()
                     .ok_or(StorageError::BadArgument)?;
                 // Allocate Flash segment
-                let (flash_base_addr, flash_size) = flash_allocate(msg.flash_size)?;
+                let (flash_base_addr, flash_size) =
+                    flash_allocate(msg.flash_size, BlockType::COMPONENT)?;
                 // Allocate RAM (+ mark as component)
                 let (ram_base_addr, ram_size) = ram_allocate(msg.ram_size, flash_base_addr)?;
                 // Respond with data
@@ -49,20 +49,6 @@ fn main() -> ! {
                     flash_size: flash_size,
                     ram_base_address: ram_base_addr,
                     ram_size: ram_size,
-                });
-                Ok(())
-            }
-            Operation::AllocateGeneric => {
-                // Parse message
-                let (msg, caller) = msg
-                    .fixed::<AllocateGenericRequest, AllocateGenericResponse>()
-                    .ok_or(StorageError::BadArgument)?;
-                // Allocate Flash segment
-                let (flash_base_addr, flash_size) = flash_allocate(msg.flash_size)?;
-                // Respond with data
-                caller.reply(AllocateGenericResponse {
-                    flash_base_address: flash_base_addr,
-                    flash_size: flash_size,
                 });
                 Ok(())
             }
@@ -91,7 +77,7 @@ fn main() -> ! {
                     return Err(StorageError::BadArgument);
                 }
                 // Perform the write
-                flash_write_stream(msg.block_base_address, msg.offset, &borrow, info.len)?;
+                flash_write_stream(msg.block_base_address, msg.offset, &borrow, info.len, msg.flush_after > 0)?;
                 // Respond okay
                 caller.reply(());
                 Ok(())
@@ -155,7 +141,7 @@ fn main() -> ! {
 
     // Incoming message buffer
     // Must be as big as the biggest structure of the request
-    // In this case at least 2*4 = 8 bytes
+    // In this case at least 3*4 = 12 bytes
     let mut buffer: [u8; 12] = [0; 12];
 
     // Main loop
@@ -188,8 +174,9 @@ fn analyze_storage() {
         FLASH_ALLOCATOR_START_SCAN_ADDR,
         FLASH_BLOCK_SIZE,
         FLASH_NUM_BLOCKS,
-        FLASH_NUM_SLOTS,
-    >::analyze_storage(&mut flash);
+        FLASH_TREE_MAX_LEVEL,
+        FLASH_NUM_NODES,
+    >::analyze_storage(&mut flash, true);
 }
 
 fn generate_status() -> Result<ReportStatusResponse, StorageError> {
@@ -210,13 +197,12 @@ fn generate_status() -> Result<ReportStatusResponse, StorageError> {
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
+        FLASH_TREE_MAX_LEVEL,
     >::new(&mut flash);
     // Iterate on each block
     for b in walker {
         response.blocks += 1;
-        response.flash_used += b.get_size() + (header::BlockHeader::HEADER_SIZE as u32);
+        response.flash_used += b.get_size() + (flash_allocator::flash::HEADER_SIZE as u32);
         if !b.is_finalized() {
             response.dirty_blocks += 1;
         }
@@ -243,6 +229,7 @@ fn flash_write_stream(
     offset: u32,
     lease: &Borrow,
     total_size: usize,
+    flush_after: bool,
 ) -> Result<(), StorageError> {
     // Instantiate the flash operators
     let mut flash = FlashInterface::new();
@@ -251,8 +238,7 @@ fn flash_write_stream(
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
+        FLASH_TREE_MAX_LEVEL,
     >(&mut flash, base_address, false);
     if block_res.is_none() {
         return Err(StorageError::InvalidBlockPointer);
@@ -293,10 +279,12 @@ fn flash_write_stream(
         // Increase position
         pos += tbw;
     }
-    // At the end, to-be-safe, flush write buffer
-    if flash.flush_write_buffer().is_err() {
-        // Write failed
-        return Err(StorageError::FlashError);
+    if flush_after {
+        // At the end, to-be-safe, flush write buffer
+        if flash.flush_write_buffer().is_err() {
+            // Write failed
+            return Err(StorageError::FlashError);
+        }
     }
     // Return
     Ok(())
@@ -315,8 +303,7 @@ fn flash_read_stream(
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
+        FLASH_TREE_MAX_LEVEL,
     >(&mut flash, base_address, false);
     if block_res.is_none() {
         return Err(StorageError::InvalidBlockPointer);
@@ -368,8 +355,7 @@ fn flash_finalize_block(base_address: u32) -> Result<(), StorageError> {
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
+        FLASH_TREE_MAX_LEVEL,
     >(&mut flash, base_address, false);
     if block_res.is_none() {
         return Err(StorageError::InvalidBlockPointer);
@@ -378,7 +364,7 @@ fn flash_finalize_block(base_address: u32) -> Result<(), StorageError> {
     // Launch finalization
     let result = flash_allocator::flash::utils::finalize_block::<
         FLASH_ALLOCATOR_START_ADDR,
-        FLASH_NUM_SLOTS,
+        FLASH_TREE_MAX_LEVEL,
     >(&mut flash, block);
     if result.is_err() {
         return Err(StorageError::BlockIsFinalized);
@@ -386,7 +372,7 @@ fn flash_finalize_block(base_address: u32) -> Result<(), StorageError> {
     Ok(())
 }
 
-fn flash_allocate(requested_size: u32) -> Result<(u32, u32), StorageError> {
+fn flash_allocate(requested_size: u32, block_type: BlockType) -> Result<(u32, u32), StorageError> {
     // Instantiate the flash operators
     let mut flash = FlashInterface::new();
     // Instantiate the flash allocator. Inefficient each time, but done this
@@ -397,10 +383,11 @@ fn flash_allocate(requested_size: u32) -> Result<(u32, u32), StorageError> {
         FLASH_ALLOCATOR_START_SCAN_ADDR,
         FLASH_BLOCK_SIZE,
         FLASH_NUM_BLOCKS,
-        FLASH_NUM_SLOTS,
-    >::from_flash(&mut flash, true);
+        FLASH_TREE_MAX_LEVEL,
+        FLASH_NUM_NODES,
+    >::from_flash(&mut flash, true, true);
     // Get the address
-    let result = allocator.allocate(requested_size);
+    let result = allocator.allocate(requested_size, block_type);
     if result.is_ok() {
         let block = result.unwrap();
         Ok((block.get_base_address(), block.get_size()))
@@ -420,8 +407,9 @@ fn flash_deallocate(base_address: u32) -> Result<(), StorageError> {
         FLASH_ALLOCATOR_START_SCAN_ADDR,
         FLASH_BLOCK_SIZE,
         FLASH_NUM_BLOCKS,
-        FLASH_NUM_SLOTS,
-    >::from_flash(&mut flash, true);
+        FLASH_TREE_MAX_LEVEL,
+        FLASH_NUM_NODES,
+    >::from_flash(&mut flash, true, true);
     // Get the address
     if allocator.deallocate(base_address).is_ok() {
         Ok(())
@@ -443,13 +431,13 @@ fn ram_allocate(
         SRAM_END_ADDR,
         SRAM_BLOCK_SIZE,
         SRAM_NUM_BLOCKS,
-        SRAM_NUM_SLOTS,
+        SRAM_TREE_MAX_LEVEL,
+        SRAM_NUM_NODES,
         SRAM_RESERVED,
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
+        FLASH_TREE_MAX_LEVEL,
     >::from_flash(&mut flash);
     // Get the address
     let result = allocator.allocate(component_base_address, requested_size);
@@ -473,8 +461,7 @@ fn get_nth_block(block_number: u32) -> Result<(u32, u32, BlockType), StorageErro
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_NUM_SLOTS,
-        FLASH_BLOCK_SIZE,
+        FLASH_TREE_MAX_LEVEL,
     >::new(&mut flash);
     // Iterate on each block
     let mut count: u32 = 0;

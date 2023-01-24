@@ -1,24 +1,23 @@
+use core::fmt::Debug;
 use core::fmt::Error;
 use core::fmt::Formatter;
 use core::ops::Deref;
-use core::fmt::Debug;
-
 
 use crate::hbf::HbfFile;
 
 pub use self::hbf_header::HbfHeaderBaseGen;
+pub use self::hbf_header::HbfHeaderDependencyGen;
+pub use self::hbf_header::HbfHeaderInterruptGen;
 pub use self::hbf_header::HbfHeaderMainGen;
 pub use self::hbf_header::HbfHeaderRegionGen;
-pub use self::hbf_header::HbfHeaderInterruptGen;
 pub use self::hbf_header::HbfHeaderRelocationGen;
-pub use self::hbf_header::HbfHeaderDependencyGen;
 
 mod hbf_header;
 
-pub const HBF_MAGIC : [u8; 4] = [0x7f, b'H', b'B', b'F'];
+pub const HBF_MAGIC: [u8; 4] = [0x7f, b'H', b'B', b'F'];
 pub const HBF_HEADER_MIN_SIZE: usize = core::mem::size_of::<HbfHeaderBaseGen>();
-pub const HBF_CHECKSUM_OFFSET: usize = 0x24;
-pub const FIXED_HEADER_SIZE: usize = core::mem::size_of::<HbfHeaderBaseGen>()+ core::mem::size_of::<HbfHeaderMainGen>();
+pub const FIXED_HEADER_SIZE: usize =
+    core::mem::size_of::<HbfHeaderBaseGen>() + core::mem::size_of::<HbfHeaderMainGen>();
 
 bitflags::bitflags! {
     #[repr(transparent)]
@@ -52,14 +51,14 @@ bitflags::bitflags! {
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum HbfVersion {
-    V1,  // 0x0001
+    V1, // 0x0001
     UNKNOWN(u16),
 }
 impl From<u16> for HbfVersion {
     fn from(n: u16) -> Self {
         match n {
             1 => HbfVersion::V1,
-            n => HbfVersion::UNKNOWN(n)
+            n => HbfVersion::UNKNOWN(n),
         }
     }
 }
@@ -67,12 +66,12 @@ impl From<u16> for HbfVersion {
 pub trait HbfHeaderBase<'a> {
     fn hbf_version(&self) -> HbfVersion;
     fn total_size(&self) -> u32;
-    
+
     fn component_id(&self) -> u16;
     fn component_version(&self) -> u32;
 
-    fn offset_main(&self) -> u16;
-    
+    fn padding_bytes(&self) -> u16;
+
     fn num_regions(&self) -> u16;
     fn offset_regions(&self) -> u16;
 
@@ -84,8 +83,8 @@ pub trait HbfHeaderBase<'a> {
 
     fn num_dependencies(&self) -> u16;
     fn offset_dependencies(&self) -> u16;
-    
-    fn checksum(&self) -> u32;
+
+    fn offset_trailer(&self) -> u32;
 
     fn get_raw(&self) -> &'a [u8];
 }
@@ -164,7 +163,6 @@ impl<'a> Debug for HbfHeaderBaseWrapper<'a> {
             .field("Region Count", &self.num_regions())
             .field("Interrupt Count", &self.num_interrupts())
             .field("Relocation Count", &self.num_relocations())
-            .field("Checksum", &format_args!("{:#010x}",&self.checksum()))
             .finish()
     }
 }
@@ -219,7 +217,10 @@ impl<'a> Deref for HbfHeaderRegionWrapper<'a> {
 impl<'a> Debug for HbfHeaderRegionWrapper<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf Region")
-            .field("Base Address", &format_args!("{:#010x}",&self.base_address()))
+            .field(
+                "Base Address",
+                &format_args!("{:#010x}", &self.base_address()),
+            )
             .field("Size", &self.size())
             .field("Attributes", &self.attributes())
             .finish()
@@ -249,7 +250,10 @@ impl<'a> Debug for HbfHeaderInterruptWrapper<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf Interrupt")
             .field("IRQ", &self.irq_number())
-            .field("Notification Mask", &format_args!("{:#032b}",&self.notification_mask()))
+            .field(
+                "Notification Mask",
+                &format_args!("{:#032b}", &self.notification_mask()),
+            )
             .finish()
     }
 }
@@ -283,8 +287,11 @@ impl<'a> Deref for HbfHeaderRelocationWrapper<'a> {
 impl<'a> Debug for HbfHeaderRelocationWrapper<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf Relocation")
-            .field("Offset", &format_args!("{:#010x}",&self.offset()))
-            .field("Pointed Address", &format_args!("{:#010x}",&self.pointed_addr()))
+            .field("Offset", &format_args!("{:#010x}", &self.offset()))
+            .field(
+                "Pointed Address",
+                &format_args!("{:#010x}", &self.pointed_addr()),
+            )
             .finish()
     }
 }

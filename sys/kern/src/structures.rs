@@ -25,16 +25,16 @@ pub fn populate_kernel_structures(
         if !b.is_finalized() {
             // Mark as dismissed, will be cleaned from the storage component
             // when it starts
-            unsafe {
+            /*unsafe {
                 if crate::arch::dismiss_block(b.get_base_address()).is_err() {
                     panic!(
                         "Cannot dismiss non finalized block at: {}",
                         b.get_base_address()
                     );
                 }
-            }
+            }*/
             sys_log!(
-                "Dismissed non finalized block found at: {}",
+                "Not finalized block found at: {}",
                 b.get_base_address()
             );
             continue;
@@ -84,18 +84,20 @@ fn get_task_from_block(block: FlashBlock, validate: bool) -> Result<Task, LoadEr
     }
     Ok(process_hbf(
         &hbf,
+        block.get_nominal_base_address(),
         block.get_base_address(),
-        block.get_size() + 12 + 8,
+        block.get_nominal_size(),
     ))
 }
 
 fn process_hbf(
     hbf: &HbfFile,
+    block_nominal_base_address: u32,
     block_base_address: u32,
-    block_size: u32,
+    block_nominal_size: u32,
 ) -> Task {
     // Create a new instance of Task
-    let task_desc = TaskDescriptor::new(block_base_address);
+    let task_desc = TaskDescriptor::new(block_base_address, block_nominal_size); // Nominal size is actually bigger than needed. It's only used for hbf reading so here it's okay
     let mut regions: Vec<RegionDescriptor, REGIONS_PER_TASK> = Vec::new();
     // Create a region for the SRAM
     let sram_base: u32 = unsafe { u32_from_le_bytes_raw(block_base_address) };
@@ -111,8 +113,8 @@ fn process_hbf(
     regions.push(sram_region).unwrap();
     // Create a sregion for the FLASH
     let flash_region = RegionDescriptor {
-        base: block_base_address - 12,
-        size: block_size,
+        base: block_nominal_base_address,
+        size: block_nominal_size,
         attributes: RegionAttributes::READ
             | RegionAttributes::WRITE
             | RegionAttributes::EXECUTE,

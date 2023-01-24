@@ -11,6 +11,8 @@ use component_config::structures::RegionAttribute as RF;
 
 use crate::parse_elf::ElfSection;
 
+const ALIGN_TO: usize = 8;
+
 /*
   ----------
     Traits
@@ -87,6 +89,7 @@ enum HbfVersionType {
 pub struct HbfFile {
     header: HbfHeader,
     payload: HbfPayload,
+    trailer: HbfTrailer
 }
 
 struct HbfHeader {
@@ -98,15 +101,13 @@ struct HbfHeader {
     dependencies: Option<Vec<HbfHeaderDependency>>,
 }
 
-const CHECKSUM_OFFSET: u32 = 36;
-
 struct HbfHeaderBase {
     magic_number: u32,       // 0
     version: HbfVersionType, // 4
     total_size: u32,         // 6
     component_id: u16,       // 10
     component_version: u32,  // 12
-    main_offset: u16,        // 16
+    padding_bytes: u16,      // 16
     region_offset: u16,      // 18
     region_count: u16,       // 20
     interrupt_offset: u16,   // 22
@@ -115,7 +116,7 @@ struct HbfHeaderBase {
     relocation_count: u32,   // 28
     dependency_offset: u16,  // 32
     dependency_count: u16,   // 34
-    checksum: u32,           // 36
+    trailer_offset: u32,     // 36
 }
 
 struct HbfHeaderMain {
@@ -154,6 +155,11 @@ struct HbfPayload {
     data_section: Option<Vec<u8>>,
 }
 
+
+struct HbfTrailer {
+    checksum: u32,         // 0
+}
+
 /*
   -------------------
     Implementations
@@ -168,9 +174,6 @@ impl Validable for HbfHeaderBase {
             return false;
         }
         if self.component_version == 0 {
-            return false;
-        }
-        if self.main_offset == 0 {
             return false;
         }
         if self.region_count > 0 && self.region_offset == 0 {
@@ -197,7 +200,7 @@ impl Validable for HbfHeaderBase {
         if self.dependency_count == 0 && self.dependency_offset > 0 {
             return false;
         }
-        if self.checksum == 0 {
+        if self.trailer_offset == 0 {
             return false;
         }
         return true;
@@ -312,9 +315,6 @@ impl Validable for HbfHeader {
             return false;
         }
         // check offset jumps
-        if self.base.main_offset <= core::mem::size_of::<HbfHeaderBase> as u16 {
-            return false;
-        }
         if self.base.region_offset != 0
             && self.base.region_offset <= core::mem::size_of::<HbfHeaderBase> as u16
         {
@@ -363,12 +363,23 @@ impl Validable for HbfPayload {
         return true;
     }
 }
+impl Validable for HbfTrailer {
+    fn is_valid(&self) -> bool {
+        if self.checksum == 0 {
+            return false;
+        }
+        return true;
+    }
+}
 impl Validable for HbfFile {
     fn is_valid(&self) -> bool {
         if !self.header.is_valid() {
             return false;
         }
         if !self.payload.is_valid() {
+            return false;
+        }
+        if !self.trailer.is_valid() {
             return false;
         }
         //TODO: checks on pointers of relocations, Entry Point Offset, Data Section Offset, Data Section Size
@@ -445,7 +456,8 @@ impl Sizeable for HbfHeader {
             }
             size += deps[0].size() * (deps.len() as u32);
         }
-        return size;
+        // Padding bytes
+        return size + self.base.padding_bytes as u32;
     }
 }
 impl Sizeable for HbfPayload {
@@ -463,9 +475,14 @@ impl Sizeable for HbfPayload {
         return size;
     }
 }
+impl Sizeable for HbfTrailer {
+    fn size(&self) -> u32 {
+        return 4;
+    }
+}
 impl Sizeable for HbfFile {
     fn size(&self) -> u32 {
-        return self.header.size() + self.payload.size();
+        return self.header.size() + self.payload.size() + self.trailer.size();
     }
 }
 
@@ -477,7 +494,7 @@ impl Serializable for HbfHeaderBase {
             total_size: u32,            // 6
             component_id: u16,          // 10
             component_version: u32,     // 12
-            main_offset: u16,           // 16
+            padding_bytes: u16,         // 16
             region_offset: u16,         // 18
             region_count: u16,          // 20
             interrupt_offset: u16,      // 22
@@ -486,7 +503,7 @@ impl Serializable for HbfHeaderBase {
             relocation_count: u32,      // 28
             dependency_offset: u16,     // 32
             dependency_count: u16,      // 34
-            checksum: u32               // 36
+            trailer_offset: u32         // 36
         */
         let mut buffer = Vec::<u8>::new();
         buffer.extend_from_slice(&self.magic_number.to_le_bytes());
@@ -494,7 +511,7 @@ impl Serializable for HbfHeaderBase {
         buffer.extend_from_slice(&self.total_size.to_le_bytes());
         buffer.extend_from_slice(&self.component_id.to_le_bytes());
         buffer.extend_from_slice(&self.component_version.to_le_bytes());
-        buffer.extend_from_slice(&self.main_offset.to_le_bytes());
+        buffer.extend_from_slice(&self.padding_bytes.to_le_bytes());
         buffer.extend_from_slice(&self.region_offset.to_le_bytes());
         buffer.extend_from_slice(&self.region_count.to_le_bytes());
         buffer.extend_from_slice(&self.interrupt_offset.to_le_bytes());
@@ -503,7 +520,7 @@ impl Serializable for HbfHeaderBase {
         buffer.extend_from_slice(&self.relocation_count.to_le_bytes());
         buffer.extend_from_slice(&self.dependency_offset.to_le_bytes());
         buffer.extend_from_slice(&self.dependency_count.to_le_bytes());
-        buffer.extend_from_slice(&self.checksum.to_le_bytes());
+        buffer.extend_from_slice(&self.trailer_offset.to_le_bytes());
         return buffer;
     }
 }
@@ -577,6 +594,16 @@ impl Serializable for HbfHeaderDependency {
         return buffer;
     }
 }
+impl Serializable for HbfTrailer {
+    fn as_bytes(&self) -> Vec<u8> {
+        /*
+            checksum: u32,          // 0
+        */
+        let mut buffer = Vec::<u8>::new();
+        buffer.extend_from_slice(&self.checksum.to_le_bytes());
+        return buffer;
+    }
+}
 impl Serializable for HbfHeader {
     fn as_bytes(&self) -> Vec<u8> {
         /*
@@ -614,6 +641,10 @@ impl Serializable for HbfHeader {
                 buffer.extend(dep.as_bytes());
             }
         }
+        // Add padding
+        for _ in 0..self.base.padding_bytes {
+            buffer.extend([0xFF]);
+        }
         return buffer;
     }
 }
@@ -641,11 +672,13 @@ impl Serializable for HbfFile {
     fn as_bytes(&self) -> Vec<u8> {
         /*
             header: HbfHeader,
-            payload: HbfPayload
+            payload: HbfPayload,
+            trailer: HbfTrailer
         */
         let mut buffer = Vec::<u8>::new();
         buffer.extend(self.header.as_bytes());
         buffer.extend(self.payload.as_bytes());
+        buffer.extend(self.trailer.as_bytes());
         return buffer;
     }
 }
@@ -662,7 +695,7 @@ impl HbfFile {
                     total_size: 60, // Header only
                     component_id: 0,
                     component_version: 0,
-                    main_offset: 0,
+                    padding_bytes: 0,
                     region_offset: 0,
                     region_count: 0,
                     interrupt_offset: 0,
@@ -671,7 +704,7 @@ impl HbfFile {
                     relocation_count: 0,
                     dependency_offset: 0,
                     dependency_count: 0,
-                    checksum: 0,
+                    trailer_offset: 0,
                 },
                 main: HbfHeaderMain {
                     component_priority: 0,
@@ -691,7 +724,15 @@ impl HbfFile {
                 rodata_section: None,
                 data_section: None,
             },
+            trailer: HbfTrailer { checksum: 0 }
         }
+    }
+
+    fn adjust_padding(&mut self) {
+        // Clear current padding
+        self.header.base.padding_bytes = 0;
+        // Compute new padding
+        self.header.base.padding_bytes = (self.header.size() % ALIGN_TO as u32) as u16;
     }
 
     pub fn initialize_header(&mut self, config: &ComponentConfig) {
@@ -746,6 +787,8 @@ impl HbfFile {
             }
             self.header.dependencies = Some(deps);
         }
+        // Adjust padding
+        self.adjust_padding();
     }
 
     pub fn add_readonly(
@@ -789,6 +832,9 @@ impl HbfFile {
             self.header.relocations = Some(rels);
         }
 
+        // Adjust padding
+        self.adjust_padding();
+
         // Set offsets
         self.header.main.data_section_offset = self.header.size() + ro_len;
         self.header.main.entry_point_offset = self.header.size() + rel_entrypoint;
@@ -815,10 +861,10 @@ impl HbfFile {
     }
 
     fn finalize(&mut self) {
-        // Main structure
-        self.header.base.main_offset = self.header.base.size() as u16;
+        // Trailer offset
+        self.header.base.trailer_offset = self.size() - self.trailer.size();
         // Region structure
-        let mut current_pos: u16 = self.header.base.main_offset + self.header.main.size() as u16;
+        let mut current_pos: u16 = self.header.base.size() as u16 + self.header.main.size() as u16;
         if self.header.regions.is_some() {
             self.header.base.region_offset = current_pos;
             self.header.base.region_count = (&self.header.regions).as_ref().unwrap().len() as u16;
@@ -901,8 +947,9 @@ impl HbfFile {
             }
         }
         // Inject checksum
+        let checksum_offset = self.header.base.trailer_offset + 0x00;
         let mut wordbuf = [0_u8; 4];
-        bytes_cur.seek(SeekFrom::Start(CHECKSUM_OFFSET as u64))?;
+        bytes_cur.seek(SeekFrom::Start(checksum_offset as u64))?;
         wordbuf[0] = (checksum & 0xFF) as u8;
         wordbuf[1] = ((checksum >> 8) & 0xFF) as u8;
         wordbuf[2] = ((checksum >> 16) & 0xFF) as u8;

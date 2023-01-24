@@ -1,0 +1,31 @@
+     VMA      LMA     Size Align Out     In      Symbol
+       0        0        0     1 PROVIDE ( _stext = ORIGIN ( FLASH ) )
+ 8000000  8000000       14     2 .text
+ 8000000  8000000        e     2         /home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component1/target/thumbv7em-none-eabihf/release/deps/libuserlib-0506a3ab1b914bba.rlib(userlib-0506a3ab1b914bba.userlib.afc22a5d-cgu.0.rcgu.o):(.text.start)
+ 8000000  8000000        0     1                 $t.50
+ 8000001  8000001        e     1                 _start
+ 800000e  800000e        4     2         /home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component1/target/thumbv7em-none-eabihf/release/deps/component1-d3d180170c4423bb.component1.d3e0b3b7-cgu.0.rcgu.o:(.text.main)
+ 800000e  800000e        0     1                 $t.0
+ 800000f  800000f        4     1                 main
+ 8000012  8000012        2     1         . = ALIGN ( 4 )
+ 8000014  8000014        0     1         __etext = .
+ 8000014  8000014        0     4 .rodata
+ 8000014  8000014        0     1         . = ALIGN ( 4 )
+ 8000014  8000014        0     1         __erodata = .
+20000000 20000000        0     4 .data
+20000000 20000000        0     1         . = ALIGN ( 4 )
+20000000 20000000        0     1         __sdata = .
+20000000 20000000        0     1         . = ALIGN ( 4 )
+20000000 20000000        0     1         __edata = .
+20000000 20000000        0     1 __sidata = LOADADDR ( .data )
+20000000 20000000        0     4 .bss
+20000000 20000000        0     1         . = ALIGN ( 4 )
+20000000 20000000        0     1         __sbss = .
+20000000 20000000        0     1         . = ALIGN ( 4 )
+20000000 20000000        0     1         __ebss = .
+       0        0      160     4 .symtab
+       0        0      160     4         <internal>:(.symtab)
+       0        0       34     1 .shstrtab
+       0        0       34     1         <internal>:(.shstrtab)
+       0        0      144     1 .strtab
+       0        0      144     1         <internal>:(.strtab)

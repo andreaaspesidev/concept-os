@@ -1,4 +1,4 @@
-use flash_allocator::flash::{FlashAllocatorImpl, FlashMethods};
+use flash_allocator::flash::{FlashAllocatorImpl, FlashMethods, BlockType};
 use goblin::{container::Container, elf64::program_header::PT_LOAD};
 use hbf_rs::HbfFile;
 use ram_allocator::{RAMAllocator, RAMAllocatorImpl};
@@ -196,10 +196,11 @@ impl<'a> ElfEditor<'a> {
         component_bytes.extend_from_slice(&alloc_result.data);
         // Edit hbf and append
         let relocs = extract_hbf_relocations(&hbf);
-        let dest_base_address = block_base_addr + 8 + hbf.read_only_section().offset() + 12;
+        let dest_base_address = block_base_addr + 8 + hbf.read_only_section().offset() + flash_allocator::flash::HEADER_SIZE as u32;
+        let checksum_offset = hbf.checksum_offset() as usize;
         drop(hbf);
         relocate_hbf(&mut hbf_bytes, dest_base_address, &relocs);
-        fix_checksum_hbf(&mut hbf_bytes);
+        fix_checksum_hbf(&mut hbf_bytes, checksum_offset);
         component_bytes.extend_from_slice(&hbf_bytes);
         // Add section
         self.output_sections
@@ -318,7 +319,7 @@ fn relocate_hbf(hbf_bytes: &mut [u8], dest_base_address: u32, relocs: &Vec<(u32,
     }
 }
 
-fn fix_checksum_hbf(hbf_bytes: &mut [u8]) {
+fn fix_checksum_hbf(hbf_bytes: &mut [u8], checksum_offset: usize) {
     let mut index: usize = 0;
     let mut checksum: u32 = 0;
     loop {
@@ -331,7 +332,7 @@ fn fix_checksum_hbf(hbf_bytes: &mut [u8]) {
                 break;
             }
         }
-        if index == hbf_rs::HBF_CHECKSUM_OFFSET {
+        if index == checksum_offset {
             // Consider the checksum field as zeros
             word = 0;
         } else {
@@ -348,7 +349,7 @@ fn fix_checksum_hbf(hbf_bytes: &mut [u8]) {
     // Write new checksum
     let checksum_bytes = checksum.to_le_bytes();
     for i in 0..4 {
-        hbf_bytes[hbf_rs::HBF_CHECKSUM_OFFSET + i] = checksum_bytes[i];
+        hbf_bytes[checksum_offset + i] = checksum_bytes[i];
     }
 }
 
@@ -374,7 +375,8 @@ fn perform_allocation(
             const FLASH_ALLOCATOR_SCAN: u32 = stm32f303re::FLASH_ALLOCATOR_START_SCAN_ADDR;
             const FLASH_BLOCK_SIZE: usize = stm32f303re::FLASH_BLOCK_SIZE;
             const FLASH_NUM_BLOCKS: usize = stm32f303re::FLASH_NUM_BLOCKS;
-            const FLASH_NUM_SLOTS: usize = stm32f303re::FLASH_NUM_SLOTS;
+            const FLASH_TREE_MAX_LEVEL: usize = stm32f303re::FLASH_TREE_MAX_LEVEL;
+            const FLASH_NUM_NODES: usize = stm32f303re::FLASH_NUM_NODES;
             // Create fake flash memory
             flash_buffer.change_base_address(FLASH_START_ADDR);
             // Create the standard allocator
@@ -384,11 +386,12 @@ fn perform_allocation(
                 FLASH_ALLOCATOR_SCAN,
                 FLASH_BLOCK_SIZE,
                 FLASH_NUM_BLOCKS,
-                FLASH_NUM_SLOTS,
-            >::from_flash(flash_buffer, false);
+                FLASH_TREE_MAX_LEVEL,
+                FLASH_NUM_NODES
+            >::from_flash(flash_buffer, false, false);
             // Perform the allocation
             let flash_block = flash_alloc
-                .allocate(needed_flash + 8)
+                .allocate(needed_flash + 8, BlockType::COMPONENT)
                 .expect("Failed to allocate space for HBF");
 
             drop(flash_alloc);
@@ -398,7 +401,9 @@ fn perform_allocation(
             const SRAM_END_ADDR: u32 = stm32f303re::SRAM_END_ADDR;
             const SRAM_BLOCK_SIZE: usize = stm32f303re::SRAM_BLOCK_SIZE;
             const SRAM_NUM_BLOCKS: usize = stm32f303re::SRAM_NUM_BLOCKS;
-            const SRAM_NUM_SLOTS: usize = stm32f303re::SRAM_NUM_SLOTS;
+            const SRAM_TREE_MAX_LEVEL: usize = stm32f303re::SRAM_TREE_MAX_LEVEL;
+            const SRAM_NUM_NODES: usize = stm32f303re::SRAM_NUM_NODES;
+            
             const SRAM_RESERVED: u32 = stm32f303re::SRAM_RESERVED;
 
             let mut ram_alloc = RAMAllocatorImpl::<
@@ -406,13 +411,13 @@ fn perform_allocation(
                 SRAM_END_ADDR,
                 SRAM_BLOCK_SIZE,
                 SRAM_NUM_BLOCKS,
-                SRAM_NUM_SLOTS,
+                SRAM_TREE_MAX_LEVEL,
+                SRAM_NUM_NODES,
                 SRAM_RESERVED,
                 FLASH_START_ADDR,
                 FLASH_END_ADDR,
                 FLASH_ALLOCATOR_SCAN,
-                FLASH_NUM_SLOTS,
-                FLASH_BLOCK_SIZE,
+                FLASH_TREE_MAX_LEVEL
             >::from_flash(flash_buffer);
 
             let ram_block = ram_alloc
@@ -422,15 +427,15 @@ fn perform_allocation(
             drop(ram_alloc);
 
             // Now finalize the block header
-            flash_allocator::flash::utils::finalize_block::<FLASH_START_ADDR, FLASH_NUM_SLOTS>(
+            flash_allocator::flash::utils::finalize_block::<FLASH_START_ADDR, FLASH_TREE_MAX_LEVEL>(
                 flash_buffer,
                 flash_block,
             )
             .unwrap();
-
-            let actual_base = flash_block.get_base_address() - 12;
-            let actual_size = flash_block.get_size() + 12;
-            let mut header_bytes: [u8; 12 + 8] = [0x00; 12 + 8];
+            const BLOCK_HEADER_SIZE: usize = flash_allocator::flash::HEADER_SIZE;
+            let actual_base = flash_block.get_base_address() - BLOCK_HEADER_SIZE as u32;
+            let actual_size = flash_block.get_size() + BLOCK_HEADER_SIZE as u32 + 8;
+            let mut header_bytes: [u8; BLOCK_HEADER_SIZE + 8] = [0x00; BLOCK_HEADER_SIZE + 8];
             flash_buffer.read(actual_base, &mut header_bytes).unwrap();
 
             return AllocatedComponent {

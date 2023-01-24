@@ -7,7 +7,7 @@ clean:
 	rm -rf output/*
 
 build:
-	cargo build --release -Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort
+	cargo build --release -Z build-std=core,panic_abort -Z build-std-features=panic_immediate_abort
 	cp target/thumbv7em-none-eabihf/release/$(COMPONENT_NAME) output/image.elf
 
 disassemble: build

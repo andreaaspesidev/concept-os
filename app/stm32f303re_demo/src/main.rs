@@ -5,7 +5,6 @@
 #![no_std]
 #![no_main]
 #![feature(asm_const)]
-#![feature(asm_sym)]
 
 // We have to do this if we don't otherwise use it to ensure its vector table
 // gets linked in.

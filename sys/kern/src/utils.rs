@@ -57,6 +57,8 @@ pub fn log_task(task: &Task) {
         sys_log!("  -IRQ: {}", interrupt.irq_num);
         sys_log!("   Mask: {:#010x}", interrupt.notification);
     }
+    // Print entrypoint
+    sys_log!("  Entrypoint at: {:#010x}", task.descriptor().entry_point());
 }
 
 pub fn log_structures(

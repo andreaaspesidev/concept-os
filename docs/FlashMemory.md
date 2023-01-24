@@ -88,7 +88,7 @@ Offset| Size (bytes) | Field Name  | Possible Values |            Content       
 0x00  |      2*      | Block Allocated | 0xFFFF = block not allocated<br> 0x0000 = block allocated | Flag meaning this block was once allocated. `Block Level` can be used to determine the allocated size (in use).
 0x02  |      2*      | Block Dismissed | 0xFFFF = block not dismissed<br> 0x0000 = block dismissed | Flag meaning this block was then deallocated. `Block Level` can be used to retrieve the old size of the block. 
 0x04  |      2*      | Block Finalized | 0xFFFF = block not finalized<br> 0x0000 = block finalized | Flag meaning all the information has been written successfully in this block, and so it's ready to be used. **This flag can be used by the flash allocator to dismiss (erase) at start-up all the blocks pending (0xFFFF).**
-0x06  |      2*      | Reserved |  | Flag reserved for future usages (now used for alignment)
+0x06  |      2**     | Reserved |  | This space is used to get the correct alignment and keep the header's size a multiple of the minimum write granularity.
 0x08  |      2       | Block Level | 0x0000 to 0xFFFF | Integer value representing the level of this block, used to derive the size
 0x0A  |      2       | Block Type | 0x0000 to 0xFFFF | Flags representing the destination usage of this block
 
@@ -101,9 +101,24 @@ In particular:
     where:
     - `COMPONENT` means this block contains the code of a component, so an Allocated RAM Base + HBF is expected after the header.
 
-Total size: 12 bytes
+Total size: 12* bytes
 
->Note: values with * must be set to a multiple of the minimum granularity of flash write, in case of special devices that requires writing more than 2bytes (half-word) at a time
+>Note: the header's size must be a multiple of 4 (in order to ease alignment of code inside component blocks), but at the same time a multiple of the minimum write granularity, to avoid problems with flags of higher storage level.
+
+>Note: values with * must be set to a multiple of the minimum granularity of flash write, in case of special devices that requires writing more than 2bytes (half-word) at a time. The size of the header must be a multiple of the minimum flash granularity too. 
+
+For example, on L4, being the granularity 64bits (8 bytes), we have the following layout:
+
+Offset| Size (bytes) |   Field Name    |
+------|--------------|-----------------|
+0x00  |      8       | Block Allocated | 
+0x02  |      8       | Block Dismissed | 
+0x04  |      8       | Block Finalized |
+0x06  |      4       | Reserved        |
+0x08  |      2       | Block Level     | 
+0x0A  |      2       | Block Type      |
+
+Size: 32 bytes
 
 <img src="images/allocator_metadata.svg">
 
@@ -275,7 +290,7 @@ The procedure involves the following steps:
 The swap layout is the following:
 | Size (bytes) | Field Name      | Description
 |--------------|-----------------|--------------------------------------------------|
-|      2       |  PAGE_NUM       | The flash page currently under swapping/erasing
+|      2*      |  PAGE_NUM       | The flash page currently under swapping/erasing
 |      2*      |  COPY_COMPLETED | Flag indicating whether the whole page content has been copied into the swap page (for swapping)
 |      4       |  FRGM_TARGET (1)   | Beginning of the first fragment (start-page relative)
 |      4       |  FRGM_SIZE   (1)   | Remaining size of the first fragment

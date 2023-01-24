@@ -5,11 +5,14 @@ use core::fmt::{Debug, Error, Formatter};
 pub use header::{HbfHeaderBase, HbfHeaderMain, HbfHeaderRelocation, HbfHeaderDependency, HbfVersion, HBF_MAGIC};
 
 pub use header::{
-    HbfHeaderInterrupt, HbfHeaderRegion, FIXED_HEADER_SIZE, HBF_CHECKSUM_OFFSET,
+    HbfHeaderInterrupt, HbfHeaderRegion, FIXED_HEADER_SIZE,
     HBF_HEADER_MIN_SIZE, INTERRUPT_SIZE, REGION_SIZE, RELOC_SIZE, DEPENDENCY_SIZE
 };
+pub use trailer::{HbfTrailer,HBF_TRAILER_SIZE};
+use trailer::HBF_CHECKSUM_OFFSET;
 
 mod header;
+mod trailer;
 mod utils;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -44,6 +47,7 @@ impl<'a> BufferReader<'a> for MockReader {
 }
 
 /// Simple implementation of the BufferReader for a buffer
+#[derive(Clone,Copy,Debug)]
 pub struct BufferReaderImpl<'a> {
     buffer: &'a [u8],
 }
@@ -149,13 +153,28 @@ impl<'a> HbfFile<'a> {
 
     pub fn header_main(&self) -> Result<HbfHeaderMain, HbfError> {
         // Compute offset
-        let offset = self.header_base()?.offset_main() as u32;
+        let offset = core::mem::size_of::<HbfHeaderBase>() as u32;
         // Read enough to parse
         const SIZE: usize = core::mem::size_of::<HbfHeaderMain>();
         let mut buffer: [u8; SIZE] = [0x00; SIZE];
         self.reader.read(offset, &mut buffer)?;
         // Convert the buffer into the structure
         unsafe { Ok(*(buffer.as_ptr() as *const HbfHeaderMain)) }
+    }
+
+    pub fn trailer(&self) -> Result<HbfTrailer, HbfError> {
+        // Compute offset
+        let offset = self.header_base()?.trailer_offset() as u32;
+        // Read enough to parse
+        const SIZE: usize = core::mem::size_of::<HbfTrailer>();
+        let mut buffer: [u8; SIZE] = [0x00; SIZE];
+        self.reader.read(offset, &mut buffer)?;
+        // Convert the buffer into the structure
+        unsafe { Ok(*(buffer.as_ptr() as *const HbfTrailer)) }
+    }
+
+    pub fn checksum_offset(&self) -> Result<u32, HbfError> {
+        Ok(self.header_base()?.trailer_offset() + HBF_CHECKSUM_OFFSET as u32)
     }
 
     pub fn region_nth(&self, region_number: u16) -> Result<HbfHeaderRegion, HbfError> {
@@ -222,9 +241,8 @@ impl<'a> HbfFile<'a> {
         unsafe { Ok(*(buffer.as_ptr() as *const HbfHeaderDependency)) }
     }
 
-    pub fn get_readonly_payload(&self) -> Result<HbfPayloadSection<'a>, HbfError> {
-        // Compute offset
-        let offset = core::mem::size_of::<HbfHeaderBase>()
+    fn payload_offset(&self) ->  Result<usize, HbfError> {
+        Ok(core::mem::size_of::<HbfHeaderBase>()
             + core::mem::size_of::<HbfHeaderMain>()
             + core::mem::size_of::<HbfHeaderRegion>() * self.header_base()?.num_regions() as usize
             + core::mem::size_of::<HbfHeaderInterrupt>()
@@ -232,12 +250,15 @@ impl<'a> HbfFile<'a> {
             + core::mem::size_of::<HbfHeaderRelocation>()
                 * self.header_base()?.num_relocations() as usize
             + core::mem::size_of::<HbfHeaderDependency>()
-                * self.header_base()?.num_dependencies() as usize;
+                * self.header_base()?.num_dependencies() as usize
+            + self.header_base()?.padding_bytes() as usize)
+    }
+
+    pub fn get_readonly_payload(&self) -> Result<HbfPayloadSection<'a>, HbfError> {
+        // Compute offset
+        let offset = self.payload_offset()?;
         // Compute size
-        let size = match self.header_main()?.data_offset() {
-            0 => self.header_base()?.total_size() - offset as u32,
-            data_offset => data_offset - offset as u32,
-        };
+        let size = self.read_only_payload_size()?;
         // Construct result
         Ok(HbfPayloadSection {
             base_offset: offset as u32,
@@ -271,29 +292,29 @@ impl<'a> HbfFile<'a> {
         }))
     }
 
-    pub fn payload_size(&self) -> Result<u32, HbfError> {
-        let offset = core::mem::size_of::<HbfHeaderBase>()
-            + core::mem::size_of::<HbfHeaderMain>()
-            + core::mem::size_of::<HbfHeaderRegion>() * self.header_base()?.num_regions() as usize
-            + core::mem::size_of::<HbfHeaderInterrupt>()
-                * self.header_base()?.num_interrupts() as usize
-            + core::mem::size_of::<HbfHeaderRelocation>()
-                * self.header_base()?.num_relocations() as usize
-            + core::mem::size_of::<HbfHeaderDependency>()
-                * self.header_base()?.num_dependencies() as usize;
-        Ok(self.header_base()?.total_size() - offset as u32)
-    }
-
     /*
         Sizes calcs
     */
+
+    fn read_only_payload_size(&self) -> Result<u32, HbfError> {
+        let offset = self.payload_offset()?;
+        Ok(match self.header_main()?.data_offset() {
+            0 => self.header_base()?.total_size() - core::mem::size_of::<HbfTrailer>() as u32 - offset as u32,
+            data_offset => data_offset - offset as u32,
+        })
+    }
+
+    pub fn payload_size(&self) -> Result<u32, HbfError> {
+        let offset = self.payload_offset()?;
+        Ok(self.header_base()?.total_size() - core::mem::size_of::<HbfTrailer>() as u32 - offset as u32)
+    }
 
     fn data_size(&self) -> Result<u32, HbfError> {
         let offset = self.header_main()?.data_offset();
         if offset == 0 {
             return Ok(0);
         } else {
-            return Ok(self.header_base()?.total_size() - offset);
+            return Ok(self.header_base()?.total_size() - core::mem::size_of::<HbfTrailer>() as u32 - offset);
         }
     }
 
@@ -306,10 +327,12 @@ impl<'a> HbfFile<'a> {
         Validation
     */
     pub fn validate(&self) -> Result<bool, HbfError> {
-        let total_size = self.header_base()?.total_size();
+        let header_base = self.header_base()?;
+        let total_size = header_base.total_size();
 
         let mut index: u32 = 0;
         let mut checksum: u32 = 0;
+        let checksum_offset = header_base.trailer_offset() + HBF_CHECKSUM_OFFSET;
 
         while index < total_size {
             // Read 4 bytes
@@ -320,7 +343,7 @@ impl<'a> HbfFile<'a> {
                 available = total_size - index;
             }
 
-            if index == HBF_CHECKSUM_OFFSET {
+            if index == checksum_offset {
                 // Skip this field
                 word = 0;
             } else {
@@ -331,7 +354,7 @@ impl<'a> HbfFile<'a> {
             checksum ^= word;
             index += available;
         }
-        return Ok(self.header_base()?.checksum() == checksum);
+        return Ok(self.trailer()?.checksum() == checksum);
     }
 }
 

@@ -223,7 +223,7 @@ fn send_payload(
         let mut buff: [u8; 1] = [0x00; 1];
         channel_read(channel_in_consumer, &mut buff);
 
-        if buff[0] == ComponentUpdateResponse::Success as u8 {
+        if buff[0] == ComponentUpdateCommand::SendComponentTrailer as u8 {
             // Check we actually finished sending the variable header
             if pkt.get_next_fragment().is_some() {
                 eprintln!("Still some payload to be send!");
@@ -249,6 +249,27 @@ fn send_payload(
         // Update progress
         progress.add((fragment_data.len() - 1) as u64);
     }
+    send_trailer(channel_in_consumer, channel_out_producer, hbf, progress, verbose);
+}
+
+fn send_trailer(
+    channel_in_consumer: &Receiver<u8>,
+    channel_out_producer: &Sender<Vec<u8>>,
+    hbf: &dyn HbfFile,
+    progress: &mut ProgressBar<Stdout>,
+    verbose: bool,
+) {
+    if verbose {
+        println!("--> Send Trailer");
+    }
+    progress.inc();
+    // -------> Sending Payload
+    // Get bytes
+    let mut checksum_bytes = Vec::<u8>::new();
+    checksum_bytes.extend_from_slice(&hbf.trailer().checksum().to_le_bytes());
+    // Send data
+    progress.message("Checksum   ");
+    channel_write(channel_out_producer, &checksum_bytes);
     progress.finish();
 
     println!("\nSuccess!");
@@ -271,10 +292,14 @@ fn extract_variable_header(hbf: &dyn HbfFile) -> Vec<u8> {
         let raw_data = r.get_raw();
         buffer.extend_from_slice(raw_data);
     }
-    // Lastly append dependencies
+    // Next append dependencies
     for d in hbf.dependency_iter() {
         let raw_data = d.get_raw();
         buffer.extend_from_slice(raw_data);
+    }
+    // Then append padding bytes
+    for _ in 0..hbf.header_base().padding_bytes() {
+        buffer.extend([0xFF]);
     }
     buffer
 }

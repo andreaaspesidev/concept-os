@@ -5,8 +5,6 @@ use core::fmt::{Debug, Error, Formatter};
  */
 pub const HBF_MAGIC: [u8; 4] = [0x7f, b'H', b'B', b'F'];
 
-pub const HBF_CHECKSUM_OFFSET: u32 = 0x24;
-
 pub const HBF_HEADER_MIN_SIZE: usize = core::mem::size_of::<HbfHeaderBase>();
 pub const FIXED_HEADER_SIZE: usize =
     core::mem::size_of::<HbfHeaderBase>() + core::mem::size_of::<HbfHeaderMain>();
@@ -72,7 +70,7 @@ pub struct HbfHeaderBase {
     total_size: u32,          // 6
     component_id: u16,        // 10
     component_version: u32,   // 12
-    main_offset: u16,         // 16
+    padding_bytes: u16,       // 16
     region_offset: u16,       // 18
     region_count: u16,        // 20
     interrupt_offset: u16,    // 22
@@ -81,7 +79,7 @@ pub struct HbfHeaderBase {
     relocation_count: u32,    // 28
     dependencies_offset: u16, // 32
     dependencies_count: u16,  // 34
-    checksum: u32,            // 36
+    trailer_offset: u32,      // 36
 }
 
 impl<'a> HbfHeaderBase {
@@ -103,8 +101,8 @@ impl<'a> HbfHeaderBase {
         unsafe { p.read_unaligned() }
     }
 
-    pub fn offset_main(&self) -> u16 {
-        let p = core::ptr::addr_of!(self.main_offset);
+    pub fn padding_bytes(&self) -> u16 {
+        let p = core::ptr::addr_of!(self.padding_bytes);
         unsafe { p.read_unaligned() }
     }
 
@@ -144,8 +142,8 @@ impl<'a> HbfHeaderBase {
         unsafe { p.read_unaligned() }
     }
 
-    pub fn checksum(&self) -> u32 {
-        let p = core::ptr::addr_of!(self.checksum);
+    pub fn trailer_offset(&self) -> u32 {
+        let p = core::ptr::addr_of!(self.trailer_offset);
         unsafe { p.read_unaligned() }
     }
     pub fn get_raw(&self) -> &'a [u8] {
@@ -169,7 +167,6 @@ impl Debug for HbfHeaderBase {
             .field("Interrupt Count", &self.num_interrupts())
             .field("Relocation Count", &self.num_relocations())
             .field("Dependencies Count", &self.num_dependencies())
-            .field("Checksum", &format_args!("{:#010x}", &self.checksum()))
             .finish()
     }
 }

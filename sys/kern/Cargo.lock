@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "byteorder",
+ "hbf_lite",
  "serde",
  "zerocopy",
 ]
@@ -140,6 +141,7 @@ version = "0.0.1"
 dependencies = [
  "abi",
  "buddy_allocator",
+ "cfg-if",
  "heapless",
  "serde",
 ]

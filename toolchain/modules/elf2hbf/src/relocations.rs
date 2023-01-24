@@ -67,7 +67,7 @@ mod test {
         let file_path = get_test_file_path("component2/output/relocations.toml");
         let config = parse_relocations(&file_path).unwrap();
         let reference_config = ParseResult {
-            rodata: Some(vec![ 56, 68, 72, 84]),
+            rodata: Some(vec![ 12, 20, 68, 76, 136, 148, 152, 156,]),
             data: None
         };
         assert_eq!(config, reference_config);

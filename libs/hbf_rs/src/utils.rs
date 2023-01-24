@@ -16,7 +16,7 @@ pub fn dump_section(bytes: &[u8], f: &mut Formatter) -> Result<(), Error> {
     loop {
         // Read next byte
         byte = bytes[index];
-        
+
         if index % BYTES_PER_ROW == 0 {
             f.write_str("   ")?;
             // Print textual representation
@@ -32,6 +32,9 @@ pub fn dump_section(bytes: &[u8], f: &mut Formatter) -> Result<(), Error> {
         index += 1;
 
         if index >= bytes.len() {
+            f.write_str("   ")?;
+            // Print textual representation
+            dump_text(&bytes[last_row_start..index], f)?;
             return Ok(());
         }
     }
@@ -48,7 +51,7 @@ fn dump_text(mut bytes: &[u8], f: &mut Formatter) -> Result<(), Error> {
         if bytes.len() == 1 {
             return Ok(());
         } else {
-            bytes = &bytes[1..];  
+            bytes = &bytes[1..];
         }
     }
 }

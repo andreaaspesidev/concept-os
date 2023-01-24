@@ -7,6 +7,7 @@ edition = "2021"
 heapless = "0.7.10"
 userlib = {path = "../../../../../sys/userlib"}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
+cortex-m-semihosting = { version = "0.5" }
 
 # This section is here to discourage RLS/rust-analyzer from doing test builds,
 # since test builds don't work for cross compilation.

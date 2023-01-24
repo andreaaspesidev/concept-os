@@ -1,0 +1,57 @@
+     VMA      LMA     Size Align Out     In      Symbol
+       0        0        0     1 PROVIDE ( _stext = ORIGIN ( FLASH ) )
+ 8000000  8000000       d8     2 .text
+ 8000000  8000000        e     2         /home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component4/target/thumbv7em-none-eabihf/release/deps/libuserlib-0506a3ab1b914bba.rlib(userlib-0506a3ab1b914bba.userlib.afc22a5d-cgu.0.rcgu.o):(.text.start)
+ 8000000  8000000        0     1                 $t.50
+ 8000001  8000001        e     1                 _start
+ 800000e  800000e       34     2         /home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component4/target/thumbv7em-none-eabihf/release/deps/component4-7694364aef3dd9f0.component4.01da9c99-cgu.0.rcgu.o:(.text.print)
+ 800000e  800000e        0     1                 $t.0
+ 800000f  800000f       34     1                 print
+ 8000042  8000042        a     2         /home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component4/target/thumbv7em-none-eabihf/release/deps/component4-7694364aef3dd9f0.component4.01da9c99-cgu.0.rcgu.o:(.text.main)
+ 8000042  8000042        0     1                 $t.1
+ 8000043  8000043        a     1                 main
+ 800004c  800004c       4a     2         /home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component4/target/thumbv7em-none-eabihf/release/deps/component4-7694364aef3dd9f0.component4.01da9c99-cgu.0.rcgu.o:(.text.example8)
+ 800004c  800004c        0     1                 $t.2
+ 800004d  800004d       4a     1                 example8
+ 8000096  8000096       24     2         /home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component4/target/thumbv7em-none-eabihf/release/deps/component4-7694364aef3dd9f0.component4.01da9c99-cgu.0.rcgu.o:(.text.print_enum)
+ 8000096  8000096        0     1                 $t.3
+ 8000097  8000097       24     1                 print_enum
+ 80000ba  80000ba        2     2         /home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component4/target/thumbv7em-none-eabihf/release/deps/libuserlib-0506a3ab1b914bba.rlib(userlib-0506a3ab1b914bba.userlib.afc22a5d-cgu.0.rcgu.o):(.text._ZN7userlib91_$LT$impl$u20$core..convert..From$LT$userlib..RcLen$GT$$u20$for$u20$$LP$u32$C$usize$RP$$GT$4from17h02b830a50f92d613E)
+ 80000ba  80000ba        0     1                 $t.39
+ 80000bb  80000bb        2     1                 userlib::_$LT$impl$u20$core..convert..From$LT$userlib..RcLen$GT$$u20$for$u20$$LP$u32$C$usize$RP$$GT$::from::h02b830a50f92d613
+ 80000bc  80000bc       1a     2         /home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component4/target/thumbv7em-none-eabihf/release/deps/libuserlib-0506a3ab1b914bba.rlib(userlib-0506a3ab1b914bba.userlib.afc22a5d-cgu.0.rcgu.o):(.text._ZN7userlib13sys_send_stub17h2444658aabf553a4E)
+ 80000bc  80000bc        0     1                 $t.40
+ 80000bd  80000bd       1a     1                 userlib::sys_send_stub::h2444658aabf553a4
+ 80000d6  80000d6        2     1         . = ALIGN ( 4 )
+ 80000d8  80000d8        0     1         __etext = .
+ 80000d8  80000d8       1c     4 .rodata
+ 80000d8  80000d8        0     4         /home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component4/target/thumbv7em-none-eabihf/release/deps/component4-7694364aef3dd9f0.component4.01da9c99-cgu.0.rcgu.o:(.rodata..L__unnamed_1)
+ 80000d8  80000d8        0     1                 .L__unnamed_1
+ 80000d8  80000d8        d     1         /home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component4/target/thumbv7em-none-eabihf/release/deps/component4-7694364aef3dd9f0.component4.01da9c99-cgu.0.rcgu.o:(.rodata..L__unnamed_2)
+ 80000d8  80000d8        d     1                 .L__unnamed_2
+ 80000e5  80000e5        d     1         /home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component4/target/thumbv7em-none-eabihf/release/deps/component4-7694364aef3dd9f0.component4.01da9c99-cgu.0.rcgu.o:(.rodata..L__unnamed_3)
+ 80000e5  80000e5        d     1                 .L__unnamed_3
+ 80000f2  80000f2        2     1         . = ALIGN ( 4 )
+ 80000f4  80000f4        0     1         __erodata = .
+20000000 20000000        0     4 .data
+20000000 20000000        0     1         . = ALIGN ( 4 )
+20000000 20000000        0     1         __sdata = .
+20000000 20000000        0     1         . = ALIGN ( 4 )
+20000000 20000000        0     1         __edata = .
+20000000 20000000        0     1 __sidata = LOADADDR ( .data )
+20000000 20000000        c     4 .bss
+20000000 20000000        0     1         . = ALIGN ( 4 )
+20000000 20000000        0     1         __sbss = .
+20000000 20000000        c     4         /home/andreaaspesi/Desktop/concept-os/toolchain/modules/elf2hbf/examples/component4/target/thumbv7em-none-eabihf/release/deps/component4-7694364aef3dd9f0.component4.01da9c99-cgu.0.rcgu.o:(.bss..L_MergedGlobals)
+20000000 20000000        c     1                 .L_MergedGlobals
+20000000 20000000        1     1                 component4::MUT_ENUM::h18c90a75914173fd (.0)
+20000004 20000004        1     1                 component4::MUT_ENUM::h18c90a75914173fd (.2)
+20000008 20000008        4     1                 component4::MUT_ENUM::h18c90a75914173fd (.1)
+2000000c 2000000c        0     1         . = ALIGN ( 4 )
+2000000c 2000000c        0     1         __ebss = .
+       0        0      260     4 .symtab
+       0        0      260     4         <internal>:(.symtab)
+       0        0       34     1 .shstrtab
+       0        0       34     1         <internal>:(.shstrtab)
+       0        0      2da     1 .strtab
+       0        0      2da     1         <internal>:(.strtab)

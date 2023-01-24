@@ -7,18 +7,24 @@ Hubris Component Binary:
 Start of HBF  ->    +-------------------+
                     | HBF Header        |
                     +-------------------+
+                    | (opt) Padding     |
+                    +-------------------+
                     |                   |
                     | HBF Payload       |
                     |                   |
-  End of HBF  ->    +-------------------+
+                    +-------------------+
+                    | HBF Trailer       |
+End of HBF  ->      +-------------------+
 ```
 
 The component header stores all the information needed to load and execute the component itself. This comprises:
 - the component priority, needed for scheduling
-- the component flags, needed to customize system behaviour with respect to this component
+- the component flags, needed to customize system behavior with respect to this component
 - how much SRAM the component need (stack size)
 - every region of the address space the component needs in order to work correctly
 - every interrupt number the component will manage
+
+The component trailer stores additional information that could not necessarily be constrained in length, or should be modified during HBF copy.
 
 ## Placement
 In order to work correctly, the start address in flash of every HBF file must be word-aligned (multiple of 4). This is due to the ARM requirements of alignment of instructions (see later).
@@ -71,7 +77,7 @@ Offset    | Size (bytes)  |  Field Name        |    Content    |
 0x06      |       4       | Total size         | Total size of the HBF in bytes
 0x0A      |       2       | Component ID       | Integer 1-65535 indicating the ID of the component. 0 is reserved to the kernel
 0x0C      |       4       | Component Version  | Integer 0-65535 indicating the component major version, for compatibility checks
-0x10      |       2       | Main Offset        | Offset in bytes (from the start of the HBF) of the Header Main structure
+0x10      |       2       | Padding            | Padding bytes inserted after the Header Main structure
 0x12      |       2       | Region Offset      | Offset in bytes (from the start of the HBF) of the first Header Region structure
 0x14      |       2       | Region Count       | Number of entries of the prev. structure
 0x16      |       2       | Interrupt Offset   | Offset in bytes (from the start of the HBF) of the first Header Interrupt structure
@@ -80,7 +86,7 @@ Offset    | Size (bytes)  |  Field Name        |    Content    |
 0x1C      |       4       | Relocation Count   | Number of entries of the prev. structure
 0x20      |       2       | Dependencies Offset| Offset in bytes (from the start of the HBF) of the first Component Dependency structure
 0x22      |       2       | Dependencies Count   | Number of entries of the prev. structure
-0x24      |       4       | Checksum           | CRC-32b of the whole HBF (except this field)
+0x24      |       4       | Trailer Offset       | Offset in bytes (from the start of the HBF) of the HBF Trailer
 
 *Total size: 40 bytes*
 
@@ -178,16 +184,26 @@ This section of HBF contains `.data`, `.text`, `.rodata`  sections.
 In particular, the last two sections `.text` and `.rodata` are consecutive and cannot be separated.
 
 ```
-end of header -> +---------------------+
-                 |                     |
-                 |        .text        |
-                 |                     |
-                 +---------------------+
-                 |       .rodata       |
-                 +---------------------+
-                 |        .data        |
-   end of HBF -> +---------------------+
+ end of header -> +---------------------+
+                  |                     |
+                  |        .text        |
+                  |                     |
+                  +---------------------+
+                  |       .rodata       |
+                  +---------------------+
+                  |        .data        |
+end of payload -> +---------------------+
 ```
+
+
+## HBF Trailer
+The HBF trailer is composed as follows:
+
+Offset    | Size (bytes)  |  Field Name        |    Content    |
+----------|---------------|--------------------|---------------|
+0x00      |       4       | Checksum           | CRC-32b of the whole HBF (except this field)
+
+*Total size: 4 bytes*
 
 ### MPU Note
 As it is quite challenging to include only `.text` and `.rodata` in the MPU region, due to the base address alignment problem (and also the minor problem with the size), the entire region will be given in read-only to the component via MPU.
