@@ -15,6 +15,7 @@ path = "../../boards/stm32f303re"
 [dependencies.kern]
 path = "../../sys/kern"
 default-features = false
+features = ["f303re"]
 
 [[bin]]
 name = "stm32f303re_demo"

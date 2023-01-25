@@ -1,24 +1,25 @@
+use cargo_metadata::MetadataCommand;
 use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-use cargo_metadata::MetadataCommand;
 
 fn build_component(
     component_name: &String,
     component_path: &PathBuf,
     component_build_path: &PathBuf,
     target: &String,
-    target_board: &String,
+    features: &Vec<String>,
     verbose: bool,
 ) -> Result<PathBuf, ()> {
     println!("Building into '{}'", component_build_path.display());
+    println!("Features '{}'", features.join(", "));
     let mut cmd = Command::new("cargo");
-    cmd.arg("build")
-        .arg("--release")
-        .arg("--features")
-        .arg(target_board)
-        .arg("-Z")
+    cmd.arg("build").arg("--release");
+    if features.len() > 0 {
+        cmd.arg("--features").arg(format!("{}", features.join(",")));
+    }
+    cmd.arg("-Z")
         .arg("build-std=core,panic_abort")
         .arg("-Z")
         .arg("build-std-features=panic_immediate_abort");
@@ -135,6 +136,7 @@ pub fn build_process(
     component_path: String,
     hbf_output_path: String,
     target_board: String,
+    features: &Vec<String>,
     verbose: bool,
     clean_up: bool,
 ) -> Result<(), ()> {
@@ -178,7 +180,8 @@ pub fn build_process(
     board_config_path.push("boards");
     board_config_path.push(&target_board);
     board_config_path.push("Board.toml");
-    let board_config = board_config::read_configuration(&board_config_path.to_str().unwrap()).unwrap();
+    let board_config =
+        board_config::read_configuration(&board_config_path.to_str().unwrap()).unwrap();
     // Generate linker script inside the build folder
     let mut linker_input_path = PathBuf::from(root_path);
     linker_input_path.push("boards");
@@ -208,13 +211,16 @@ MEMORY
     if std::fs::write(linker_output_path, linker).is_err() {
         panic!("Cannot generate linker script for the component");
     }
+    // Add the board to the features
+    let mut feature_list = features.clone();
+    feature_list.push(format!("board_{}", target_board));
     // Launch build
     let artifact_path = build_component(
         &component_name,
         &component_path_buf,
         &component_build_path,
         &board_config.board.target,
-        &target_board,
+        &feature_list,
         verbose,
     )?;
     // Compute relocations
@@ -237,7 +243,6 @@ MEMORY
     }
     Ok(())
 }
-
 
 /*
     Tests
@@ -263,7 +268,8 @@ mod test {
         build_process(
             get_test_file_path("component1"),
             get_test_file_path("component1/component1.hbf"),
-            "stm32f303e".to_string(),
+            "stm32f303re".to_string(),
+            &Vec::<String>::new(),
             false,
             true,
         )

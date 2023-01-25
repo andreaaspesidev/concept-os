@@ -71,13 +71,14 @@ fn build_system(app_config_path: String, output_path: String, verbose: bool) {
     let mut elf_edit = ElfEditor::new(&system_out, &app_config.board);
     elf_edit.add_kernel(&kern_elf);
     // For each component, build and add
-    for component in app_config.components.clone().into_iter() {
+    for (component_name, component_config) in &app_config.components {
         let hbf_path = build_component(
             &root_path,
             &app_config,
+            &component_config.features,
             &app_root,
             &board_config,
-            &component,
+            &component_name,
         );
         elf_edit.add_component(&hbf_path);
     }
@@ -209,6 +210,7 @@ MEMORY
 fn build_component(
     root_path: &PathBuf,
     app_config: &AppConfig,
+    features: &Vec<String>,
     _app_root: &PathBuf,
     _board_config: &BoardConfig,
     component_name: &String,
@@ -230,6 +232,7 @@ fn build_component(
         String::from(component_root.to_str().unwrap()),
         String::from(out_file.to_str().unwrap()),
         app_config.board.clone(),
+        features,
         false,
         false,
     )

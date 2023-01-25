@@ -4,7 +4,7 @@
 use rcc_api::*;
 
 // STM32F3
-#[cfg(feature = "stm32f303re")]
+#[cfg(feature = "board_stm32f303re")]
 use stm32f303re::device as device;
 
 use userlib::*;
@@ -51,9 +51,9 @@ fn main() -> ! {
                 let bus = Bus::from_u32(msg.bus).ok_or(RCCError::BadArgument)?;
                 // Apply
                 match bus {
-                    #[cfg(feature = "stm32f303re")]
+                    #[cfg(feature = "board_stm32f303re")]
                     Bus::AHB1 => set_bits!(rcc.ahbenr, pmask),
-                    #[cfg(feature = "stm32f303re")]
+                    #[cfg(feature = "board_stm32f303re")]
                     Bus::AHB2 | Bus::AHB3 => {
                         sys_log!("Wrong bus for f303re!");
                         panic!(); // The function of mapping should be correct
@@ -75,9 +75,9 @@ fn main() -> ! {
 
                 // Apply
                 match bus {
-                    #[cfg(feature = "stm32f303re")]
+                    #[cfg(feature = "board_stm32f303re")]
                     Bus::AHB1 => clear_bits!(rcc.ahbenr, pmask),
-                    #[cfg(feature = "stm32f303re")]
+                    #[cfg(feature = "board_stm32f303re")]
                     Bus::AHB2 | Bus::AHB3 => {
                         sys_log!("Wrong bus for f303re!");
                         panic!(); // The function of mapping should be correct
@@ -99,9 +99,9 @@ fn main() -> ! {
 
                 // Apply
                 match bus {
-                    #[cfg(feature = "stm32f303re")]
+                    #[cfg(feature = "board_stm32f303re")]
                     Bus::AHB1 => set_bits!(rcc.ahbrstr, pmask),
-                    #[cfg(feature = "stm32f303re")]
+                    #[cfg(feature = "board_stm32f303re")]
                     Bus::AHB2 | Bus::AHB3 => {
                         sys_log!("Wrong bus for f303re!");
                         panic!(); // The function of mapping should be correct
@@ -123,9 +123,9 @@ fn main() -> ! {
 
                 // Apply
                 match bus {
-                    #[cfg(feature = "stm32f303re")]
+                    #[cfg(feature = "board_stm32f303re")]
                     Bus::AHB1 => clear_bits!(rcc.ahbrstr, pmask),
-                    #[cfg(feature = "stm32f303re")]
+                    #[cfg(feature = "board_stm32f303re")]
                     Bus::AHB2 | Bus::AHB3 => {
                         sys_log!("Wrong bus for f303re!");
                         panic!(); // The function of mapping should be correct

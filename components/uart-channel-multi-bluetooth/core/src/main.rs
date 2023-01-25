@@ -6,7 +6,7 @@ use rcc_api::RCCError;
 use uart_channel_api::*;
 use userlib::{hl::Caller, *};
 
-#[cfg(feature = "stm32f303re")]
+#[cfg(feature = "board_stm32f303re")]
 use stm32f303re::device;
 
 // Baudrate used during communication
@@ -520,7 +520,7 @@ fn setup_usart(usart: &device::usart3::RegisterBlock) -> Result<(), RCCError> {
     usart.cr1.write(|w| w.ue().enabled());
 
     // Work out our baud rate divisor.
-    #[cfg(feature = "stm32f303re")]
+    #[cfg(feature = "board_stm32f303re")]
     {
         const CLOCK_HZ: u32 = 36_000_000; // PLCK1
         usart
@@ -777,7 +777,7 @@ fn step_transmit(usart: &device::usart3::RegisterBlock, state_ref: &mut DriverSt
     if tx.pos < 2 {
         let c_id_bytes = tx.caller.task_id().component_id().to_be_bytes();
         // Stuff byte into transmitter.
-        #[cfg(feature = "stm32f303re")]
+        #[cfg(feature = "board_stm32f303re")]
         usart
             .tdr
             .write(|w| w.tdr().bits(u16::from(c_id_bytes[tx.pos])));
@@ -786,7 +786,7 @@ fn step_transmit(usart: &device::usart3::RegisterBlock, state_ref: &mut DriverSt
     } else if tx.pos < 4 {
         let c_len_bytes = (tx.len as u16).to_be_bytes();
         // Stuff byte into transmitter.
-        #[cfg(feature = "stm32f303re")]
+        #[cfg(feature = "board_stm32f303re")]
         usart
             .tdr
             .write(|w| w.tdr().bits(u16::from(c_len_bytes[tx.pos - 2])));
@@ -796,7 +796,7 @@ fn step_transmit(usart: &device::usart3::RegisterBlock, state_ref: &mut DriverSt
     // Now we can actually send out data
     if let Some(byte) = tx.caller.borrow(tx.borrow_num).read_at::<u8>(tx.pos - 4) {
         // Stuff byte into transmitter.
-        #[cfg(feature = "stm32f303re")]
+        #[cfg(feature = "board_stm32f303re")]
         usart.tdr.write(|w| w.tdr().bits(u16::from(byte)));
 
         tx.pos += 1;

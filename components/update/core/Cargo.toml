@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-stm32f303re = []
+board_stm32f303re = []
 
 [dependencies]
 userlib = {path = "../../../sys/userlib", features=["log-itm"]}

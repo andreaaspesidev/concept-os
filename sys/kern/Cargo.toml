@@ -3,6 +3,9 @@ name = "kern"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+f303re = ["dep:stm32f303re"]
+
 [dependencies]
 abi = {path = "../abi"}
 zerocopy = "0.6.1"
@@ -17,7 +20,7 @@ hbf_lite = { path = "../../libs/hbf_lite" }
 flash_allocator = { path = "../../libs/flash_allocator" }
 heapless = "0.7.16"
 # Board dependencies
-stm32f303re = {path = "../../boards/stm32f303re"}
+stm32f303re = {path = "../../boards/stm32f303re", optional=true}
 
 [build-dependencies]
 serde = "1"

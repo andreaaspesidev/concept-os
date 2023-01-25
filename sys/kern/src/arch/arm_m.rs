@@ -77,7 +77,6 @@ use flash_allocator::flash::page::FlashPage;
 use flash_allocator::flash::walker::FlashWalker;
 use flash_allocator::flash::{FlashBlock, FlashMethods};
 use heapless::FnvIndexMap;
-use stm32f303re::*;
 use zerocopy::FromBytes;
 
 use crate::atomic::AtomicExt;
@@ -1239,6 +1238,14 @@ pub unsafe fn initialize_native() {
 /// This must also take into account that some operations will stall the CPU.
 /// During this time, we might skip SysTick interrupt, and so here below
 /// we force this concept by adding back to the ticks the worst case scenario.
+#[cfg(feature = "f303re")]
+use stm32f303re::{
+    FLASH_ALLOCATOR_END_ADDR, FLASH_ALLOCATOR_START_ADDR,
+    FLASH_ALLOCATOR_START_SCAN_ADDR, FLASH_END_ADDR, FLASH_ERASE_MS,
+    FLASH_PAGE_SIZE, FLASH_START_ADDR, FLASH_TREE_MAX_LEVEL,
+    FLASH_WRITES_PER_MS, Flash
+};
+
 pub struct FlashInterface {
     native_methods:
         Flash<'static, FLASH_START_ADDR, FLASH_PAGE_SIZE, FLASH_END_ADDR>,
@@ -1262,7 +1269,7 @@ impl FlashInterface {
         // Always try to schedule something else. Watch for a specific, in case some timer fires
         return match switch {
             NextTask::Specific(id) => result.map(|_| NextTask::Specific(id)),
-            _ => result.map(|_| NextTask::Other)
+            _ => result.map(|_| NextTask::Other),
         };
     }
     pub fn erase_timed(
@@ -1275,7 +1282,7 @@ impl FlashInterface {
         // Always try to schedule something else. Watch for a specific, in case some timer fires
         return match switch {
             NextTask::Specific(id) => result.map(|_| NextTask::Specific(id)),
-            _ => result.map(|_| NextTask::Other)
+            _ => result.map(|_| NextTask::Other),
         };
     }
 }
@@ -1317,7 +1324,7 @@ pub fn get_flash_block(
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_TREE_MAX_LEVEL
+        FLASH_TREE_MAX_LEVEL,
     >(flash_methods, base_address, is_base_exact)
 }
 
@@ -1352,7 +1359,7 @@ pub struct FlashWalkerFacade {
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_TREE_MAX_LEVEL
+        FLASH_TREE_MAX_LEVEL,
     >,
 }
 
@@ -1378,7 +1385,7 @@ pub fn get_flash_walker() -> FlashWalkerFacade {
         FLASH_ALLOCATOR_START_ADDR,
         FLASH_ALLOCATOR_END_ADDR,
         FLASH_ALLOCATOR_START_SCAN_ADDR,
-        FLASH_TREE_MAX_LEVEL
+        FLASH_TREE_MAX_LEVEL,
     >::new(flash_methods);
     FlashWalkerFacade {
         native_walker: naive_walker,

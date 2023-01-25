@@ -5,7 +5,7 @@ mod flash;
 
 // Import board specific constants
 cfg_if::cfg_if! {
-    if #[cfg(feature = "stm32f303re")] {
+    if #[cfg(feature = "board_stm32f303re")] {
         use stm32f303re::*;
     } else {
         compile_error!("Board not supported");

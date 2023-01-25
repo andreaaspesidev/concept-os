@@ -4,9 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [features]
-default = ["double_word_support"]
 swap = []
-double_word_support = []
 
 [dependencies]
 abi = {path = "../../sys/abi"}

@@ -13,6 +13,9 @@ struct Arguments {
     #[clap(short = 'b')]
     target_board: String,
     #[clap(short, long)]
+    #[clap(short = 'f')]
+    features: Vec<String>,
+    #[clap(short, long)]
     #[clap(short = 'v')]
     #[clap(takes_value = false)]
     verbose: bool,
@@ -27,14 +30,15 @@ fn process_args() -> i32 {
     let args = Arguments::parse();
     // Print arguments
     println!(
-        "\n--------------------\nSource dir: {}\nOutput Path: {}\nTarget Board: {}\nVerbose: {}\nClean-up: {}\n--------------------\n",
-        args.component_source_dir, args.hbf_output_path, args.target_board, args.verbose, args.clean_up
+        "\n--------------------\nSource dir: {}\nOutput Path: {}\nTarget Board: {}\nFeatures: {}\nVerbose: {}\nClean-up: {}\n--------------------\n",
+        args.component_source_dir, args.hbf_output_path, args.target_board, args.features.join(", "), args.verbose, args.clean_up
     );
     // Launch build process
     if component_builder::build_process(
         args.component_source_dir,
         args.hbf_output_path,
         args.target_board,
+        &args.features,
         args.verbose,
         args.clean_up,
     )
@@ -45,7 +49,6 @@ fn process_args() -> i32 {
         return 1;
     }
 }
-
 
 fn main() {
     let res = process_args();
