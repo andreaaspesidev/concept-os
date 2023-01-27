@@ -6,7 +6,7 @@ use userlib::*;
 #[export_name = "main"]
 fn main() -> ! {
     // Main loop
-    #[cfg(feature = "board_stm32f303re")]
+    #[cfg(feature = "board_stm32l432kc")]
     let mut buffer = [0; 4];
     loop {
         // Wait for a command

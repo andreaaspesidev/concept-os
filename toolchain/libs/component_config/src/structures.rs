@@ -1,5 +1,6 @@
 use serde::{Serialize, Deserialize};
 use serde_hex::{SerHex, StrictPfx, CompactPfx};
+use std::collections::BTreeMap;
 
 /*
     Enums
@@ -58,4 +59,22 @@ pub struct Dependency {
     pub component_id: u16,
     pub min_version: u32,
     pub max_version: u32
+}
+
+
+#[derive(Deserialize, PartialEq, Debug)]
+pub struct ComponentExtendedConfig {
+    pub component: ComponentExtended,
+    pub dependencies: Option<Vec<Dependency>>
+}
+
+#[derive(Deserialize, PartialEq, Debug)]
+pub struct ComponentExtended {
+    pub id: u16,
+    pub version: u32,
+    pub priority: u16,
+    pub flags: Vec<ComponentFlag>,
+    pub min_ram: u32,
+    pub peripherals: Option<Vec<String>>,
+    pub interrupts: Option<BTreeMap<String, u32>>,
 }

@@ -1,4 +1,11 @@
+use board_config::BoardConfig;
 use cargo_metadata::MetadataCommand;
+use component_config::{
+    read_component_extended_config,
+    structures::{Component, ComponentConfig, Interrupt, Region, RegionAttribute},
+    write_component_config,
+};
+use regex::Regex;
 use std::{
     path::{Path, PathBuf},
     process::Command,
@@ -100,6 +107,7 @@ fn compute_relocations(
 
 fn assemble_hbf(
     root_path: &Path,
+    config_path: &PathBuf,
     output_artifact_path: &PathBuf,
     source_artifact_path: &PathBuf,
     component_path: &PathBuf,
@@ -112,10 +120,8 @@ fn assemble_hbf(
     module_path.push("elf2hbf");
     module_path.push("elf2hbf");
     let mut cmd = Command::new(module_path);
-    let mut config_path = component_path.clone();
-    config_path.push("Component.toml");
     if !config_path.exists() {
-        panic!("Cannot find the component descriptor 'Component.toml'");
+        panic!("Cannot find the generated component descriptor 'Component.toml'");
     }
     cmd.arg("-c");
     cmd.arg(config_path);
@@ -130,6 +136,103 @@ fn assemble_hbf(
         return Err(());
     }
     Ok(())
+}
+
+fn process_component_config(
+    component_path: String,
+    component_build_path: &PathBuf,
+    board_config: &BoardConfig,
+) -> PathBuf {
+    // Read the extended config
+    let mut config_path = PathBuf::from(component_path);
+    config_path.push("Component.toml");
+    if !config_path.exists() {
+        panic!("Cannot find the component descriptor 'Component.toml'");
+    }
+    let config = read_component_extended_config(config_path.to_str().unwrap())
+        .expect("Cannot read the component descriptor 'Component.toml'");
+
+    // Generate regions
+    let mut component_regions = Vec::<Region>::new();
+    if let Some(peripherals) = &config.component.peripherals {
+        for peripheral in peripherals {
+            // Search the peripheral in the board config to estract the regions
+            let p = board_config
+                .peripheral
+                .get(peripheral)
+                .expect(&format!("Cannot find peripheral {}", peripheral));
+            component_regions.push(Region {
+                base_address: p.base_address,
+                size: p.size,
+                attributes: p
+                    .attributes
+                    .iter()
+                    .map(|a| match *a {
+                        board_config::RegionAttribute::READ => RegionAttribute::READ,
+                        board_config::RegionAttribute::WRITE => RegionAttribute::WRITE,
+                        board_config::RegionAttribute::EXECUTE => RegionAttribute::EXECUTE,
+                        board_config::RegionAttribute::DMA => RegionAttribute::DMA,
+                        board_config::RegionAttribute::DEVICE => RegionAttribute::DEVICE,
+                    })
+                    .collect(),
+            });
+        }
+    }
+    // Generate interrupts
+    let mut component_interrupts = Vec::<Interrupt>::new();
+    let p_name_regex = Regex::new(r"([A-Za-z0-9]+)\.([A-Za-z0-9]+)").unwrap();
+    if let Some(interrupts) = &config.component.interrupts {
+        for (peripheral_interrupt, mask) in interrupts {
+            // Get the peripheral
+            let res = p_name_regex.captures(peripheral_interrupt).unwrap();
+            let peripheral_name = res.get(1).unwrap().as_str().to_string();
+            let irq_name = res.get(2).unwrap().as_str().to_string();
+            // Search the peripheral in the board config to estract the regions
+            let p = board_config
+                .peripheral
+                .get(&peripheral_name)
+                .expect(&format!("Cannot find peripheral {}", peripheral_name));
+            let p_ints = p
+                .interrupts
+                .as_ref()
+                .expect(&format!("No interrupts found for {}", peripheral_name));
+            // Read the IRQ number
+            let irq = p_ints.get(&irq_name).expect(&format!(
+                "Interrupt {} not found for {}",
+                irq_name, peripheral_name
+            ));
+            // Add the interrupt
+            component_interrupts.push(Interrupt {
+                irq: *irq,
+                notification_mask: *mask,
+            });
+        }
+    }
+
+    // Construct a new component config
+    let new_config = ComponentConfig {
+        component: Component {
+            id: config.component.id,
+            version: config.component.version,
+            priority: config.component.priority,
+            flags: config.component.flags,
+            min_ram: config.component.min_ram,
+        },
+        regions: match component_regions.is_empty() {
+            true => None,
+            false => Some(component_regions),
+        },
+        interrupts: match component_interrupts.is_empty() {
+            true => None,
+            false => Some(component_interrupts),
+        },
+        dependencies: config.dependencies,
+    };
+    // Generate the config file
+    let mut config_simple_path = component_build_path.clone();
+    config_simple_path.push("Component.toml");
+    write_component_config(config_simple_path.clone().to_str().unwrap(), &new_config).unwrap();
+    return config_simple_path;
 }
 
 pub fn build_process(
@@ -211,6 +314,10 @@ MEMORY
     if std::fs::write(linker_output_path, linker).is_err() {
         panic!("Cannot generate linker script for the component");
     }
+
+    // Process the component config to obtain the simplified version
+    let config_path = process_component_config(component_path.clone(), &component_build_path, &board_config);
+
     // Add the board to the features
     let mut feature_list = features.clone();
     feature_list.push(format!("board_{}", target_board));
@@ -230,6 +337,7 @@ MEMORY
     let output_path = PathBuf::from(hbf_output_path);
     assemble_hbf(
         root_path,
+        &config_path,
         &output_path,
         &artifact_path,
         &component_path_buf,
@@ -268,7 +376,7 @@ mod test {
         build_process(
             get_test_file_path("component1"),
             get_test_file_path("component1/component1.hbf"),
-            "stm32f303re".to_string(),
+            "stm32l432kc".to_string(),
             &Vec::<String>::new(),
             false,
             true,

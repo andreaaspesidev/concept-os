@@ -139,7 +139,6 @@ fn main() -> ! {
                     }
 
                     if usart_isr.idle().bit_is_set() {
-                        sys_log!("UART IDLE");
                         // IDLE, we have to flush RX buffer
                         // -> get the number of bytes still to be read of DMA
                         #[cfg(feature = "board_stm32f303re")]
@@ -191,7 +190,6 @@ fn main() -> ! {
                     // DMA fired interrupt (RX)
                     let isr = dma1.isr.read();
                     if isr.htif6().bit_is_set() {
-                        sys_log!("DMA HB");
                         // Clear the flag
                         dma1.ifcr.write(|w| w.chtif6().set_bit());
                         // Half transfer complete!
@@ -202,7 +200,6 @@ fn main() -> ! {
                             usart,
                         );
                     } else if isr.tcif6().bit_is_set() {
-                        sys_log!("DMA FB");
                         // Clear the flag
                         dma1.ifcr.write(|w| w.ctcif6().set_bit());
                         // Full transfer complete

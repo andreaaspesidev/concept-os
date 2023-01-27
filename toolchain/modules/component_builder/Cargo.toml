@@ -12,3 +12,5 @@ serde = {version = "1.0.137", features=["derive"]}
 
 hbf_rs = {path = "../../../libs/hbf_rs"}
 board_config = {path = "../../libs/board_config"}
+component_config = {path = "../../libs/component_config"}
+regex = "1.7.1"

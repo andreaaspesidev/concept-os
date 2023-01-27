@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 toml = "0.5.9"
 serde = {version = "1.0.137", features=["derive"]}
+serde-hex = "0.1.0"

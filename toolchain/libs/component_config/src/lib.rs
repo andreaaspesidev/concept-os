@@ -1,5 +1,7 @@
 pub mod structures;
 
+use structures::ComponentExtendedConfig;
+
 use crate::structures::ComponentConfig;
 use std::fs;
 use std::error::Error;
@@ -16,6 +18,14 @@ pub fn read_component_config(file_name: &str) -> Result<ComponentConfig, Box<dyn
     return Ok(config);
 }
 
+pub fn read_component_extended_config(file_name: &str) -> Result<ComponentExtendedConfig, Box<dyn Error>> {
+     // Read file
+     let file_content = fs::read_to_string(file_name)?;
+     // Parse config from file
+     let config = toml::from_str(&file_content)?;
+     return Ok(config);
+}
+
 pub fn write_component_config(file_name: &str, config: &ComponentConfig) -> Result<(), Box<dyn Error>> {
     // Generate config
     let file_content = toml::to_string_pretty(config)?;
@@ -23,8 +33,6 @@ pub fn write_component_config(file_name: &str, config: &ComponentConfig) -> Resu
     fs::write(file_name, file_content)?;
     return Ok(());
 }
-
-
 
 /*
     Tests
@@ -224,5 +232,13 @@ mod test {
         // Recover structure
         let recovered = read_component_config(&file_path).unwrap();
         assert_eq!(recovered, config);
+    }
+
+    #[test]
+    fn extended_read1() {
+        let test_file_path = get_test_file_path("extended1.toml");
+        // Recover structure
+        let recovered = read_component_extended_config(&test_file_path).unwrap();
+        println!("{:?}", recovered);
     }
 }

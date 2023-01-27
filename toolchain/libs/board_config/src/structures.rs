@@ -1,4 +1,18 @@
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
+use serde_hex::{SerHex, StrictPfx, CompactPfx};
+
+
+#[allow(non_camel_case_types)]
+#[derive(Deserialize, PartialEq, Debug)]
+pub enum RegionAttribute {
+    READ,
+    WRITE,
+    EXECUTE,
+    DEVICE,
+    DMA
+}
 
 /**
  * Structures
@@ -7,7 +21,18 @@ use serde::Deserialize;
 #[derive(Deserialize, PartialEq, Debug)]
 pub struct BoardConfig {
     pub board: Board,
-    pub linker: Linker
+    pub linker: Linker,
+    pub peripheral: BTreeMap<String, Peripheral>
+}
+
+#[derive(Deserialize, PartialEq, Debug)]
+pub struct Peripheral {
+    #[serde(with = "SerHex::<StrictPfx>")]
+    pub base_address: u32,
+    #[serde(with = "SerHex::<CompactPfx>")]
+    pub size: u32,
+    pub attributes: Vec<RegionAttribute>,
+    pub interrupts: Option<BTreeMap<String, u32>>
 }
 
 #[derive(Deserialize, PartialEq, Debug)]
