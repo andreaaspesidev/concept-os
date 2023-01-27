@@ -18,7 +18,7 @@ use zerocopy::FromBytes;
 use crate::err::UserError;
 use crate::startup::HUBRIS_FAULT_NOTIFICATION;
 use crate::structures::revert_update;
-use crate::sys_log;
+use crate::log::sys_log;
 use crate::time::Timestamp;
 use crate::umem::USlice;
 use crate::utils::{get_task, log_task};

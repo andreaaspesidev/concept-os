@@ -4,13 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
+log-itm = ["userlib/log-itm"]
+log-semihosting = ["dep:cortex-m-semihosting", "userlib/log-semihosting"]
 board_stm32f303re = ["rcc-api/stm32f303re", "dep:stm32f303re"]
+board_stm32l432kc = ["rcc-api/stm32l432kc", "dep:stm32l432kc"]
 
 [dependencies]
 uart-channel-api = {path = "../api"}
-userlib = {path = "../../../sys/userlib", features=["log-itm"]}
+userlib = {path = "../../../sys/userlib"}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
 cfg-if = "1.0.0"
+cortex-m-semihosting =  { version = "0.5.0", optional=true}
 # Component dependencies
 rcc-api = {path = "../../rcc/api"}
 
@@ -18,6 +22,10 @@ rcc-api = {path = "../../rcc/api"}
 # Each board supported will have its section below
 [dependencies.stm32f303re]
 path = "../../../boards/stm32f303re"
+optional = true
+
+[dependencies.stm32l432kc]
+path = "../../../boards/stm32l432kc"
 optional = true
 
 # This section is here to discourage RLS/rust-analyzer from doing test builds,

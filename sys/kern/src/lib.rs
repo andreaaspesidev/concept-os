@@ -47,5 +47,5 @@ pub mod task;
 pub mod time;
 pub mod umem;
 pub mod structures;
-#[macro_use]
 mod utils;
+mod log;

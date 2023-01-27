@@ -19,6 +19,10 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "stm32f303re")] {
         mod stm32f303re;
         use stm32f303re::*;
+    // STM32L4X2
+    } else if #[cfg(feature = "stm32l432kc")] {
+        mod stm32l432kc;
+        use stm32l432kc::*;
     } else {
         compile_error!("Board not supported");
     }

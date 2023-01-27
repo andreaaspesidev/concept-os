@@ -1,0 +1,8 @@
+[board]
+target = "thumbv7em-none-eabihf"
+
+[linker]
+flash_origin = "0x08000000"
+flash_size = "256K"
+ram_origin = "0x20000000"
+ram_size = "64K"

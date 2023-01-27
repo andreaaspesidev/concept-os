@@ -53,6 +53,14 @@ impl<'a> ElfEditor<'a> {
                 stm32f303re::SRAM_RESERVED,
                 stm32f303re::FLASH_ALLOCATOR_START_SCAN_ADDR - stm32f303re::FLASH_ALLOCATOR_START_ADDR
             ),
+            "stm32l432kc" => (
+                stm32l432kc::FLASH_START_ADDR,
+                stm32l432kc::FLASH_ALLOCATOR_SIZE as u32,
+                stm32l432kc::SRAM_START_ADDR,
+                stm32l432kc::SRAM_END_ADDR - stm32l432kc::SRAM_START_ADDR + 1,
+                stm32l432kc::SRAM_RESERVED,
+                stm32l432kc::FLASH_ALLOCATOR_START_SCAN_ADDR - stm32l432kc::FLASH_ALLOCATOR_START_ADDR
+            ),
             _ => panic!("Unsupported board"),
         };
         println!("Flash Start: {:#010x}", flash_start);
@@ -405,6 +413,83 @@ fn perform_allocation(
             const SRAM_NUM_NODES: usize = stm32f303re::SRAM_NUM_NODES;
             
             const SRAM_RESERVED: u32 = stm32f303re::SRAM_RESERVED;
+
+            let mut ram_alloc = RAMAllocatorImpl::<
+                SRAM_START_ADDR,
+                SRAM_END_ADDR,
+                SRAM_BLOCK_SIZE,
+                SRAM_NUM_BLOCKS,
+                SRAM_TREE_MAX_LEVEL,
+                SRAM_NUM_NODES,
+                SRAM_RESERVED,
+                FLASH_START_ADDR,
+                FLASH_END_ADDR,
+                FLASH_ALLOCATOR_SCAN,
+                FLASH_TREE_MAX_LEVEL
+            >::from_flash(flash_buffer);
+
+            let ram_block = ram_alloc
+                .allocate(flash_block.get_base_address(), needed_ram)
+                .expect("Cannot allocate memory for HBF");
+
+            drop(ram_alloc);
+
+            // Now finalize the block header
+            flash_allocator::flash::utils::finalize_block::<FLASH_START_ADDR, FLASH_TREE_MAX_LEVEL>(
+                flash_buffer,
+                flash_block,
+            )
+            .unwrap();
+            const BLOCK_HEADER_SIZE: usize = flash_allocator::flash::HEADER_SIZE;
+            let actual_base = flash_block.get_base_address() - BLOCK_HEADER_SIZE as u32;
+            let actual_size = flash_block.get_size() + BLOCK_HEADER_SIZE as u32 + 8;
+            let mut header_bytes: [u8; BLOCK_HEADER_SIZE + 8] = [0x00; BLOCK_HEADER_SIZE + 8];
+            flash_buffer.read(actual_base, &mut header_bytes).unwrap();
+
+            return AllocatedComponent {
+                flash_address: actual_base,
+                flash_size: actual_size,
+                sram_address: ram_block.get_base_address(),
+                sram_size: ram_block.get_size(),
+                data: Vec::from(header_bytes),
+            };
+        },
+        "stm32l432kc" => {
+            const FLASH_START_ADDR: u32 = stm32l432kc::FLASH_ALLOCATOR_START_ADDR;
+            const FLASH_END_ADDR: u32 = stm32l432kc::FLASH_ALLOCATOR_END_ADDR;
+            const FLASH_ALLOCATOR_SCAN: u32 = stm32l432kc::FLASH_ALLOCATOR_START_SCAN_ADDR;
+            const FLASH_BLOCK_SIZE: usize = stm32l432kc::FLASH_BLOCK_SIZE;
+            const FLASH_NUM_BLOCKS: usize = stm32l432kc::FLASH_NUM_BLOCKS;
+            const FLASH_TREE_MAX_LEVEL: usize = stm32l432kc::FLASH_TREE_MAX_LEVEL;
+            const FLASH_NUM_NODES: usize = stm32l432kc::FLASH_NUM_NODES;
+            // Create fake flash memory
+            flash_buffer.change_base_address(FLASH_START_ADDR);
+            // Create the standard allocator
+            let mut flash_alloc = FlashAllocatorImpl::<
+                FLASH_START_ADDR,
+                FLASH_END_ADDR,
+                FLASH_ALLOCATOR_SCAN,
+                FLASH_BLOCK_SIZE,
+                FLASH_NUM_BLOCKS,
+                FLASH_TREE_MAX_LEVEL,
+                FLASH_NUM_NODES
+            >::from_flash(flash_buffer, false, false);
+            // Perform the allocation
+            let flash_block = flash_alloc
+                .allocate(needed_flash + 8, BlockType::COMPONENT)
+                .expect("Failed to allocate space for HBF");
+
+            drop(flash_alloc);
+
+            // Construct the RAM allocator
+            const SRAM_START_ADDR: u32 = stm32l432kc::SRAM_START_ADDR;
+            const SRAM_END_ADDR: u32 = stm32l432kc::SRAM_END_ADDR;
+            const SRAM_BLOCK_SIZE: usize = stm32l432kc::SRAM_BLOCK_SIZE;
+            const SRAM_NUM_BLOCKS: usize = stm32l432kc::SRAM_NUM_BLOCKS;
+            const SRAM_TREE_MAX_LEVEL: usize = stm32l432kc::SRAM_TREE_MAX_LEVEL;
+            const SRAM_NUM_NODES: usize = stm32l432kc::SRAM_NUM_NODES;
+            
+            const SRAM_RESERVED: u32 = stm32l432kc::SRAM_RESERVED;
 
             let mut ram_alloc = RAMAllocatorImpl::<
                 SRAM_START_ADDR,

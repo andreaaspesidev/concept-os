@@ -17,7 +17,8 @@ use crate::structures::load_component_at;
 use crate::task::{ArchState, NextTask, NotificationSet, Task};
 use crate::umem::USlice;
 use crate::utils::{get_task, get_task_mut};
-use crate::{sys_log, task};
+use crate::task;
+use crate::log::sys_log;
 use heapless::FnvIndexMap;
 
 /// Message dispatcher.

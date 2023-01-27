@@ -1,4 +1,4 @@
-use crate::task::Task;
+use crate::{task::Task, log::sys_log};
 
 use abi::{HUBRIS_MAX_IRQS, HUBRIS_MAX_SUPPORTED_TASKS, InterruptOwner};
 use heapless::FnvIndexMap;
@@ -18,22 +18,6 @@ pub fn get_task(
     caller_id: u16,
 ) -> &Task {
     tasks.get(&caller_id).unwrap_lite()
-}
-
-#[macro_export]
-macro_rules! sys_log {
-    ($s:expr) => {
-        unsafe {
-            let stim = &mut (*cortex_m::peripheral::ITM::PTR).stim[0];
-            cortex_m::iprintln!(stim, $s);
-        }
-    };
-    ($s:expr, $($tt:tt)*) => {
-        unsafe {
-            let stim = &mut (*cortex_m::peripheral::ITM::PTR).stim[0];
-            cortex_m::iprintln!(stim, $s, $($tt)*);
-        }
-    };
 }
 
 pub fn log_task(task: &Task) {

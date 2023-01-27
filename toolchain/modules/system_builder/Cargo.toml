@@ -20,3 +20,6 @@ ram_allocator = {path = "../../../libs/ram_allocator"}
 
 [dependencies.stm32f303re]
 path = "../../../boards/stm32f303re"
+
+[dependencies.stm32l432kc]
+path = "../../../boards/stm32l432kc"

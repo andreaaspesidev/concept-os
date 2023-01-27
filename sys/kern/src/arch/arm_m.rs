@@ -80,11 +80,12 @@ use heapless::FnvIndexMap;
 use zerocopy::FromBytes;
 
 use crate::atomic::AtomicExt;
+use crate::log::sys_log;
 use crate::startup::{with_irq_table, with_task_table};
 use crate::task::{NextTask, Task};
 use crate::time::Timestamp;
 use crate::umem::USlice;
-use crate::{sys_log, task};
+use crate:: task;
 use abi::FaultInfo;
 use abi::FaultSource;
 use abi::HUBRIS_MAX_SUPPORTED_TASKS;
@@ -1240,6 +1241,13 @@ pub unsafe fn initialize_native() {
 /// we force this concept by adding back to the ticks the worst case scenario.
 #[cfg(feature = "f303re")]
 use stm32f303re::{
+    FLASH_ALLOCATOR_END_ADDR, FLASH_ALLOCATOR_START_ADDR,
+    FLASH_ALLOCATOR_START_SCAN_ADDR, FLASH_END_ADDR, FLASH_ERASE_MS,
+    FLASH_PAGE_SIZE, FLASH_START_ADDR, FLASH_TREE_MAX_LEVEL,
+    FLASH_WRITES_PER_MS, Flash
+};
+#[cfg(feature = "l432kc")]
+use stm32l432kc::{
     FLASH_ALLOCATOR_END_ADDR, FLASH_ALLOCATOR_START_ADDR,
     FLASH_ALLOCATOR_START_SCAN_ADDR, FLASH_END_ADDR, FLASH_ERASE_MS,
     FLASH_PAGE_SIZE, FLASH_START_ADDR, FLASH_TREE_MAX_LEVEL,

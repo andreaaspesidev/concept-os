@@ -1,4 +1,6 @@
 # Needed to actually test if the library builds successfully, as cannot be built natively.
 # (Only for testing purposes)
-build-test:
-	cargo build --release --target thumbv7em-none-eabihf --features f303re
+build-test-f303re:
+	cargo build --release --target thumbv7em-none-eabihf --features f303re,log-itm
+build-test-l432kc:
+	cargo build --release --target thumbv7em-none-eabihf --features l432kc,log-semihosting

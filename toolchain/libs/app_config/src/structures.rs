@@ -15,5 +15,6 @@ pub struct AppConfig {
     pub name: String,
     pub board: String,
     pub kernel_ram: u32,
+    pub clock_speed: u32,
     pub components: BTreeMap<String, ComponentConfig>
 }

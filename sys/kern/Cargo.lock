@@ -77,6 +77,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "bstringify"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd769563b4ea2953e2825c9e6b7470a5f55f67e0be00030bf3e390a2a6071f64"
+
+[[package]]
 name = "buddy_allocator"
 version = "0.0.1"
 dependencies = [
@@ -105,6 +111,15 @@ dependencies = [
  "bitfield",
  "embedded-hal",
  "volatile-register",
+]
+
+[[package]]
+name = "cortex-m-semihosting"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c23234600452033cc77e4b761e740e02d2c4168e11dbf36ab14a0f58973592b0"
+dependencies = [
+ "cortex-m",
 ]
 
 [[package]]
@@ -181,16 +196,20 @@ version = "0.1.0"
 dependencies = [
  "abi",
  "bitflags",
+ "bstringify",
  "byteorder",
  "cfg-if",
  "cortex-m",
+ "cortex-m-semihosting",
  "flash_allocator",
  "hbf_lite",
  "heapless",
+ "paste",
  "ron",
  "serde",
  "ssmarshal",
  "stm32f303re",
+ "stm32l432kc",
  "unwrap-lite",
  "zerocopy",
 ]
@@ -231,6 +250,12 @@ name = "nb"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
+
+[[package]]
+name = "paste"
+version = "1.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d01a5bd0424d00070b0098dd17ebca6f961a959dead1dbcbbbc1d1cd8d3deeba"
 
 [[package]]
 name = "proc-macro2"
@@ -397,6 +422,17 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stm32f303re"
+version = "0.1.0"
+dependencies = [
+ "bare-metal 1.0.0",
+ "cortex-m",
+ "flash_allocator",
+ "static_assertions",
+ "vcell",
+]
+
+[[package]]
+name = "stm32l432kc"
 version = "0.1.0"
 dependencies = [
  "bare-metal 1.0.0",

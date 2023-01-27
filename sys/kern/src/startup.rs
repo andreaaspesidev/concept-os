@@ -8,8 +8,8 @@ use heapless::FnvIndexMap;
 use unwrap_lite::UnwrapLite;
 
 use crate::structures::populate_kernel_structures;
-use crate::sys_log;
 use crate::task::Task;
+use crate::log::sys_log;
 use crate::utils::log_structures;
 use crate::atomic::AtomicExt;
 use core::mem::MaybeUninit;

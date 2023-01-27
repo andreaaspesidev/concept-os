@@ -1,6 +1,6 @@
 use crate::{
     startup::{with_irq_table, HUBRIS_STORAGE_ANALYZE_NOTIFICATION},
-    sys_log,
+    log::sys_log,
     task::{NotificationSet, Task},
     utils::{get_task, get_task_mut},
 };

@@ -12,3 +12,4 @@ cfg-if = "1.0.0"
 
 [features]
 stm32f303re = []
+stm32l432kc = []

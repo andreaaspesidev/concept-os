@@ -4,11 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
+log-itm = ["userlib/log-itm"]
+log-semihosting = ["dep:cortex-m-semihosting", "userlib/log-semihosting"]
 stm32f303re = []
 
 [dependencies]
-userlib = {path = "../../../sys/userlib", features = ["log-itm"]}
+userlib = {path = "../../../sys/userlib"}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
+cortex-m-semihosting =  { version = "0.5.0", optional=true}
 # Component dependencies
 uart-channel-api = {path = "../../uart-channel-usb/api"}
 

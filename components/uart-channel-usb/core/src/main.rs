@@ -5,8 +5,11 @@ use rcc_api::RCCError;
 use uart_channel_api::*;
 use userlib::{hl::Caller, *};
 
-#[cfg(feature = "board_stm32f303re")]
-use stm32f303re::device;
+//#[cfg(feature = "board_stm32f303re")]
+//use stm32f303re::device;
+
+#[cfg(feature = "board_stm32l432kc")]
+use stm32l432kc::device;
 
 // Baudrate used during communication
 const BAUDRATE: u32 = 115_200;
@@ -136,9 +139,14 @@ fn main() -> ! {
                     }
 
                     if usart_isr.idle().bit_is_set() {
+                        sys_log!("UART IDLE");
                         // IDLE, we have to flush RX buffer
                         // -> get the number of bytes still to be read of DMA
+                        #[cfg(feature = "board_stm32f303re")]
                         let remaining_rx = dma1.ch6.ndtr.read().bits() as usize;
+                        #[cfg(feature = "board_stm32l432kc")]
+                        let remaining_rx = dma1.cndtr6.read().bits() as usize;
+
                         if remaining_rx > 0 && remaining_rx < RX_BUFFER_SIZE {
                             // Still something to read (otherwise TC will be called)
                             dma_receive_callback(
@@ -149,7 +157,7 @@ fn main() -> ! {
                             );
                         }
                         // Clear bit
-                        usart.icr.modify(|_, w| w.idlecf().set_bit());
+                        usart.icr.write(|w| w.idlecf().set_bit());
                     }
 
                     // Frame error
@@ -163,7 +171,7 @@ fn main() -> ! {
                         // after the peripheral is configured. Not enough time to
                         // further investigate at the moment, maybe wait some flag
                         // will fix it.
-                        usart.icr.modify(|_, w| w.fecf().set_bit());
+                        usart.icr.write(|w| w.fecf().set_bit());
                         frame_recovery = false;
                     }
 
@@ -181,8 +189,9 @@ fn main() -> ! {
                 // DMA IRQ
                 if bits & DMA1_CH6_IRQ_MASK != 0 {
                     // DMA fired interrupt (RX)
-                    let ch6_isr = dma1.isr.read();
-                    if ch6_isr.htif6().bit_is_set() {
+                    let isr = dma1.isr.read();
+                    if isr.htif6().bit_is_set() {
+                        sys_log!("DMA HB");
                         // Clear the flag
                         dma1.ifcr.write(|w| w.chtif6().set_bit());
                         // Half transfer complete!
@@ -192,7 +201,8 @@ fn main() -> ! {
                             dma1,
                             usart,
                         );
-                    } else if ch6_isr.tcif6().bit_is_set() {
+                    } else if isr.tcif6().bit_is_set() {
+                        sys_log!("DMA FB");
                         // Clear the flag
                         dma1.ifcr.write(|w| w.ctcif6().set_bit());
                         // Full transfer complete
@@ -202,7 +212,7 @@ fn main() -> ! {
                             dma1,
                             usart,
                         );
-                    } else if ch6_isr.teif6().bit_is_set() {
+                    } else if isr.teif6().bit_is_set() {
                         // Error
                         sys_log!("Got error on DMA");
                         panic!();
@@ -341,7 +351,7 @@ fn main() -> ! {
 
 fn setup_timed_read(
     state_ref: &mut DriverState,
-    usart: &device::usart2::RegisterBlock,
+    usart: &device::usart1::RegisterBlock,
     dma1: &device::dma1::RegisterBlock,
     caller: Caller<()>,
     rx_len: usize,
@@ -356,7 +366,7 @@ fn setup_timed_read(
 
 fn setup_read(
     state_ref: &mut DriverState,
-    usart: &device::usart2::RegisterBlock,
+    usart: &device::usart1::RegisterBlock,
     dma1: &device::dma1::RegisterBlock,
     caller: Caller<()>,
     rx_len: usize,
@@ -378,7 +388,7 @@ fn setup_read(
 
 fn setup_transmit(
     state_ref: &mut DriverState,
-    usart: &device::usart2::RegisterBlock,
+    usart: &device::usart1::RegisterBlock,
     caller: Caller<()>,
     tx_len: usize,
     borrow_num: usize,
@@ -396,7 +406,12 @@ fn setup_transmit(
     Ok(())
 }
 
-fn setup_usart(usart: &device::usart2::RegisterBlock) -> Result<(), RCCError> {
+/*
+ * ----------------
+ *      Setup
+ * ----------------
+*/
+fn setup_usart(usart: &device::usart1::RegisterBlock) -> Result<(), RCCError> {
     // Enable clock and leave reset
     // Turn on clock and leave reset
     let mut rcc = rcc_api::RCC::new();
@@ -414,6 +429,13 @@ fn setup_usart(usart: &device::usart2::RegisterBlock) -> Result<(), RCCError> {
             .brr
             .write(|w| w.brr().bits((CLOCK_HZ / BAUDRATE) as u16));
     }
+    #[cfg(feature = "board_stm32l432kc")]
+    {
+        const CLOCK_HZ: u32 = 80_000_000; // PLCK1
+        usart
+            .brr
+            .write(|w| w.brr().bits((CLOCK_HZ / BAUDRATE) as u16));
+    }
     // Enable the transmitter.
     usart.cr1.modify(|_, w| w.te().enabled());
     // Enable the receiver.
@@ -422,6 +444,7 @@ fn setup_usart(usart: &device::usart2::RegisterBlock) -> Result<(), RCCError> {
     Ok(())
 }
 
+#[cfg(feature = "board_stm32f303re")]
 /// Write USART2 on GPIOA (pin 2,3)
 fn setup_gpio() -> Result<(), RCCError> {
     // TODO: the fact that we interact with GPIOA directly here is an expedient
@@ -442,6 +465,28 @@ fn setup_gpio() -> Result<(), RCCError> {
     Ok(())
 }
 
+#[cfg(feature = "board_stm32l432kc")]
+/// Write USART2 on GPIOA (pin 2,15)
+fn setup_gpio() -> Result<(), RCCError> {
+    // TODO: the fact that we interact with GPIOA directly here is an expedient
+    // hack, but control of the GPIOs should probably be centralized somewhere.
+    let gpioa = unsafe { &*device::GPIOA::ptr() };
+
+    // Turn on clock and leave reset
+    let mut rcc = rcc_api::RCC::new();
+    rcc.enable_clock(rcc_api::Peripheral::GPIOA)?;
+    rcc.leave_reset(rcc_api::Peripheral::GPIOA)?;
+
+    // Setup Alternate Function
+    gpioa
+        .moder
+        .modify(|_, w| w.moder2().alternate().moder15().alternate());
+    gpioa.afrl.modify(|_, w| w.afrl2().af7());
+    gpioa.afrh.modify(|_, w| w.afrh15().af3());
+
+    Ok(())
+}
+
 // RX_BUFFER_SIZE must be a multiple of the cache line of the device.
 // On cortex-m4, cache seems not to exist (https://stackoverflow.com/questions/57377260/is-there-a-cache-in-the-arm-cortex-m4)
 // On cortex-m7, is 32 bytes
@@ -455,21 +500,24 @@ static mut RX_BUFFER: [u8; RX_BUFFER_SIZE] = [0xAA; RX_BUFFER_SIZE];
  * USART2_TX -> DMA1 - Channel7
  * (pag 272/1141)
  */
+#[cfg(any(feature = "board_stm32f303re", feature = "board_stm32l432kc"))]
 fn setup_dma(
     dma1: &device::dma1::RegisterBlock,
-    usart: &device::usart2::RegisterBlock,
+    usart: &device::usart1::RegisterBlock,
 ) -> Result<(), RCCError> {
     // Turn on clock
     let mut rcc = rcc_api::RCC::new();
     rcc.enable_clock(rcc_api::Peripheral::DMA1)?;
+    rcc.enter_reset(rcc_api::Peripheral::DMA1)?;
+    rcc.leave_reset(rcc_api::Peripheral::DMA1)?;
 
     // Configure DMA
     configure_dma_rx(dma1, usart);
 
     Ok(())
 }
-
-fn configure_dma_rx(dma1: &device::dma1::RegisterBlock, usart: &device::usart2::RegisterBlock) {
+#[cfg(feature = "board_stm32f303re")]
+fn configure_dma_rx(dma1: &device::dma1::RegisterBlock, usart: &device::usart1::RegisterBlock) {
     // Disable the channel (tbs)
     dma1.ch6.cr.modify(|_, w| w.en().clear_bit());
     // Clear all interrupts
@@ -507,7 +555,47 @@ fn configure_dma_rx(dma1: &device::dma1::RegisterBlock, usart: &device::usart2::
     dma1.ch6.cr.modify(|_, w| w.en().set_bit());
 }
 
-fn dma_receive_to_idle(_: &device::dma1::RegisterBlock, usart: &device::usart2::RegisterBlock) {
+#[cfg(feature = "board_stm32l432kc")]
+fn configure_dma_rx(dma1: &device::dma1::RegisterBlock, usart: &device::usart1::RegisterBlock) {
+    // Disable the channel (tbs)
+    dma1.ccr6.modify(|_, w| w.en().clear_bit());
+    // Clear all interrupts
+    dma1.ifcr.write(|w| w.cgif6().set_bit());
+
+    // Select USART2_RX for Channel 6
+    // See: RM0394/pag.299
+    dma1.cselr.modify(|_,w| w.c6s().bits(0b0010));
+
+    // Set periph. address (RDR register)
+    dma1.cpar6
+        .write(|w| unsafe { w.bits(usart.rdr.as_ptr() as u32) });
+    // Set the mem. address (RX_Buffer)
+    dma1.cmar6
+        .write(|w| unsafe { w.bits(RX_BUFFER.as_mut_ptr() as u32) });
+    // Set data length (number of elements to be received)
+    dma1.cndtr6
+        .write(|w| unsafe { w.bits(RX_BUFFER_SIZE as u32) });
+    // Set the transfer direction
+    dma1.ccr6.modify(|_, w| w.dir().clear_bit());
+    // Set channel priority
+    dma1.ccr6.modify(|_, w| w.pl().very_high());
+    // Set circular mode
+    dma1.ccr6.modify(|_, w| w.circ().set_bit());
+    // Set data length
+    dma1.ccr6.modify(|_, w| w.psize().bits8());
+    dma1.ccr6.modify(|_, w| w.msize().bits8());
+    // Set increment mode
+    dma1.ccr6.modify(|_, w| w.minc().set_bit());
+
+    // Enable right interrupts (Half-transfer, Transfer-complete, Transfer-error)
+    dma1.ccr6
+        .modify(|_, w| w.htie().set_bit().tcie().set_bit().teie().set_bit());
+
+    // Start DMA Channel
+    dma1.ccr6.modify(|_, w| w.en().set_bit());
+}
+
+fn dma_receive_to_idle(_: &device::dma1::RegisterBlock, usart: &device::usart1::RegisterBlock) {
     if usart.cr3.read().dmar().bit_is_set() {
         return; // Already active
     }
@@ -521,7 +609,7 @@ fn dma_receive_to_idle(_: &device::dma1::RegisterBlock, usart: &device::usart2::
     usart.cr1.modify(|_, w| w.idleie().set_bit());
 }
 
-/*fn dma_stop_receive(dma1: &device::dma1::RegisterBlock, usart: &device::usart2::RegisterBlock) {
+/*fn dma_stop_receive(dma1: &device::dma1::RegisterBlock, usart: &device::usart1::RegisterBlock) {
     // Disable DMA channel
     dma1.ch6.cr.modify(|_, w| w.en().clear_bit());
     // Disable UART parity error interrupt (even if we don't use it now)
@@ -534,11 +622,17 @@ fn dma_receive_to_idle(_: &device::dma1::RegisterBlock, usart: &device::usart2::
     usart.cr1.modify(|_, w| w.idleie().clear_bit());
 }*/
 
+/*
+ * ------------------------
+ *      Data callbacks
+ * ------------------------
+*/
+
 fn dma_receive_callback(
     rec_state: &mut ReceiverState,
     available_up_to: usize,
     dma1: &device::dma1::RegisterBlock,
-    usart: &device::usart2::RegisterBlock,
+    usart: &device::usart1::RegisterBlock,
 ) {
     // Something changed?
     if rec_state.current_read_pos != available_up_to {
@@ -590,12 +684,12 @@ fn rx_update_caller(
     receiver: &mut Option<Receiver>,
     data: &[u8],
     dma1: &device::dma1::RegisterBlock,
-    usart: &device::usart2::RegisterBlock,
+    usart: &device::usart1::RegisterBlock,
 ) {
     // Handler for every end of reception
     fn end_reception(
         _: &device::dma1::RegisterBlock,
-        _: &device::usart2::RegisterBlock,
+        _: &device::usart1::RegisterBlock,
         receiver: &mut Option<Receiver>,
     ) -> hl::Caller<()> {
         // Cancel timer, or the new settings won't stick.
@@ -656,7 +750,7 @@ fn step_transmit(
 
     if let Some(byte) = tx.caller.borrow(tx.borrow_num).read_at::<u8>(tx.pos) {
         // Stuff byte into transmitter.
-        #[cfg(feature = "board_stm32f303re")]
+        #[cfg(any(feature = "board_stm32f303re",feature = "board_stm32l432kc"))]
         usart.tdr.write(|w| w.tdr().bits(u16::from(byte)));
 
         tx.pos += 1;

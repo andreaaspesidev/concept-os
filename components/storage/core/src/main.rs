@@ -7,6 +7,8 @@ mod flash;
 cfg_if::cfg_if! {
     if #[cfg(feature = "board_stm32f303re")] {
         use stm32f303re::*;
+    } else if #[cfg(feature = "board_stm32l432kc")] {
+        use stm32l432kc::*;
     } else {
         compile_error!("Board not supported");
     }

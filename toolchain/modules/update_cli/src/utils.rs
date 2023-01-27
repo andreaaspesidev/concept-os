@@ -37,6 +37,8 @@ pub fn openocd_board_to_chip(board: &String) -> String {
     let board_line = &board[5..5 + 2];
     if board_line.starts_with("f") {
         return String::from(format!("{}x", &board[0..7]));
+    } else if board_line.starts_with("l") {
+        return String::from(format!("{}x", &board[0..7]));
     }
     panic!("Board not supported");
 }

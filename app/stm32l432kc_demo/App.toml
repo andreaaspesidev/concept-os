@@ -1,0 +1,25 @@
+name = "stm32l432kc_demo"
+board = "stm32l432kc"
+kernel_ram = 8704
+clock_speed = 80000000
+
+[components.idle]
+features = ["log-semihosting"]
+
+[components.test_a]
+features = ["log-semihosting"]
+
+[components.test_b]
+features = ["log-semihosting"]
+
+[components.rcc]
+features = ["log-semihosting"]
+
+[components.storage]
+features = ["log-semihosting"]
+
+[components.uart-channel-usb]
+features = ["log-semihosting"]
+
+[components.update]
+features = ["log-semihosting"]
