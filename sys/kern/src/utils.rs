@@ -1,24 +1,7 @@
-use crate::{task::Task, log::sys_log};
+use crate::{task::Task, log::sys_log, structures::{TaskIndexes, KHash}};
 
 use abi::{HUBRIS_MAX_IRQS, HUBRIS_MAX_SUPPORTED_TASKS, InterruptOwner};
-use heapless::FnvIndexMap;
 use unwrap_lite::UnwrapLite;
-
-/// Gets a task from the map.
-/// Panics if the task id is not present
-pub fn get_task_mut(
-    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
-    caller_id: u16,
-) -> &mut Task {
-    tasks.get_mut(&caller_id).unwrap_lite()
-}
-
-pub fn get_task(
-    tasks: &FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
-    caller_id: u16,
-) -> &Task {
-    tasks.get(&caller_id).unwrap_lite()
-}
 
 pub fn log_task(task: &Task) {
     sys_log!(
@@ -29,7 +12,7 @@ pub fn log_task(task: &Task) {
     );
     // Print component regions
     sys_log!("  Regions:");
-    for r in task.region_table() {
+    for r in task.region_table().into_iter() {
         sys_log!("  -Addr: {:#010x}", r.base);
         sys_log!("   Size: {}", r.size);
         sys_log!("   Attr: {:?}", r.attributes);
@@ -46,15 +29,17 @@ pub fn log_task(task: &Task) {
 }
 
 pub fn log_structures(
-    task_map: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
-    irq_map: &mut FnvIndexMap<u32, InterruptOwner, HUBRIS_MAX_IRQS>,
+    task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+    task_map: &mut TaskIndexes,
+    irq_map: &mut KHash<InterruptOwner, HUBRIS_MAX_IRQS>,
 ) {
     // Print components
-    for (_cid, task) in task_map.iter() {
-        log_task(task);
+    for cindex in task_map.indexes().into_iter() {
+        log_task(&task_list[*cindex]);
     }
     // Print interrupts
-    for (irq, owner) in irq_map.iter() {
+    for irq in irq_map.keys().into_iter() {
+        let owner = irq_map.get(*irq).unwrap_lite();
         sys_log!(
             "- IRQ {} mapped to cid {} on bits {:#010x}",
             irq,

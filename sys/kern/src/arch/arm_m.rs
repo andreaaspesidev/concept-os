@@ -76,16 +76,16 @@ use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering};
 use flash_allocator::flash::page::FlashPage;
 use flash_allocator::flash::walker::FlashWalker;
 use flash_allocator::flash::{FlashBlock, FlashMethods};
-use heapless::FnvIndexMap;
 use zerocopy::FromBytes;
 
 use crate::atomic::AtomicExt;
 use crate::log::sys_log;
 use crate::startup::{with_irq_table, with_task_table};
+use crate::structures::TaskIndexes;
+use crate::task;
 use crate::task::{NextTask, Task};
 use crate::time::Timestamp;
 use crate::umem::USlice;
-use crate:: task;
 use abi::FaultInfo;
 use abi::FaultSource;
 use abi::HUBRIS_MAX_SUPPORTED_TASKS;
@@ -365,7 +365,7 @@ pub fn apply_memory_protection(task: &task::Task) {
         &*cortex_m::peripheral::MPU::PTR
     };
 
-    for (i, region) in task.region_table().iter().enumerate() {
+    for (i, region) in task.region_table().into_iter().enumerate() {
         let rbar = (i as u32)  // region number
             | (1 << 4)  // honor the region number
             | region.base;
@@ -694,9 +694,9 @@ static TICKS: [AtomicU32; 2] = {
 #[no_mangle]
 pub unsafe extern "C" fn SysTick() {
     crate::profiling::event_timer_isr_enter();
-    with_task_table(|tasks| {
+    with_task_table(|task_list, task_map| {
         // Load the time before this tick event.
-        let switch = advance_time(tasks, 1);
+        let switch = advance_time(task_list, task_map, 1);
 
         // If any timers fired, we need to defer a context switch, because the entry
         // sequence to this ISR doesn't save state correctly for efficiency.
@@ -708,7 +708,8 @@ pub unsafe extern "C" fn SysTick() {
 }
 
 fn advance_time(
-    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+    task_map: &mut TaskIndexes,
     ticks: u32,
 ) -> NextTask {
     // Check for null ticks
@@ -737,7 +738,7 @@ fn advance_time(
 
     // Process any timers.
     let now = Timestamp::from([t0, t1]);
-    task::process_timers(tasks, now)
+    task::process_timers(task_list, task_map, now)
 }
 
 fn pend_context_switch_from_isr() {
@@ -799,10 +800,9 @@ unsafe extern "C" fn pendsv_entry() {
     let current_id =
         u16::from(unsafe { (*current).descriptor().component_id() });
 
-    with_task_table(|tasks| {
-        let next_id = task::select(current_id, tasks);
-        let next_task =
-            tasks.get_mut(&next_id).expect("Cannot find component ID!");
+    with_task_table(|task_list, task_map| {
+        let next_index = task::select(current_id, task_list, task_map);
+        let next_task = &mut task_list[next_index];
         apply_memory_protection(next_task);
         // Safety: next comes from the task table and we don't use it again
         // until next kernel entry, so we meet set_current_task's requirements.
@@ -851,19 +851,17 @@ pub unsafe extern "C" fn DefaultHandler() {
             let irq_num = exception_num - 16;
             let owner = with_irq_table(|irq_map| {
                 *irq_map
-                    .get(&irq_num)
+                    .get(irq_num as u16)
                     .unwrap_or_else(|| panic!("unhandled IRQ {}", irq_num))
             });
-            let switch = with_task_table(|tasks| {
+            let switch = with_task_table(|task_list, task_map| {
                 disable_irq(irq_num);
 
                 // Now, post the notification and return the
                 // scheduling hint.
                 let n = task::NotificationSet(owner.notification);
-                tasks
-                    .get_mut(&owner.task_id)
-                    .expect("Cannot find component ID")
-                    .post(n)
+                let task_index = task_map.get_task_index(owner.task_id).expect("IRQ missing component");
+                task_list[task_index].post(n)
             });
             if switch {
                 pend_context_switch_from_isr()
@@ -1186,19 +1184,20 @@ unsafe extern "C" fn handle_fault(
     // PSP:  even with PendSV pending, ARMv8-M will generate a MUNSTKERR
     // when returning from an exception with a PSP that generates an MPU
     // fault!)
-    with_task_table(|tasks| {
-        let next_id = match task::force_fault(tasks, id, fault) {
+    with_task_table(|task_list, task_map| {
+        let index = task_map.get_task_index(id).unwrap_lite();
+        let next_index = match task::force_fault(task_list, task_map, id, fault)
+        {
             task::NextTask::Specific(i) => i,
-            task::NextTask::Other => task::select(id, tasks),
-            task::NextTask::Same => id,
+            task::NextTask::Other => task::select(id, task_list, task_map),
+            task::NextTask::Same => index,
         };
 
-        if next_id == id {
+        if next_index == index {
             panic!("attempt to return to Task #{} after fault", id);
         }
 
-        let next_task =
-            tasks.get_mut(&next_id).expect("Cannot find component ID");
+        let next_task = &mut task_list[next_index];
         apply_memory_protection(next_task);
         // Safety: this leaks a pointer aliasing next into static scope, but
         // we're not going to read it back until the next kernel entry, so we
@@ -1241,17 +1240,17 @@ pub unsafe fn initialize_native() {
 /// we force this concept by adding back to the ticks the worst case scenario.
 #[cfg(feature = "f303re")]
 use stm32f303re::{
-    FLASH_ALLOCATOR_END_ADDR, FLASH_ALLOCATOR_START_ADDR,
+    Flash, FLASH_ALLOCATOR_END_ADDR, FLASH_ALLOCATOR_START_ADDR,
     FLASH_ALLOCATOR_START_SCAN_ADDR, FLASH_END_ADDR, FLASH_ERASE_MS,
     FLASH_PAGE_SIZE, FLASH_START_ADDR, FLASH_TREE_MAX_LEVEL,
-    FLASH_WRITES_PER_MS, Flash
+    FLASH_WRITES_PER_MS,
 };
 #[cfg(feature = "l432kc")]
 use stm32l432kc::{
-    FLASH_ALLOCATOR_END_ADDR, FLASH_ALLOCATOR_START_ADDR,
+    Flash, FLASH_ALLOCATOR_END_ADDR, FLASH_ALLOCATOR_START_ADDR,
     FLASH_ALLOCATOR_START_SCAN_ADDR, FLASH_END_ADDR, FLASH_ERASE_MS,
     FLASH_PAGE_SIZE, FLASH_START_ADDR, FLASH_TREE_MAX_LEVEL,
-    FLASH_WRITES_PER_MS, Flash
+    FLASH_WRITES_PER_MS,
 };
 
 pub struct FlashInterface {
@@ -1267,13 +1266,14 @@ impl FlashInterface {
     }
     pub fn write_timed(
         &mut self,
-        tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+        task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+        task_map: &mut TaskIndexes,
         address: u32,
         data: &[u8],
     ) -> Result<NextTask, ()> {
         let result = self.native_methods.write(address, data);
         let lost_ms = data.len() as u32 / FLASH_WRITES_PER_MS;
-        let switch = advance_time(tasks, lost_ms);
+        let switch = advance_time(task_list, task_map, lost_ms);
         // Always try to schedule something else. Watch for a specific, in case some timer fires
         return match switch {
             NextTask::Specific(id) => result.map(|_| NextTask::Specific(id)),
@@ -1282,11 +1282,12 @@ impl FlashInterface {
     }
     pub fn erase_timed(
         &mut self,
-        tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+        task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+        task_map: &mut TaskIndexes,
         page_num: u16,
     ) -> Result<NextTask, ()> {
         let result = self.native_methods.erase(page_num);
-        let switch = advance_time(tasks, FLASH_ERASE_MS);
+        let switch = advance_time(task_list, task_map, FLASH_ERASE_MS);
         // Always try to schedule something else. Watch for a specific, in case some timer fires
         return match switch {
             NextTask::Specific(id) => result.map(|_| NextTask::Specific(id)),

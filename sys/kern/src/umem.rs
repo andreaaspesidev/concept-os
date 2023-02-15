@@ -7,11 +7,10 @@
 use core::marker::PhantomData;
 use zerocopy::FromBytes;
 
+use crate::structures::TaskIndexes;
 use crate::task::Task;
-use crate::utils::{get_task, get_task_mut};
 use crate::err::InteractFault;
 use abi::{FaultInfo, FaultSource, UsageError, HUBRIS_MAX_SUPPORTED_TASKS};
-use heapless::FnvIndexMap;
 
 /// A (user, untrusted, unprivileged) slice.
 ///
@@ -281,27 +280,18 @@ impl<'a> From<&'a abi::ULease> for USlice<u8> {
 /// any combination of `DEVICE` and `DMA`, as a side effect of its use of `Task`
 /// API to validate the memory regions.
 pub fn safe_copy(
-    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
-    from_id: u16,
+    task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+    _task_map: &mut TaskIndexes,
+    from_index: usize,
     from_slice: USlice<u8>,
-    to_id: u16,
+    to_index: usize,
     mut to_slice: USlice<u8>,
 ) -> Result<usize, InteractFault> {
     let copy_len = from_slice.len().min(to_slice.len());
 
-    // Here we are in big problems because we cannot obtain two mutable reference from
-    // this new structure.
-    // We have no choice but use unsafe stuff to decouple this result src
-    // from the original structure of the task, or it won't compile in a million ages.
-    // To do so, FaultInfo can be cloned, while we have to create and alias for the destination buffer
+    let (from, to) = index2_distinct(task_list, from_index, to_index);
 
-    let src =
-        get_task(tasks, from_id)
-            .try_read(&from_slice)
-            .map(|buff| unsafe {
-                core::slice::from_raw_parts(buff.as_ptr(), buff.len())
-            });
-
+    let src = from.try_read(&from_slice);
     // We're going to blame any aliasing on the recipient, who shouldn't have
     // designated a receive buffer in shared memory. This decision is somewhat
     // arbitrary.
@@ -311,7 +301,7 @@ pub fn safe_copy(
             source: FaultSource::Kernel,
         })
     } else {
-        get_task_mut(tasks, to_id).try_write(&mut to_slice)
+        to.try_write(&mut to_slice)
     };
 
     match (src, dst) {
@@ -325,5 +315,24 @@ pub fn safe_copy(
             src: src.err(),
             dst: dst.err(),
         }),
+    }
+}
+
+/// Utility routine for getting `&mut` to _two_ elements of a slice, at indexes
+/// `i` and `j`. `i` and `j` must be distinct, or this will panic.
+#[allow(clippy::comparison_chain)]
+fn index2_distinct<T>(
+    elements: &mut [T],
+    i: usize,
+    j: usize,
+) -> (&mut T, &mut T) {
+    if i < j {
+        let (prefix, suffix) = elements.split_at_mut(i + 1);
+        (&mut prefix[i], &mut suffix[j - (i + 1)])
+    } else if j < i {
+        let (prefix, suffix) = elements.split_at_mut(j + 1);
+        (&mut suffix[i - (j + 1)], &mut prefix[j])
+    } else {
+        panic!()
     }
 }
