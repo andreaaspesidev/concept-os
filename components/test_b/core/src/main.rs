@@ -24,7 +24,7 @@ fn main() -> ! {
                 sys_log!("[TEST_B] Got request");
                 // Sleep a bit
                 hl::sleep_for(1000);
-                sys_log!("[TEST_B] Replyed");
+                sys_log!("[TEST_B] Replied");
                 caller.reply(());
                 Ok(())
             }

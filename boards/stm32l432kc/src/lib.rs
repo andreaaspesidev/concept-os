@@ -9,11 +9,11 @@ pub mod device;
 use flash_allocator::flash::{page::FlashPage, FlashMethods};
 
 /**
- * STM32 F303RE
+ * STM32 L432KC
  * - Flash Constant
  *
- * Flash: 0x0800 0000 - 0x0807 FFFF
- * Size: 512Kb
+ * Flash: 0x0800 0000 - 0x0803 FFFF
+ * Size: 256Kb
  *
  * Notes:
  * - In order for the system to work correcly, the first part of the flash
