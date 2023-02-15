@@ -247,9 +247,10 @@ pub fn build_process(
     let component_path_buf = PathBuf::from(component_path.clone());
     let mut component_build_path = component_path_buf.clone();
     component_build_path.push("build");
+    component_build_path.push(&target_board);
     // Generate build dir if not exists
     if !component_build_path.exists() {
-        if std::fs::create_dir(&component_build_path).is_err() {
+        if std::fs::create_dir_all(&component_build_path).is_err() {
             panic!("Cannot create build dir");
         }
     }
