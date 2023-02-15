@@ -4,22 +4,22 @@ kernel_ram = 8704
 clock_speed = 72000000
 
 [components.idle]
-features = []
+features = ["log-itm"]
 
 [components.test_a]
-features = []
+features = ["log-itm"]
 
 [components.test_b]
-features = []
+features = ["log-itm"]
 
 [components.rcc]
-features = []
+features = ["log-itm"]
 
 [components.storage]
-features = []
+features = ["log-itm"]
 
 [components.uart-channel-usb]
-features = []
+features = ["log-itm"]
 
 [components.update]
-features = []
+features = ["log-itm"]

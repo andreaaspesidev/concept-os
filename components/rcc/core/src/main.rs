@@ -4,8 +4,8 @@
 use rcc_api::*;
 
 // STM32F3
-//#[cfg(feature = "board_stm32f303re")]
-//use stm32f303re::device as device;
+#[cfg(feature = "board_stm32f303re")]
+use stm32f303re::device as device;
 
 // STM32L4
 #[cfg(feature = "board_stm32l432kc")]

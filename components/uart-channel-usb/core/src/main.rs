@@ -5,8 +5,8 @@ use rcc_api::RCCError;
 use uart_channel_api::*;
 use userlib::{hl::Caller, *};
 
-//#[cfg(feature = "board_stm32f303re")]
-//use stm32f303re::device;
+#[cfg(feature = "board_stm32f303re")]
+use stm32f303re::device;
 
 #[cfg(feature = "board_stm32l432kc")]
 use stm32l432kc::device;
