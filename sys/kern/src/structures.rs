@@ -93,7 +93,9 @@ impl<T, const N: usize> KVec<T, N> {
     pub unsafe fn push_unchecked(&mut self, item: T) {
         // NOTE(ptr::write) the memory slot that we are about to write to is uninitialized. We
         // use `ptr::write` to avoid running `T`'s destructor on the uninitialized memory
-        unsafe{*self.buffer.get_unchecked_mut(self.len) = MaybeUninit::new(item)};
+        unsafe {
+            *self.buffer.get_unchecked_mut(self.len) = MaybeUninit::new(item)
+        };
 
         self.len += 1;
     }
@@ -134,15 +136,15 @@ impl<T: PartialEq, const N: usize> KVec<T, N> {
     }
 }
 
-impl <T: Copy, const N: usize> KVec<T,N> {
-    pub fn extend_from(&mut self, v: KVec<T, N>) -> Result<(),()> {
+impl<T: Copy, const N: usize> KVec<T, N> {
+    pub fn extend_from(&mut self, v: KVec<T, N>) -> Result<(), ()> {
         // Check if we have enough space
         if v.len > self.capacity() - self.len {
             return Err(());
         }
         // Add the elements
         for e in v.into_iter() {
-            unsafe{self.push_unchecked(*e)};
+            unsafe { self.push_unchecked(*e) };
         }
         return Ok(());
     }
@@ -205,7 +207,7 @@ impl<T> KBucket<T> {
         assert!(self.key.is_some());
         self.key = None;
         // Manually drop the element
-        unsafe {core::ptr::drop_in_place(self.value.assume_init_mut()) };
+        unsafe { core::ptr::drop_in_place(self.value.assume_init_mut()) };
         self.value = MaybeUninit::uninit();
     }
     pub fn take_ref(&self) -> &T {
@@ -327,7 +329,7 @@ impl<T, const N: usize> KHash<T, N> {
         let mut result = KVec::new();
         for bucket in &self.buffer {
             if !bucket.is_free() {
-                unsafe{result.push_unchecked(bucket.key.unwrap_lite())};
+                unsafe { result.push_unchecked(bucket.key.unwrap_lite()) };
             }
         }
         return result;
@@ -359,7 +361,7 @@ impl<T: Clone + Copy, const N: usize> KHash<T, N> {
         let mut result = KVec::<T, N>::new();
         for bucket in &self.buffer {
             if !bucket.is_free() {
-                unsafe{result.push_unchecked(*bucket.take_ref())};
+                unsafe { result.push_unchecked(*bucket.take_ref()) };
             }
         }
         return result;
@@ -402,21 +404,17 @@ impl<'a, T, const N: usize> Iterator for KHashIter<'a, T, N> {
     type Item = (u16, &'a T);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut element = None;
         // Get the next non-free element
         for i in self.pos..self.khash.capacity() {
             if !self.khash.buffer[i].is_free() {
                 self.pos = i + 1;
-                element = Some((
+                return Some((
                     self.khash.buffer[i].key.unwrap_lite(),
                     self.khash.buffer[i].take_ref(),
                 ));
             }
         }
-        if self.pos >= self.khash.capacity() {
-            self.pos = 0;
-        }
-        return element;
+        return None;
     }
 }
 
@@ -444,7 +442,11 @@ impl TaskIndexes {
         self.hash.get(component_id).map(|e| *e)
     }
 
-    pub fn change_id_of_index(&mut self, old_id: u16, new_id: u16) -> Result<(),()> {
+    pub fn change_id_of_index(
+        &mut self,
+        old_id: u16,
+        new_id: u16,
+    ) -> Result<(), ()> {
         // First, get the old index
         if let Some(old_index) = self.get_task_index(old_id) {
             // Now, remove this association
@@ -456,7 +458,6 @@ impl TaskIndexes {
         }
         return Err(());
     }
-
 
     /// Gets the next free index and associate it to a component id. Returns the index on success
     pub fn get_free_index(&mut self, component_id: u16) -> Option<usize> {
@@ -501,8 +502,8 @@ impl TaskIndexes {
     pub fn into_iter(&self) -> KHashIter<usize, HUBRIS_MAX_SUPPORTED_TASKS> {
         self.hash.into_iter()
     }
-    pub fn first_id(&self) -> Option<u16> {
-        self.hash.first().map(|(id, _index)| id)
+    pub fn first_index(&self) -> Option<usize> {
+        self.hash.first().map(|(_id, index)| *index)
     }
 }
 
@@ -522,10 +523,19 @@ pub fn populate_kernel_structures(
         // Look into only finalized blocks of components
         if b.is_finalized() && b.get_type() == BlockType::COMPONENT {
             // Load the component
-            let task = get_task_from_block(b, true).unwrap();
-            let task_id = task.descriptor().component_id();
-            add_task_to_system(task_list, task_map, irq_map, task, task_id)
-                .unwrap();
+            let (task_descr, task_regions, task_data) =
+                get_task_from_block(b, true).unwrap();
+            let task_id = task_descr.component_id();
+            add_task_to_system(
+                task_list,
+                task_map,
+                irq_map,
+                &task_descr,
+                &task_regions,
+                task_data,
+                task_id,
+            )
+            .unwrap();
         }
     }
 }
@@ -542,7 +552,14 @@ pub enum LoadError {
 fn get_task_from_block(
     block: FlashBlock,
     validate: bool,
-) -> Result<Task, LoadError> {
+) -> Result<
+    (
+        TaskDescriptor,
+        KVec<RegionDescriptor, REGIONS_PER_TASK>,
+        &'static [u8],
+    ),
+    LoadError,
+> {
     // Let's create an abstraction to read its bytes
     let raw_block_bytes = unsafe {
         core::slice::from_raw_parts(
@@ -579,7 +596,11 @@ fn process_hbf(
     block_nominal_base_address: u32,
     block_base_address: u32,
     block_nominal_size: u32,
-) -> Task {
+) -> (
+    TaskDescriptor,
+    KVec<RegionDescriptor, REGIONS_PER_TASK>,
+    &'static [u8],
+) {
     // Create a new instance of Task
     let task_desc = TaskDescriptor::new(block_base_address, block_nominal_size); // Nominal size is actually bigger than needed. It's only used for hbf reading so here it's okay
     let mut regions: KVec<RegionDescriptor, REGIONS_PER_TASK> = KVec::new();
@@ -607,6 +628,8 @@ fn process_hbf(
     let hbf_base = hbf.header_base().unwrap();
     // Append all the other regions
     for region_num in 0..hbf_base.num_regions() {
+        // TODO: check regions alignment, or we will have an hard fault in the kernel
+        // when setting the MPU
         let region = hbf.region_nth(region_num).unwrap();
         regions
             .push(RegionDescriptor {
@@ -634,7 +657,7 @@ fn process_hbf(
         };
     }
     // Create the task structure
-    Task::from_descriptor(&task_desc, &regions, data_section_slice)
+    return (task_desc, regions, data_section_slice);
 }
 
 fn remove_task_from_system(
@@ -665,14 +688,16 @@ fn remove_task_from_system(
     // Remove the task from the map (and to be sure, replace the corresponding element)
     let old_index = task_map.set_free_index(task_id).unwrap_lite();
     // Clear this element
-    unsafe{task_list[old_index].reset_element()};
+    unsafe { task_list[old_index].reset_element() };
 }
 
 fn add_task_to_system(
     task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
     task_map: &mut TaskIndexes,
     irq_map: &mut KHash<InterruptOwner, HUBRIS_MAX_IRQS>,
-    task: Task,
+    task_descriptor: &TaskDescriptor,
+    task_regions: &KVec<RegionDescriptor, REGIONS_PER_TASK>,
+    task_data: &'static [u8],
     use_id: u16,
 ) -> Result<usize, LoadError> {
     // First, check if this component already exists
@@ -681,7 +706,7 @@ fn add_task_to_system(
         // Check the versions, if this is newer let's override everything
         let other_index = search_result.unwrap_lite();
         let other_task = &task_list[other_index];
-        if task.descriptor().component_version()
+        if task_descriptor.component_version()
             > other_task.descriptor().component_version()
         {
             sys_log!("Found an newer task for {}", use_id);
@@ -693,34 +718,42 @@ fn add_task_to_system(
             return Ok(other_index); // TODO: maybe an error is better here?
         }
     }
-    // Add the IRQs managed by this component
-    let num_irqs = task.descriptor().num_interrupts();
-    for interrupt_num in 0..num_irqs {
-        let interrupt = task.descriptor().interrupt_nth(interrupt_num);
-        // Append the IRQ
-        match irq_map.insert(
-            interrupt.irq_num.try_into().unwrap_lite(),
-            InterruptOwner {
-                task_id: use_id,
-                notification: interrupt.notification,
-            },
-        ) {
-            Ok(old_val) => {
-                if old_val {
-                    // Another component registered this IRQ, panic!
-                    panic!("Duplicated IRQ: {}", interrupt.irq_num);
-                }
-            }
-            Err(_) => {
-                // TODO: clean-up
-                return Err(LoadError::TooManyIRQs);
-            }
-        };
-    }
-    // In any case, get a new index for this component
+    // Get a space for the structure
     if let Some(new_index) = task_map.get_free_index(use_id) {
-        // Just replace the position
-        task_list[new_index] = task;
+        // Initialize the corresponding task structure
+        // No need to set the ID, as the temp one will be set when .begin_update() is called
+        task_list[new_index].init_from_descriptor(
+            task_descriptor,
+            task_regions,
+            task_data,
+        );
+        // Add the IRQs
+        let num_irqs = task_list[new_index].descriptor().num_interrupts();
+        for interrupt_num in 0..num_irqs {
+            let interrupt = task_list[new_index]
+                .descriptor()
+                .interrupt_nth(interrupt_num);
+            // Append the IRQ
+            match irq_map.insert(
+                interrupt.irq_num.try_into().unwrap_lite(),
+                InterruptOwner {
+                    task_id: use_id,
+                    notification: interrupt.notification,
+                },
+            ) {
+                Ok(old_val) => {
+                    if old_val {
+                        // Another component registered this IRQ, panic!
+                        panic!("Duplicated IRQ: {}", interrupt.irq_num);
+                    }
+                }
+                Err(_) => {
+                    // TODO: clean-up
+                    return Err(LoadError::TooManyIRQs);
+                }
+            };
+        }
+        // Return the index
         return Ok(new_index);
     }
     return Err(LoadError::TooManyTasks);
@@ -745,39 +778,48 @@ pub fn load_component_at(
         return Err(LoadError::InvalidBlock);
     }
     // Load the component
-    let load_result = get_task_from_block(block, false); // Assume already validated
-    if load_result.is_err() {
-        return Err(load_result.unwrap_err());
-    }
-    let mut task = load_result.unwrap();
-    // Check if an older component with this ID exist
-    let nominal_id = task.descriptor().component_id();
-    let old_task_index = task_map.get_task_index(nominal_id);
-    if old_task_index.is_some() {
-        let old_task = &mut task_list[old_task_index.unwrap()];
-        // Remove all its irqs, after disabling them
-        for interrupt_num in 0..old_task.descriptor().num_interrupts() {
-            let interrupt = old_task.descriptor().interrupt_nth(interrupt_num);
-            crate::arch::disable_irq(interrupt.irq_num);
-            irq_map
-                .remove(interrupt.irq_num.try_into().unwrap_lite())
-                .unwrap();
+    let load_res = get_task_from_block(block, false);
+    if let Ok((task_descr, task_regions, task_data)) = load_res {
+        // Assume already validated
+        // Check if an older component with this ID exist
+        let nominal_id = task_descr.component_id();
+        let old_task_index = task_map.get_task_index(nominal_id);
+        if old_task_index.is_some() {
+            let old_task = &mut task_list[old_task_index.unwrap()];
+            // Remove all its irqs, after disabling them
+            for interrupt_num in 0..old_task.descriptor().num_interrupts() {
+                let interrupt =
+                    old_task.descriptor().interrupt_nth(interrupt_num);
+                crate::arch::disable_irq(interrupt.irq_num);
+                irq_map
+                    .remove(interrupt.irq_num.try_into().unwrap_lite())
+                    .unwrap();
+            }
+            // If the old component support it, now it can state transfer.
+            // Otherwise is simply stopped.
+            old_task.begin_state_transfer();
         }
-        // If the old component support it, now it can state transfer.
-        // Otherwise is simply stopped.
-        old_task.begin_state_transfer();
+        // Add the new task to the system
+        let res = add_task_to_system(
+            task_list,
+            task_map,
+            irq_map,
+            &task_descr,
+            &task_regions,
+            task_data,
+            abi::UPDATE_TEMP_ID,
+        );
+        if res.is_ok() {
+            let task_index = res.unwrap_lite();
+            // Initialize the task for update
+            task_list[task_index].begin_update();
+            // Setup internal
+            crate::arch::reinitialize(&mut task_list[task_index]);
+            return Ok(task_index);
+        }
+        return Err(res.unwrap_err());
     }
-    // Initialize the task for update
-    task.begin_update();
-    // Actually add the component to the map
-    let new_id = abi::UPDATE_TEMP_ID;
-    let res = add_task_to_system(task_list, task_map, irq_map, task, new_id);
-    if res.is_ok() {
-        // Initialize task
-        let task = &mut task_list[res.unwrap_lite()];
-        crate::arch::reinitialize(task);
-    }
-    res
+    return Err(load_res.unwrap_err());
 }
 
 pub fn revert_update(
@@ -867,7 +909,9 @@ pub fn activate_component(
     }
     // Update the task, and remap it under the new id
     let task = &mut task_list[caller_index];
-    task_map.change_id_of_index(abi::UPDATE_TEMP_ID, nominal_id).unwrap();
+    task_map
+        .change_id_of_index(abi::UPDATE_TEMP_ID, nominal_id)
+        .unwrap();
     // Switch the mode on the task
     task.end_update(old_identifier.map(|id| id.generation().next()));
     // Redirect all IRQs
@@ -886,7 +930,7 @@ pub fn activate_component(
     if let Some(old_id) = old_identifier {
         // Restart pending tasks
         crate::task::restart_pending_tasks(
-            task_list, task_map, nominal_id, old_id,
+            task_list, task_map, caller_index, old_id,
         );
         // Now is safe to schedule the old block for removal
         let storage_index =
@@ -895,7 +939,9 @@ pub fn activate_component(
             .post(NotificationSet(HUBRIS_STORAGE_ANALYZE_NOTIFICATION));
     }
     // Finalize block
-    crate::arch::finalize_block(task_list[caller_index].descriptor().get_descriptor_block())
-        .unwrap_lite();
+    crate::arch::finalize_block(
+        task_list[caller_index].descriptor().get_descriptor_block(),
+    )
+    .unwrap_lite();
     return storage_woken;
 }

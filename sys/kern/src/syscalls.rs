@@ -36,6 +36,7 @@ use core::convert::TryFrom;
 
 use crate::arch;
 use crate::err::{InteractFault, UserError};
+// use crate::log::sys_log;
 use crate::startup::{with_irq_table, with_task_table};
 use crate::structures::TaskIndexes;
 use crate::task::{self, ArchState, NextTask, Task};
@@ -79,9 +80,7 @@ pub unsafe extern "C" fn syscall_entry(nr: u32, task: *mut Task) {
         let task_index = task_map.get_task_index(task_id).unwrap_lite();
         match safe_syscall_entry(nr, task_id, task_index, task_list, task_map) {
             // If we're returning to the same task, we're done!
-            NextTask::Same => {
-                // unsafe { switch_to(tasks.get_mut(&task_id).unwrap_lite()) }
-            }
+            NextTask::Same => (),
 
             NextTask::Specific(i) => {
                 // Safety: this is a valid task from the tasks table, meeting
@@ -90,7 +89,7 @@ pub unsafe extern "C" fn syscall_entry(nr: u32, task: *mut Task) {
             }
 
             NextTask::Other => {
-                let index = task::select(task_id, task_list, task_map);
+                let index = task::select(task_index, task_list, task_map);
                 // Safety: this is a valid task from the tasks table, meeting
                 // switch_to's requirements.
                 unsafe { switch_to(&mut task_list[index]) }
@@ -165,7 +164,7 @@ fn safe_syscall_entry(
             hint
         }
         Err(UserError::Unrecoverable(fault)) => {
-            task::force_fault(task_list, task_map, current_id, fault)
+            task::force_fault(task_list, task_map, current_index, fault)
         }
     }
 }
@@ -230,7 +229,7 @@ fn send(
                 next_task = interact.apply_to_dst(
                     task_list,
                     task_map,
-                    callee_identifier.component_id(),
+                    callee_index,
                 )?;
                 // If we didn't just return, fall through to the caller
                 // blocking code below.
@@ -257,7 +256,7 @@ fn send(
 fn recv(
     task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
     task_map: &mut TaskIndexes,
-    caller_id: u16,
+    _caller_id: u16,
     caller_index: usize,
 ) -> Result<NextTask, UserError> {
     // We allow tasks to atomically replace their notification mask at each
@@ -314,7 +313,7 @@ fn recv(
                     // didn't have to murder the caller, we'll retry receiving a
                     // message.
                     let wake_hint = interact
-                        .apply_to_src(task_list, task_map, sender_id.component_id())?;
+                        .apply_to_src(task_list, task_map, sender_index)?;
                     next_task = next_task.combine(wake_hint);
                 }
             }
@@ -334,11 +333,11 @@ fn recv(
         //   faulted.
         // - No senders were found (after fault processing) and we have to block
         // the caller.
-        let mut last_id = caller_id; // keep track of scan position.
+        let mut last_index = caller_index; // keep track of scan position.
 
         // Is anyone blocked waiting to send to us?
         while let Some(sender_index) =
-            task::priority_scan(last_id, task_list, task_map, |t| {
+            task::priority_scan(last_index, task_list, task_map, |t| {
                 t.state().is_sending_to(caller_identifier)
             })
         {
@@ -350,17 +349,16 @@ fn recv(
                     return Ok(next_task);
                 }
                 Err(interact) => {
-                    let sender_id = task_list[sender_index].id();
                     // Delivery failed because of fault events in one or both
                     // tasks.  We need to apply the fault status, and then if we
                     // didn't have to murder the caller, we'll retry receiving a
                     // message.
                     let wake_hint = interact
-                        .apply_to_src(task_list, task_map, sender_id)?;
+                        .apply_to_src(task_list, task_map, sender_index)?;
                     next_task = next_task.combine(wake_hint);
                     // Okay, if we didn't just return, retry the search from a new
                     // position.
-                    last_id = sender_id;
+                    last_index = sender_index;
                 }
             }
         }
@@ -405,8 +403,6 @@ fn reply(
         Ok(x) => x,
     };
 
-    let callee_id = task_list[callee_index].id();
-
     if task_list[callee_index].state()
         != &TaskState::Healthy(SchedState::InReply(caller_identifier))
     {
@@ -445,7 +441,7 @@ fn reply(
             return Ok(task::force_fault(
                 task_list,
                 task_map,
-                callee_id,
+                callee_index,
                 FaultInfo::SyscallUsage(e),
             ));
         }
@@ -470,7 +466,7 @@ fn reply(
             // Delivery failed because of fault events in one or both tasks.  We
             // need to apply the fault status, and possibly fault the callee.
             let wake_hint =
-                interact.apply_to_dst(task_list, task_map, callee_id)?;
+                interact.apply_to_dst(task_list, task_map, callee_index)?;
             // If we didn't just return, resume the caller without resuming the
             // target task below.
             return Ok(wake_hint);
@@ -528,14 +524,11 @@ fn borrow_read(
     let lender_index =
         task::check_task_id_against_table(task_list, task_map, args.lender)?;
 
-    let lender_id = args.lender.component_id();
-
     let lease = borrow_lease(
         task_list,
         task_map,
         caller_index,
         lender_index,
-        lender_id,
         args.lease_number,
         args.offset,
     )?;
@@ -571,7 +564,7 @@ fn borrow_read(
         }
         Err(interact) => {
             let wake_hint =
-                interact.apply_to_src(task_list, task_map, lender_id)?;
+                interact.apply_to_src(task_list, task_map, lender_index)?;
             // Copy failed but not our side, report defecting lender.
             Err(UserError::Recoverable(abi::DEFECT, wake_hint))
         }
@@ -591,14 +584,11 @@ fn borrow_write(
     let lender_index =
         task::check_task_id_against_table(task_list, task_map, args.lender)?;
 
-    let lender_id = args.lender.component_id();
-
     let lease = borrow_lease(
         task_list,
         task_map,
         caller_index,
         lender_index,
-        lender_id,
         args.lease_number,
         args.offset,
     )?;
@@ -634,7 +624,7 @@ fn borrow_write(
         }
         Err(interact) => {
             let wake_hint =
-                interact.apply_to_dst(task_list, task_map, lender_id)?;
+                interact.apply_to_dst(task_list, task_map, lender_index)?;
             // Copy failed but not our side, report defecting lender.
             Err(UserError::Recoverable(abi::DEFECT, wake_hint))
         }
@@ -658,7 +648,6 @@ fn borrow_info(
         task_map,
         caller_index,
         lender_index,
-        args.lender.component_id(),
         args.lease_number,
         0,
     )?;
@@ -674,7 +663,6 @@ fn borrow_lease(
     task_map: &mut TaskIndexes,
     caller_index: usize,
     lender_index: usize,
-    lender_id: u16,
     lease_number: usize,
     offset: usize,
 ) -> Result<ULease, UserError> {
@@ -699,7 +687,7 @@ fn borrow_lease(
             let wake_hint = task::force_fault(
                 task_list,
                 task_map,
-                lender_id,
+                lender_index,
                 FaultInfo::SyscallUsage(e),
             );
             return Err(UserError::Recoverable(abi::DEFECT, wake_hint));
@@ -711,7 +699,7 @@ fn borrow_lease(
         Ok(slice) => Ok(slice),
         Err(fault) => {
             let wake_hint =
-                task::force_fault(task_list, task_map, lender_id, fault);
+                task::force_fault(task_list, task_map, lender_index, fault);
             Err(UserError::Recoverable(abi::DEFECT, wake_hint))
         }
     }?;
@@ -859,8 +847,7 @@ fn irq_control(
     caller_id: u16,
     caller_index: usize,
 ) -> Result<NextTask, UserError> {
-    let caller_task = &task_list[caller_index];
-    let args = caller_task.save().as_irq_args();
+    let args = task_list[caller_index].save().as_irq_args();
 
     let operation = match args.control {
         0 => crate::arch::disable_irq,
@@ -901,14 +888,14 @@ fn irq_control(
 fn explicit_panic(
     task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
     task_map: &mut TaskIndexes,
-    caller_id: u16,
-    _caller_index: usize,
+    _caller_id: u16,
+    caller_index: usize,
 ) -> Result<NextTask, UserError> {
     // It's the easiest syscall!
     Ok(task::force_fault(
         task_list,
         task_map,
-        caller_id,
+        caller_index,
         FaultInfo::Panic,
     ))
 }
@@ -1009,10 +996,8 @@ fn reply_fault(
         Err(UserError::Unrecoverable(f)) => return Err(f),
         Ok(x) => x,
     };
-    let callee_task = &task_list[callee_index];
-    let callee_id = callee_task.id();
 
-    if callee_task.state()
+    if task_list[callee_index].state()
         != &TaskState::Healthy(SchedState::InReply(caller_identifier))
     {
         // Huh. The target task is off doing something else. This can happen if
@@ -1026,7 +1011,7 @@ fn reply_fault(
     let _hint = task::force_fault(
         task_list,
         task_map,
-        callee_id,
+        callee_index,
         FaultInfo::FromServer(caller_identifier, reason),
     );
 

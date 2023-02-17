@@ -27,7 +27,7 @@ cfg_if::cfg_if! {
             };
         }
     } else {
-        macro_rules! sys_log {
+        /*macro_rules! sys_log {
             ($s:expr) => {};
             ($s:expr, $($x:expr),*$(,)?) => {
                 {
@@ -36,7 +36,8 @@ cfg_if::cfg_if! {
                     )*
                 }
             };
-        }
+        }*/
+        compile_error!("Specify logging output");
     }
 }
 

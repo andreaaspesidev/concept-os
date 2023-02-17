@@ -22,7 +22,7 @@ fn main() -> ! {
 
     let state: u32 = 20;
     loop {
-        sys_log!("[TEST_A] v1 online");
+        sys_log!("[TEST_A] v2 online");
         hl::sleep_for(5000);
         // Ask something to component b
         if test_b.mock1(2, 3).is_err() {

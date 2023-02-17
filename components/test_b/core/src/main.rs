@@ -31,6 +31,8 @@ fn main() -> ! {
         }
     };
 
+    sys_log!("[TEST_B] Online!");
+
     let mut buff: [u8; 8] = [0; 8];
     let state: u32 = 21;
     loop {

@@ -83,10 +83,10 @@ impl InteractFault {
         self,
         task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
         task_map: &mut TaskIndexes,
-        src_id: u16,
+        src_index: usize,
     ) -> Result<task::NextTask, FaultInfo> {
         let nt = if let Some(f) = self.src {
-            task::force_fault(task_list, task_map, src_id, f)
+            task::force_fault(task_list, task_map, src_index, f)
         } else {
             task::NextTask::Same
         };
@@ -106,10 +106,10 @@ impl InteractFault {
         self,
         task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
         task_map: &mut TaskIndexes,
-        dst_id: u16,
+        dst_index: usize,
     ) -> Result<task::NextTask, FaultInfo> {
         let nt = if let Some(f) = self.dst {
-            task::force_fault(task_list, task_map, dst_id, f)
+            task::force_fault(task_list, task_map, dst_index, f)
         } else {
             task::NextTask::Same
         };

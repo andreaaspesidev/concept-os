@@ -250,7 +250,6 @@ pub fn reinitialize(task: &mut task::Task) {
     // |       .data        |
     // ---------------------- SRAM LOW ADDRESSES
 
-    let task_id = task.descriptor().component_id();
     let initial_stack = task.descriptor().initial_stack();
 
     // Modern ARMvX-M machines require 8-byte stack alignment. Make sure that's
@@ -271,8 +270,7 @@ pub fn reinitialize(task: &mut task::Task) {
     // Get the region, that will always be the first one by construction
     let sram_region = *task.region_table().first().unwrap_lite();
 
-    // Clear the whole sram region with 0x00
-    sys_log!("SRAM at {:#010x} for task {}", sram_region.base, task_id);
+    // Clear the whole sram region with 0xAB
     let sram_frame = unsafe {
         core::slice::from_raw_parts_mut(
             sram_region.base as *mut u8,
@@ -280,7 +278,7 @@ pub fn reinitialize(task: &mut task::Task) {
         )
     };
     for i in 0..sram_frame.len() {
-        sram_frame[i] = 0x00;
+        sram_frame[i] = 0xAB;
     }
 
     /*let mut stack_uslice: USlice<u32> = USlice::from_raw(
@@ -798,10 +796,11 @@ unsafe extern "C" fn pendsv_entry() {
     // Safety: we're dereferencing the current task pointer, which we're
     // trusting the rest of this module to maintain correctly.
     let current_id =
-        u16::from(unsafe { (*current).descriptor().component_id() });
+        u16::from(unsafe { (*current).id() });
 
     with_task_table(|task_list, task_map| {
-        let next_index = task::select(current_id, task_list, task_map);
+        let current_index = task_map.get_task_index(current_id).unwrap();
+        let next_index = task::select(current_index, task_list, task_map);
         let next_task = &mut task_list[next_index];
         apply_memory_protection(next_task);
         // Safety: next comes from the task table and we don't use it again
@@ -1062,6 +1061,8 @@ unsafe extern "C" fn handle_fault(
     let scb = unsafe { &*cortex_m::peripheral::SCB::PTR };
     let cfsr = Cfsr::from_bits_truncate(scb.cfsr.read());
 
+    sys_log!("Fault!");
+
     // Who faulted? Collect some parameters from the task.
     //
     // Safety: we're dereferencing the raw `task` pointer passed in. Our
@@ -1186,10 +1187,10 @@ unsafe extern "C" fn handle_fault(
     // fault!)
     with_task_table(|task_list, task_map| {
         let index = task_map.get_task_index(id).unwrap_lite();
-        let next_index = match task::force_fault(task_list, task_map, id, fault)
+        let next_index = match task::force_fault(task_list, task_map, index, fault)
         {
             task::NextTask::Specific(i) => i,
-            task::NextTask::Other => task::select(id, task_list, task_map),
+            task::NextTask::Other => task::select(index, task_list, task_map),
             task::NextTask::Same => index,
         };
 

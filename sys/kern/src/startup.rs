@@ -72,30 +72,42 @@ pub unsafe fn start_kernel(tick_divisor: u32) -> ! {
     }
 
     // Initialize structures
-    unsafe {
-        TASK_TABLE.write(Default::default());
-        TASK_MAP.write(TaskIndexes::new());
-        IRQ_TO_TASK.write(KHash::new());
+    // ---- > Task Table
+    // Safety: MaybeUninit<[T]> -> [MaybeUninit<T>] is defined as safe.
+    let task_table: &mut [MaybeUninit<Task>; HUBRIS_MAX_SUPPORTED_TASKS] =
+        unsafe { &mut *(&mut TASK_TABLE as *mut _ as *mut _) };
+    for task in task_table.iter_mut() {
+        *task = MaybeUninit::new(Task::default());
     }
+    // Safety: we have fully initialized this and can shed the uninit part.
+    let task_table: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS] = unsafe { &mut *(task_table as *mut _ as *mut _) };
+    
+    // ---- > Task Map
+    let task_map: &mut MaybeUninit<TaskIndexes> = unsafe {&mut TASK_MAP};
+    *task_map = MaybeUninit::new(TaskIndexes::new());
+    let task_map: &mut TaskIndexes = unsafe {&mut *(task_map as *mut _ as *mut _)};
+
+    // ---- > IRQs
+    let irq_map: &mut MaybeUninit<KHash<InterruptOwner,HUBRIS_MAX_IRQS>> = unsafe {&mut IRQ_TO_TASK};
+    *irq_map = MaybeUninit::new(KHash::new());
+    let irq_map: &mut KHash<InterruptOwner,HUBRIS_MAX_IRQS> = unsafe {&mut *(irq_map as *mut _ as *mut _)};
+
+    sys_log!("Populating structures...");
 
     // Load structures from flash
     populate_kernel_structures(
-        unsafe { TASK_TABLE.assume_init_mut() },
-        unsafe { TASK_MAP.assume_init_mut() },
-        unsafe { IRQ_TO_TASK.assume_init_mut() },
+        task_table,
+        task_map,
+        irq_map,
     );
-
-    // Get a safe reference
-    let task_list = unsafe {TASK_TABLE.assume_init_mut()};
-    let task_map = unsafe { TASK_MAP.assume_init_mut() };
 
     // Debug!
     sys_log!("--------- Kernel Start ----------");
-    log_structures(task_list, task_map, unsafe { IRQ_TO_TASK.assume_init_mut() });
+    log_structures(task_table, task_map, irq_map);
 
     // With that done, set up initial register state etc.
     let mask = task_map.indexes_mask();
-    for (index, task) in task_list.iter_mut().enumerate() {
+    for (index, task) in task_table.iter_mut().enumerate() {
         if !mask[index] {
             continue; // Ignore not valid positions
         }
@@ -105,12 +117,12 @@ pub unsafe fn start_kernel(tick_divisor: u32) -> ! {
     // Great! Pick our first task. We'll act like we're scheduling after the
     // last task, which will cause a scan from 0 on.
     let first_task_index = crate::task::select(
-        task_map.first_id().expect("No Component Loaded"),
-        task_list,
+        task_map.first_index().expect("No Component Loaded"),
+        task_table,
         task_map
     );
 
-    let first_task = &mut task_list[first_task_index];
+    let first_task = &mut task_table[first_task_index];
 
     // Setup memory protection for this task
     crate::arch::apply_memory_protection(first_task);

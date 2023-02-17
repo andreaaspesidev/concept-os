@@ -195,7 +195,7 @@ fn restart_task(
     }
 
     // Restart pending tasks
-    task::restart_pending_tasks(task_list, task_map, target_id, old_identifier);
+    task::restart_pending_tasks(task_list, task_map, other_task_index, old_identifier);
 
     if target_id == caller_id {
         // Welp, they've restarted themselves. Best not return anything then.
@@ -244,12 +244,13 @@ fn fault_task(
             UsageError::TaskNotFound,
         )));
     }
+    let target_task_index = target_task_index.unwrap_lite();
     // Inject the fault
     let identifier = task_list[caller_index].current_identifier();
     let _ = crate::task::force_fault(
         task_list,
         task_map,
-        id,
+        target_task_index,
         FaultInfo::Injected(identifier),
     );
     task_list[caller_index]
@@ -262,18 +263,18 @@ fn fault_task(
 fn set_update_capability(
     task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
     _task_map: &mut TaskIndexes,
-    caller_id: u16,
+    _caller_id: u16,
     caller_index: usize,
     message: USlice<u8>,
 ) -> Result<NextTask, UserError> {
     // Read the handler address
     let state_transfer_support: bool =
         deserialize_message(&task_list[caller_index], message)?;
-    sys_log!(
-        "Set update support for {}: {}",
-        caller_id,
-        state_transfer_support
-    );
+    //sys_log!(
+    //    "Set update support for {}: {}",
+    //    caller_id,
+    //    state_transfer_support
+    //);
     // Set the new handler
     task_list[caller_index].set_state_transfer_support(state_transfer_support);
     // Respond to the task

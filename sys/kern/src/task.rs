@@ -97,41 +97,38 @@ impl Task {
         // Just put to 0 the descriptor and component ID
         self.component_id = 0;
         self.descriptor = TaskDescriptor::new(0, 0);
+        self.region_table.clear();
     }
 
     /// Creates a `Task` in its initial state, filling in fields from
     /// `descriptor`.
-    pub fn from_descriptor(
+    pub fn init_from_descriptor(
+        &mut self,
         descriptor: &TaskDescriptor,
         region_table: &KVec<RegionDescriptor, REGIONS_PER_TASK>,
         data_section: &'static [u8],
-    ) -> Self {
-        // Create a new instance
-        let mut task = Task {
-            priority: abi::Priority(descriptor.priority()),
-            state: if descriptor.flags().contains(TaskFlags::START_AT_BOOT) {
+    ) {
+        self.priority = abi::Priority(descriptor.priority());
+        self.state = if descriptor.flags().contains(TaskFlags::START_AT_BOOT) {
                 TaskState::Healthy(SchedState::Runnable)
             } else {
                 TaskState::default()
-            },
-            component_id: descriptor.component_id(),
-            descriptor: descriptor.clone(),
-            region_table: KVec::new(),
-            generation: 0,
-            notifications: 0,
-            data_section: data_section,
-            save: crate::arch::SavedState::default(),
-            timer: crate::task::TimerState::default(),
-            transfer_state_support: false,
-            transfer_state_requested: false,
-            update_since: None,
-        };
+            };
+        self.component_id = descriptor.component_id();
+        self.descriptor = descriptor.clone();
+        self.region_table.clear();
+        self.generation = 0;
+        self.notifications = 0;
+        self.data_section = data_section;
+        self.save = crate::arch::SavedState::default();
+        self.timer = crate::task::TimerState::default();
+        self.transfer_state_support = false;
+        self.transfer_state_requested = false;
+        self.update_since = None;
         // Append all the regions
         for r in region_table {
-            task.region_table.push(r.clone()).unwrap();
+            self.region_table.push(*r).unwrap();
         }
-        // Return the instance
-        return task;
     }
 
     /// Tests whether this task has read access to `slice` as normal memory.
@@ -937,7 +934,7 @@ pub fn check_task_id_against_table(
     // Check for dead task ID: the id of a task is updated at every
     // reboot from failure, so we have to avoid serving old requests
     // to the rebooted component.
-    let task_index = task_index.unwrap();
+    let task_index = task_index.unwrap_lite();
     let task = &task_list[task_index];
     let table_generation = task.generation();
 
@@ -954,11 +951,11 @@ pub fn check_task_id_against_table(
 ///
 /// If no tasks are runnable, the kernel panics.
 pub fn select(
-    previous_id: u16,
+    previous_index: usize,
     task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
     task_map: &mut TaskIndexes,
 ) -> usize {
-    priority_scan(previous_id, task_list, task_map, |t| t.is_runnable())
+    priority_scan(previous_index, task_list, task_map, |t| t.is_runnable())
         .expect("no tasks runnable")
 }
 
@@ -976,7 +973,7 @@ pub fn select(
 ///
 /// If `previous` is not a valid index in `tasks`.
 pub fn priority_scan(
-    previous_id: u16,
+    previous_index: usize,
     task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
     task_map: &mut TaskIndexes,
     pred: impl Fn(&Task) -> bool,
@@ -984,8 +981,7 @@ pub fn priority_scan(
     // The idea is to scan the tasks, preferibly continuing from the one in execution (to be fair),
     // and return again the same task if no other task with higher priority or same priority free is available.
     // Differently from Hubris, here we still have the array, but only some indexes are valid and those can be retrieved from task_map
-    let previous = task_map.get_task_index(previous_id).unwrap_lite();
-    let search_order = (previous + 1..task_list.len()).chain(0..previous + 1);
+    let search_order = (previous_index + 1..task_list.len()).chain(0..previous_index + 1);
     let mut choice = None;
     let mask = task_map.indexes_mask();
 
@@ -1032,16 +1028,13 @@ pub fn priority_scan(
 pub fn force_fault(
     task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
     task_map: &mut TaskIndexes,
-    task_id: u16,
+    task_index: usize,
     fault: FaultInfo,
 ) -> NextTask {
-    let task_index = task_map
-        .get_task_index(task_id)
-        .expect("Cannot find component");
     let task = &mut task_list[task_index];
     sys_log!(
         "Component {} [descr: {}] fault: {:?}",
-        task_id,
+        task.id(),
         task.descriptor().component_id(),
         fault
     );
@@ -1073,10 +1066,9 @@ pub fn force_fault(
 pub fn restart_pending_tasks(
     task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
     task_map: &mut TaskIndexes,
-    task_id: u16,
+    task_index: usize,
     old_identifier: TaskId,
 ) {
-    let task_index = task_map.get_task_index(task_id).unwrap_lite();
     let new_identifier = task_list[task_index].current_identifier();
     // Restarting a task can have implications for other tasks. We don't want to
     // leave tasks sitting around waiting for a reply that will never come, for
