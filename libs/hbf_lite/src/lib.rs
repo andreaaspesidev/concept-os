@@ -1,5 +1,6 @@
 #![no_std]
 
+#[cfg(feature = "fmt")]
 use core::fmt::{Debug, Error, Formatter};
 
 pub use header::{HbfHeaderBase, HbfHeaderMain, HbfHeaderRelocation, HbfHeaderDependency, HbfVersion, HBF_MAGIC};
@@ -13,9 +14,24 @@ use trailer::HBF_CHECKSUM_OFFSET;
 
 mod header;
 mod trailer;
+#[cfg(feature = "fmt")]
 mod utils;
 
+#[cfg(feature = "fmt")]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum HbfError {
+    ReadError,
+    InvalidMagic,
+    UnsupportedVersion,
+    InvalidRegion,
+    InvalidInterrupt,
+    InvalidRelocation,
+    InvalidDependency,
+    InvalidOffset,
+}
+
+#[cfg(not(feature = "fmt"))]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum HbfError {
     ReadError,
     InvalidMagic,
@@ -47,7 +63,7 @@ impl<'a> BufferReader<'a> for MockReader {
 }
 
 /// Simple implementation of the BufferReader for a buffer
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy)]
 pub struct BufferReaderImpl<'a> {
     buffer: &'a [u8],
 }
@@ -103,6 +119,7 @@ impl<'a> HbfPayloadSection<'a> {
     }
 }
 
+#[cfg(feature = "fmt")]
 impl<'a> Debug for HbfPayloadSection<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), core::fmt::Error> {
         f.debug_struct("Payload Section")
@@ -358,6 +375,7 @@ impl<'a> HbfFile<'a> {
     }
 }
 
+#[cfg(feature = "fmt")]
 impl<'a> Debug for HbfFile<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf File").finish()

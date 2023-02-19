@@ -799,7 +799,7 @@ unsafe extern "C" fn pendsv_entry() {
         u16::from(unsafe { (*current).id() });
 
     with_task_table(|task_list, task_map| {
-        let current_index = task_map.get_task_index(current_id).unwrap();
+        let current_index = task_map.get_task_index(current_id).unwrap_lite();
         let next_index = task::select(current_index, task_list, task_map);
         let next_task = &mut task_list[next_index];
         apply_memory_protection(next_task);

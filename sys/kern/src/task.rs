@@ -22,7 +22,7 @@ use crate::startup::HUBRIS_FAULT_NOTIFICATION;
 use crate::structures::{revert_update, KVec, TaskIndexes};
 use crate::time::Timestamp;
 use crate::umem::USlice;
-use crate::utils::log_task;
+use crate::log::log_task;
 
 /// Internal representation of a task.
 ///
@@ -127,7 +127,7 @@ impl Task {
         self.update_since = None;
         // Append all the regions
         for r in region_table {
-            self.region_table.push(*r).unwrap();
+            self.region_table.push(*r).unwrap_lite();
         }
     }
 

@@ -524,7 +524,7 @@ pub fn populate_kernel_structures(
         if b.is_finalized() && b.get_type() == BlockType::COMPONENT {
             // Load the component
             let (task_descr, task_regions, task_data) =
-                get_task_from_block(b, true).unwrap();
+                get_task_from_block(b, true).unwrap_lite();
             let task_id = task_descr.component_id();
             add_task_to_system(
                 task_list,
@@ -535,7 +535,7 @@ pub fn populate_kernel_structures(
                 task_data,
                 task_id,
             )
-            .unwrap();
+            .unwrap_lite();
         }
     }
 }
@@ -574,7 +574,7 @@ fn get_task_from_block(
         sys_log!("Malformed HBF at {:#010x}", block.get_base_address());
         return Err(LoadError::MalformedHBF);
     }
-    let hbf = hbf_parse.unwrap();
+    let hbf = hbf_parse.unwrap_lite();
     if validate {
         // Validate this hbf
         let hbf_valid = hbf.validate().unwrap_or(false);
@@ -615,7 +615,7 @@ fn process_hbf(
             | RegionAttributes::WRITE
             | RegionAttributes::EXECUTE,
     };
-    regions.push(sram_region).unwrap();
+    regions.push(sram_region).unwrap_lite();
     // Create a sregion for the FLASH
     let flash_region = RegionDescriptor {
         base: block_nominal_base_address,
@@ -624,13 +624,13 @@ fn process_hbf(
             | RegionAttributes::WRITE
             | RegionAttributes::EXECUTE,
     };
-    regions.push(flash_region).unwrap();
-    let hbf_base = hbf.header_base().unwrap();
+    regions.push(flash_region).unwrap_lite();
+    let hbf_base = hbf.header_base().unwrap_lite();
     // Append all the other regions
     for region_num in 0..hbf_base.num_regions() {
         // TODO: check regions alignment, or we will have an hard fault in the kernel
         // when setting the MPU
-        let region = hbf.region_nth(region_num).unwrap();
+        let region = hbf.region_nth(region_num).unwrap_lite();
         regions
             .push(RegionDescriptor {
                 base: region.base_address(),
@@ -641,7 +641,7 @@ fn process_hbf(
                     )
                 },
             })
-            .unwrap();
+            .unwrap_lite();
     }
     // Extract the data section
     let data_section = hbf.get_data_payload().unwrap_lite();
@@ -676,7 +676,7 @@ fn remove_task_from_system(
         for interrupt_num in 0..task.descriptor().num_interrupts() {
             let interrupt = task.descriptor().interrupt_nth(interrupt_num);
             irq_map
-                .remove(interrupt.irq_num.try_into().unwrap_lite())
+                .remove(interrupt.irq_num as u16)
                 .unwrap_lite();
         }
     }
@@ -735,7 +735,7 @@ fn add_task_to_system(
                 .interrupt_nth(interrupt_num);
             // Append the IRQ
             match irq_map.insert(
-                interrupt.irq_num.try_into().unwrap_lite(),
+                interrupt.irq_num as u16,
                 InterruptOwner {
                     task_id: use_id,
                     notification: interrupt.notification,
@@ -785,15 +785,15 @@ pub fn load_component_at(
         let nominal_id = task_descr.component_id();
         let old_task_index = task_map.get_task_index(nominal_id);
         if old_task_index.is_some() {
-            let old_task = &mut task_list[old_task_index.unwrap()];
+            let old_task = &mut task_list[old_task_index.unwrap_lite()];
             // Remove all its irqs, after disabling them
             for interrupt_num in 0..old_task.descriptor().num_interrupts() {
                 let interrupt =
                     old_task.descriptor().interrupt_nth(interrupt_num);
                 crate::arch::disable_irq(interrupt.irq_num);
                 irq_map
-                    .remove(interrupt.irq_num.try_into().unwrap_lite())
-                    .unwrap();
+                    .remove(interrupt.irq_num as u16)
+                    .unwrap_lite();
             }
             // If the old component support it, now it can state transfer.
             // Otherwise is simply stopped.
@@ -848,12 +848,12 @@ pub fn revert_update(
     if old_task_index.is_none() {
         // Remove the new version
         let storage_task_index =
-            task_map.get_task_index(abi::STORAGE_ID).unwrap();
+            task_map.get_task_index(abi::STORAGE_ID).unwrap_lite();
         let storage_task = &mut task_list[storage_task_index];
         storage_task.post(NotificationSet(HUBRIS_STORAGE_ANALYZE_NOTIFICATION));
         return; // Ignore, we have nothing to revert to
     }
-    let task_index = task_map.get_task_index(nominal_id).unwrap();
+    let task_index = task_map.get_task_index(nominal_id).unwrap_lite();
     // Re-map IRQs of the old one. Do not reenable them, as the task will restart
     // and enable them itself.
     with_irq_table(|irq_map| {
@@ -862,7 +862,7 @@ pub fn revert_update(
             let interrupt = task.descriptor().interrupt_nth(interrupt_num);
             irq_map
                 .insert(
-                    interrupt.irq_num.try_into().unwrap_lite(),
+                    interrupt.irq_num as u16,
                     InterruptOwner {
                         task_id: nominal_id,
                         notification: interrupt.notification,
@@ -882,7 +882,7 @@ pub fn revert_update(
         old_task.set_healthy_state(abi::SchedState::Runnable);
     }
     // Remove the new version
-    let storage_task_index = task_map.get_task_index(abi::STORAGE_ID).unwrap();
+    let storage_task_index = task_map.get_task_index(abi::STORAGE_ID).unwrap_lite();
     let storage_task = &mut task_list[storage_task_index];
     storage_task.post(NotificationSet(HUBRIS_STORAGE_ANALYZE_NOTIFICATION));
 }
@@ -911,7 +911,7 @@ pub fn activate_component(
     let task = &mut task_list[caller_index];
     task_map
         .change_id_of_index(abi::UPDATE_TEMP_ID, nominal_id)
-        .unwrap();
+        .unwrap_lite();
     // Switch the mode on the task
     task.end_update(old_identifier.map(|id| id.generation().next()));
     // Redirect all IRQs
@@ -921,7 +921,7 @@ pub fn activate_component(
         for interrupt_num in 0..tot_irqs {
             let interrupt = task.descriptor().interrupt_nth(interrupt_num);
             let entry = irq_map
-                .get_mut(interrupt.irq_num.try_into().unwrap_lite())
+                .get_mut(interrupt.irq_num as u16)
                 .unwrap_lite();
             entry.task_id = nominal_id;
         }

@@ -67,7 +67,7 @@ pub const SRAM_START_ADDR: u32 = 0x2000_0000;
 pub const SRAM_END_ADDR: u32 = 0x2000_FFFF;
 pub const SRAM_SIZE: usize = (SRAM_END_ADDR - SRAM_START_ADDR + 1) as usize; // 64Kb
 
-pub const SRAM_RESERVED: u32 = 8704; // Kernel memory
+pub const SRAM_RESERVED: u32 = 6400; // Kernel memory
 pub const SRAM_BLOCK_SIZE: usize = 256;
 pub const SRAM_NUM_BLOCKS: usize = SRAM_SIZE / SRAM_BLOCK_SIZE as usize; // 256
 pub const SRAM_TREE_MAX_LEVEL: usize = 8; // log2(num_blocks) = log2(memory_area / block_size)

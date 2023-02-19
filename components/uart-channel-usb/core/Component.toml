@@ -3,7 +3,7 @@ id = 3
 version = 1
 priority = 10
 flags = ['START_AT_BOOT']
-min_ram = 2048
+min_ram = 512
 peripherals = ["usart2","gpioa","dma1"]
 interrupts = { "usart2.irq" = 1, "dma1.irq6" = 2 }
 

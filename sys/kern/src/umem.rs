@@ -7,7 +7,7 @@
 use core::marker::PhantomData;
 use zerocopy::FromBytes;
 
-use crate::structures::TaskIndexes;
+use crate::{structures::TaskIndexes};
 use crate::task::Task;
 use crate::err::InteractFault;
 use abi::{FaultInfo, FaultSource, UsageError, HUBRIS_MAX_SUPPORTED_TASKS};

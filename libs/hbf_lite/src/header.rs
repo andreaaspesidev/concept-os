@@ -1,3 +1,4 @@
+#[cfg(feature = "fmt")]
 use core::fmt::{Debug, Error, Formatter};
 
 /**
@@ -156,6 +157,7 @@ impl<'a> HbfHeaderBase {
     }
 }
 
+#[cfg(feature = "fmt")]
 impl Debug for HbfHeaderBase {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf Base")
@@ -222,6 +224,7 @@ impl<'a> HbfHeaderMain {
     }
 }
 
+#[cfg(feature = "fmt")]
 impl Debug for HbfHeaderMain {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf Main")
@@ -266,6 +269,7 @@ impl<'a> HbfHeaderRegion {
     }
 }
 
+#[cfg(feature = "fmt")]
 impl Debug for HbfHeaderRegion {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf Region")
@@ -307,6 +311,7 @@ impl<'a> HbfHeaderInterrupt {
     }
 }
 
+#[cfg(feature = "fmt")]
 impl Debug for HbfHeaderInterrupt {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf Interrupt")
@@ -341,6 +346,7 @@ impl<'a> HbfHeaderRelocation {
     }
 }
 
+#[cfg(feature = "fmt")]
 impl Debug for HbfHeaderRelocation {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf Relocation")
@@ -383,6 +389,7 @@ impl<'a> HbfHeaderDependency {
     }
 }
 
+#[cfg(feature = "fmt")]
 impl Debug for HbfHeaderDependency {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf Dependency")

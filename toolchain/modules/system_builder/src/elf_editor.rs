@@ -7,8 +7,8 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 /// Maximum size of the kernel during an update operation.
 /// This value was calculated reading memory with the debugger,
-/// after initially 0xff clearing it
-const DEFAULT_KERNEL_STACK_SIZE: u32 = 2900;
+/// after initially 0xab clearing it
+const DEFAULT_KERNEL_STACK_SIZE: u32 = 1250;
 
 #[derive(Debug, Clone)]
 pub struct AllocStatEntry {

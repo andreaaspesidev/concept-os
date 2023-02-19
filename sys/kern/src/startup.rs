@@ -8,7 +8,7 @@ use crate::atomic::AtomicExt;
 use crate::log::sys_log;
 use crate::structures::{populate_kernel_structures, KHash, TaskIndexes};
 use crate::task::Task;
-use crate::utils::log_structures;
+use crate::log::log_structures;
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
 

@@ -30,6 +30,7 @@
 #![feature(asm_const)]
 #![feature(asm_sym)]
 #![feature(naked_functions)]
+#![feature(core_intrinsics)]
 // Require an unsafe block even in an unsafe fn, because unsafe fns are about
 // contract, not implementation.
 #![forbid(unsafe_op_in_unsafe_fn)]
@@ -47,5 +48,4 @@ pub mod task;
 pub mod time;
 pub mod umem;
 pub mod structures;
-mod utils;
 mod log;
