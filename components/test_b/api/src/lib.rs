@@ -2,7 +2,7 @@
 
 use core::cell::Cell;
 
-use userlib::{hl, TaskId, FromPrimitive};
+use userlib::{hl, TaskId, FromPrimitive, Lease};
 use zerocopy::{AsBytes,FromBytes};
 
 /**
@@ -38,19 +38,33 @@ impl From<BError> for u32 {
  */
 #[derive(Copy, Clone, Debug, FromPrimitive)]
 pub enum Operation {
-    Mock1 = 1,
+    SimpleSend = 1,
+    SendWithLease = 2
 }
 
-/// Enable clock
+/// Simple Send
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
-pub struct Mock1Request {
+pub struct SimpleSendRequest {
     pub a: u32,
     pub b: u32
 }
-impl hl::Call for Mock1Request {
-    const OP: u16 = Operation::Mock1 as u16;
-    type Response = ();
+impl hl::Call for SimpleSendRequest {
+    const OP: u16 = Operation::SimpleSend as u16;
+    type Response = u32;
+    type Err = BError;
+}
+
+/// Send With Lease
+#[derive(FromBytes, AsBytes)]
+#[repr(C)]
+pub struct SendWithLeaseRequest {
+    pub a: u32,
+    pub b: u32
+}
+impl hl::Call for SendWithLeaseRequest {
+    const OP: u16 = Operation::SendWithLease as u16;
+    type Response = u32;
     type Err = BError;
 }
 
@@ -63,10 +77,19 @@ impl TestB {
             0: Cell::new(TEST_B_TASK_ID)
         }
     }
-    pub fn mock1(&mut self, a: u32, b: u32) -> Result<(),BError> {
-        hl::send_with_retry(&self.0, &Mock1Request{
+    pub fn simple_send(&mut self, a: u32, b: u32) -> Result<u32,BError> {
+        hl::send_with_retry(&self.0, &SimpleSendRequest{
             a: a,
             b: b
         }, &[])
+    }
+    pub fn send_with_lease(&mut self, a: u32, b: u32, outgoing: &[u8], incoming: &mut [u8]) -> Result<u32,BError> {
+        hl::send_with_retry(&self.0, &SendWithLeaseRequest{
+            a: a,
+            b: b
+        }, &[
+            Lease::read_only(outgoing),
+            Lease::read_write(incoming)
+        ])
     }
 }

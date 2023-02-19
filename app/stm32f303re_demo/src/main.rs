@@ -11,6 +11,8 @@
 extern crate stm32f303re;
 extern crate panic_itm;
 
+mod profile;
+
 use core::arch::asm;
 
 use cortex_m_rt::entry;
@@ -93,5 +95,9 @@ fn main() -> ! {
         cortex_m::iprintln!(stim, "Clock frequency: {}", curr_freq);
     }*/
     
+    // Configure profiling
+    profile::configure_profiling();
+
+    // Start the kernel
     unsafe { kern::startup::start_kernel(CYCLES_PER_MS) }
 }

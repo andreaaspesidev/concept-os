@@ -19,13 +19,41 @@ fn main() -> ! {
 
     let recv_handler = |_state, op: Operation, msg: hl::Message| -> Result<(), BError> {
         match op {
-            Operation::Mock1 => {
-                let (_msg, caller) = msg.fixed::<Mock1Request, ()>().ok_or(BError::BadArgument)?;
+            Operation::SimpleSend => {
+                let (msg, caller) = msg.fixed::<SimpleSendRequest, u32>().ok_or(BError::BadArgument)?;
                 sys_log!("[TEST_B] Got request");
                 // Sleep a bit
-                hl::sleep_for(1000);
+                hl::sleep_for(5);
+
                 sys_log!("[TEST_B] Replied");
-                caller.reply(());
+                caller.reply(msg.a + msg.b);
+                Ok(())
+            }
+            Operation::SendWithLease => {
+                let (msg, caller) = msg.fixed_with_leases::<SendWithLeaseRequest, u32>(2).ok_or(BError::BadArgument)?;
+                sys_log!("[TEST_B] Got (lease) request");
+                // Sleep a bit
+                hl::sleep_for(5);
+                // Validate leases
+                let incoming = caller.borrow(0);
+                let outgoing = caller.borrow(1);
+                let incoming_info = incoming.info().ok_or_else(|| BError::BadArgument)?;
+                let outgoing_info = outgoing.info().ok_or_else(|| BError::BadArgument)?;
+                if !incoming_info.attributes.contains(LeaseAttributes::READ) {
+                    return Err(BError::BadArgument);
+                }
+                if !outgoing_info.attributes.contains(LeaseAttributes::WRITE) {
+                    return Err(BError::BadArgument);
+                }
+                if outgoing_info.len != incoming_info.len {
+                    return Err(BError::BadArgument);
+                }
+                // Perform computation
+                for i in 0..incoming_info.len {
+                    outgoing.write_at(i, incoming.read_at::<u8>(i).unwrap() + 1).unwrap();
+                }
+                sys_log!("[TEST_B] Replied (lease)");
+                caller.reply(msg.a + msg.b);
                 Ok(())
             }
         }
