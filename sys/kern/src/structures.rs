@@ -428,6 +428,10 @@ pub struct TaskIndexes {
     /// Array of bits, each is true if the corresponding index is associated
     /// to a component index currently in use
     indexes_mask: [bool; HUBRIS_MAX_SUPPORTED_TASKS],
+    /// This structure and the above one could be merged into a single one,
+    /// but here are kept separated for simplicity
+    valid_ordered_indexes: [usize; HUBRIS_MAX_SUPPORTED_TASKS],
+    valid_ordered_indexes_len: usize
 }
 
 impl TaskIndexes {
@@ -435,8 +439,26 @@ impl TaskIndexes {
         Self {
             hash: KHash::new(),
             indexes_mask: [false; HUBRIS_MAX_SUPPORTED_TASKS],
+            valid_ordered_indexes: [0; HUBRIS_MAX_SUPPORTED_TASKS],
+            valid_ordered_indexes_len: 0
         }
     }
+
+    /// Drops and recreate the list starting from the indexes.
+    /// More advanced alg. can be used, but remember we do not need to optimize
+    /// the insertion and removal, but the access times.
+    fn recreate_ordered_indexes(&mut self) {
+        let mut curr_pos: usize = 0;
+        for i in 0..self.indexes_mask.len() {
+            let in_use = self.indexes_mask[i];
+            if in_use {
+                self.valid_ordered_indexes[curr_pos] = i;
+                curr_pos += 1;
+            }
+        }
+        self.valid_ordered_indexes_len = curr_pos;
+    }
+
     /// Gets the index (if any) associated to the current component id
     pub fn get_task_index(&self, component_id: u16) -> Option<usize> {
         self.hash.get(component_id).map(|e| *e)
@@ -468,6 +490,7 @@ impl TaskIndexes {
                 if self.hash.insert(component_id, i).is_ok() {
                     // Mark as used
                     self.indexes_mask[i] = true;
+                    self.recreate_ordered_indexes();
                     return Some(i);
                 }
                 return None;
@@ -482,6 +505,7 @@ impl TaskIndexes {
         if let Ok(i) = self.hash.remove(component_id) {
             // Set as free
             self.indexes_mask[i] = false;
+            self.recreate_ordered_indexes();
             return Some(i);
         }
         return None;
@@ -497,6 +521,10 @@ impl TaskIndexes {
 
     pub fn indexes_mask(&self) -> &[bool; HUBRIS_MAX_SUPPORTED_TASKS] {
         &self.indexes_mask
+    }
+
+    pub fn valid_indexes(&self) -> &[usize] {
+        &self.valid_ordered_indexes[0..self.valid_ordered_indexes_len]
     }
 
     pub fn into_iter(&self) -> KHashIter<usize, HUBRIS_MAX_SUPPORTED_TASKS> {

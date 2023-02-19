@@ -106,12 +106,10 @@ pub unsafe fn start_kernel(tick_divisor: u32) -> ! {
     log_structures(task_table, task_map, irq_map);
 
     // With that done, set up initial register state etc.
-    let mask = task_map.indexes_mask();
-    for (index, task) in task_table.iter_mut().enumerate() {
-        if !mask[index] {
-            continue; // Ignore not valid positions
-        }
-        crate::arch::reinitialize(task);
+    let valid_indexes = task_map.valid_indexes();
+    for i in 0..valid_indexes.len() {
+        let index = valid_indexes[i];
+        crate::arch::reinitialize(&mut task_table[index]);
     }
 
     // Great! Pick our first task. We'll act like we're scheduling after the
