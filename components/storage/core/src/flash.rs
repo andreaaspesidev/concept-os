@@ -5,6 +5,9 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "board_stm32f303re")] {
         use stm32f303re as device;
         use stm32f303re::{FLASH_START_ADDR,FLASH_PAGE_SIZE,FLASH_END_ADDR};
+    } else if #[cfg(feature = "board_stm32l432kc")] {
+        use stm32l432kc as device;
+        use stm32l432kc::{FLASH_START_ADDR,FLASH_PAGE_SIZE,FLASH_END_ADDR};
     } else {
         compile_error!("Missing board configuration");
     }

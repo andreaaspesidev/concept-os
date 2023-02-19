@@ -143,13 +143,20 @@ impl<'a> ElfEditor<'a> {
             ram_size: self.allocation_stats.kernel_reserved_ram,
             ram_needed_size: sram_used + DEFAULT_KERNEL_STACK_SIZE,
         });
-        /*if self.allocation_stats.kernel_reserved_ram < sram_used + DEFAULT_KERNEL_STACK_SIZE {
+        if self.allocation_stats.kernel_reserved_ram < sram_used + DEFAULT_KERNEL_STACK_SIZE {
             panic!(
-                "Not enough memory for kernel: {} bytes available, but {} bytes needed",
+                "Not enough SRAM for kernel: {} bytes available, but {} bytes needed",
                 self.allocation_stats.kernel_reserved_ram,
                 sram_used + DEFAULT_KERNEL_STACK_SIZE
             );
-        }*/
+        }
+        if self.allocation_stats.kernel_reserved_flash < flash_used {
+            panic!(
+                "Not enough flash for kernel: {} bytes available, but {} bytes needed",
+                self.allocation_stats.kernel_reserved_flash,
+                flash_used
+            );
+        }
     }
 
     pub fn add_component(&mut self, hbf_path: &PathBuf) {

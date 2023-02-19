@@ -262,7 +262,7 @@ impl<'b, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_A
         }
         return None;
     }
-    fn prev_page(page_num: u16) -> Option<FlashPage> {
+    pub fn prev_page(page_num: u16) -> Option<FlashPage> {
         let prev_num = page_num - 1;
         Self::page_from_number(prev_num)
     }
