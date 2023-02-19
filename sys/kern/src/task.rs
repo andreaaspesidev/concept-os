@@ -876,9 +876,14 @@ pub fn process_timers(
 ) -> NextTask {
     let mut sched_hint = NextTask::Same;
     let mut task_revert: bool = false;
-    for (_cid, cindex) in task_map.into_iter() {
+
+    let valid_indexes = task_map.valid_indexes();
+
+    for i in 0..valid_indexes.len() {
+        // Get the index
+        let index = valid_indexes[i];
         // Obtain task
-        let task = &mut task_list[*cindex];
+        let task = &mut task_list[index];
         // Check for dying tasks
         if !task_revert {
             match task.is_still_updating() {
@@ -899,7 +904,7 @@ pub fn process_timers(
             if deadline <= current_time {
                 task.timer.deadline = None;
                 let task_hint = if task.post(task.timer.to_post) {
-                    NextTask::Specific(*cindex)
+                    NextTask::Specific(index)
                 } else {
                     NextTask::Same
                 };
@@ -978,31 +983,46 @@ pub fn priority_scan(
     task_map: &mut TaskIndexes,
     pred: impl Fn(&Task) -> bool,
 ) -> Option<usize> {
+    fn priority_scan_core(
+        task: &Task,
+        current_index: usize,
+        pred: &impl Fn(&Task) -> bool,
+        choice: &mut Option<(usize, Priority)>,
+    ) {
+        // Check predicate
+        if !pred(task) {
+            return;
+        }
+        // Do not select a less important task
+        if let Some((_, prio)) = choice {
+            if !task.priority.is_more_important_than(*prio) {
+                return;
+            }
+        }
+        // Select this task
+        *choice = Some((current_index, task.priority));
+    }
+
     // The idea is to scan the tasks, preferibly continuing from the one in execution (to be fair),
     // and return again the same task if no other task with higher priority or same priority free is available.
     // Differently from Hubris, here we still have the array, but only some indexes are valid and those can be retrieved from task_map
-    let search_order = (previous_index + 1..task_list.len()).chain(0..previous_index + 1);
+    let valid_indexes = task_map.valid_indexes();
+    
     let mut choice = None;
-    let mask = task_map.indexes_mask();
 
-    for i in search_order {
-        // First, ignore masked items
-        if !mask[i] {
-            continue;
+    let mut found_i = valid_indexes.len(); // Value on purpose out-of-range
+    for i in 0..valid_indexes.len() {
+        let index = valid_indexes[i];
+        if index == previous_index {
+            found_i = i;
         }
-        // Then check the supplied predicate on this task
-        if !pred(&task_list[i]) {
-            continue;
+        if found_i < valid_indexes.len() {
+            priority_scan_core(&task_list[index], index, &pred, &mut choice);
         }
-
-        // Ignore tasks with a priority lower than the one we found for the feasible candidate
-        if let Some((_, prio)) = choice {
-            if !task_list[i].priority.is_more_important_than(prio) {
-                continue;
-            }
-        }
-        // Return the choice
-        choice = Some((i, task_list[i].priority));
+    }
+    for i in 0..found_i {
+        let index = valid_indexes[i];
+        priority_scan_core(&task_list[index], index, &pred, &mut choice);
     }
     // Keep only the task id
     choice.map(|(idx, _)| idx)
