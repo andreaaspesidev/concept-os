@@ -11,6 +11,9 @@ use stm32f303re::device;
 #[cfg(feature = "board_stm32l432kc")]
 use stm32l432kc::device;
 
+#[cfg(feature = "board_stm32l476rg")]
+use stm32l476rg::device;
+
 // Baudrate used during communication
 const BAUDRATE: u32 = 115_200;
 const USART_IRQ_MASK: u32 = 0b0000_0000_0000_0001;
@@ -143,7 +146,7 @@ fn main() -> ! {
                         // -> get the number of bytes still to be read of DMA
                         #[cfg(feature = "board_stm32f303re")]
                         let remaining_rx = dma1.ch6.ndtr.read().bits() as usize;
-                        #[cfg(feature = "board_stm32l432kc")]
+                        #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         let remaining_rx = dma1.cndtr6.read().bits() as usize;
 
                         if remaining_rx > 0 && remaining_rx < RX_BUFFER_SIZE {
@@ -426,7 +429,7 @@ fn setup_usart(usart: &device::usart1::RegisterBlock) -> Result<(), RCCError> {
             .brr
             .write(|w| w.brr().bits((CLOCK_HZ / BAUDRATE) as u16));
     }
-    #[cfg(feature = "board_stm32l432kc")]
+    #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
     {
         const CLOCK_HZ: u32 = 80_000_000; // PLCK1
         usart
@@ -441,7 +444,7 @@ fn setup_usart(usart: &device::usart1::RegisterBlock) -> Result<(), RCCError> {
     Ok(())
 }
 
-#[cfg(feature = "board_stm32f303re")]
+#[cfg(any(feature = "board_stm32f303re",feature = "board_stm32l476rg"))]
 /// Write USART2 on GPIOA (pin 2,3)
 fn setup_gpio() -> Result<(), RCCError> {
     // TODO: the fact that we interact with GPIOA directly here is an expedient
@@ -497,7 +500,7 @@ static mut RX_BUFFER: [u8; RX_BUFFER_SIZE] = [0xAA; RX_BUFFER_SIZE];
  * USART2_TX -> DMA1 - Channel7
  * (pag 272/1141)
  */
-#[cfg(any(feature = "board_stm32f303re", feature = "board_stm32l432kc"))]
+#[cfg(any(feature = "board_stm32f303re", feature = "board_stm32l432kc", feature = "board_stm32l476rg"))]
 fn setup_dma(
     dma1: &device::dma1::RegisterBlock,
     usart: &device::usart1::RegisterBlock,
@@ -505,9 +508,9 @@ fn setup_dma(
     // Turn on clock
     let mut rcc = rcc_api::RCC::new();
     rcc.enable_clock(rcc_api::Peripheral::DMA1)?;
-    #[cfg(feature = "board_stm32l432kc")]
+    #[cfg(any(feature = "board_stm32l432kc", feature = "board_stm32l476rg"))]
     rcc.enter_reset(rcc_api::Peripheral::DMA1)?;
-    #[cfg(feature = "board_stm32l432kc")]
+    #[cfg(any(feature = "board_stm32l432kc", feature = "board_stm32l476rg"))]
     rcc.leave_reset(rcc_api::Peripheral::DMA1)?;
 
     // Configure DMA
@@ -554,7 +557,7 @@ fn configure_dma_rx(dma1: &device::dma1::RegisterBlock, usart: &device::usart1::
     dma1.ch6.cr.modify(|_, w| w.en().set_bit());
 }
 
-#[cfg(feature = "board_stm32l432kc")]
+#[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
 fn configure_dma_rx(dma1: &device::dma1::RegisterBlock, usart: &device::usart1::RegisterBlock) {
     // Disable the channel (tbs)
     dma1.ccr6.modify(|_, w| w.en().clear_bit());
@@ -562,7 +565,7 @@ fn configure_dma_rx(dma1: &device::dma1::RegisterBlock, usart: &device::usart1::
     dma1.ifcr.write(|w| w.cgif6().set_bit());
 
     // Select USART2_RX for Channel 6
-    // See: RM0394/pag.299
+    // See: RM0394/pag.299 (L432),  RM0351/pag.339 (L476)
     dma1.cselr.modify(|_,w| w.c6s().bits(0b0010));
 
     // Set periph. address (RDR register)
@@ -749,7 +752,7 @@ fn step_transmit(
 
     if let Some(byte) = tx.caller.borrow(tx.borrow_num).read_at::<u8>(tx.pos) {
         // Stuff byte into transmitter.
-        #[cfg(any(feature = "board_stm32f303re",feature = "board_stm32l432kc"))]
+        #[cfg(any(feature = "board_stm32f303re",feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
         usart.tdr.write(|w| w.tdr().bits(u16::from(byte)));
 
         tx.pos += 1;
@@ -778,42 +781,3 @@ fn is_transmit_mode(caller: &Caller<()>, receiver: &Option<Receiver>) -> bool {
     }
     return false;
 }
-
-/*fn step_receive(
-    usart: &device::usart1::RegisterBlock,
-    receivers: &mut Vec<Receiver, MAX_QUEUE_LENGTH>,
-) {
-    fn end_reception(
-        usart: &device::usart1::RegisterBlock,
-        state: &mut Vec<Receiver, MAX_QUEUE_LENGTH>,
-        rec_index: usize,
-    ) -> hl::Caller<()> {
-        // Delete receiver
-        let rec = state.swap_remove(rec_index);
-        // Clear interrupt only if we have no receivers
-        if state.is_empty() {
-            usart.cr1.modify(|_, w| w.rxneie().disabled());
-        }
-        // Return the caller
-        rec.caller
-    }
-
-    // Read data
-    #[cfg(feature = "board_stm32f303re")]
-    let data = (usart.rdr.read().bits() & 0xFF) as u8; // Keep only the first 8 bits
-
-    for index in 0..receivers.len() {
-        // Get the receiver
-        let receiver = &mut receivers[index];
-        // Try write data
-        if receiver.caller.borrow(0).write_at(receiver.pos, data).is_some() {
-            receiver.pos += 1;
-            if receiver.pos == receiver.len {
-                // Success
-                end_reception(usart, receivers, index).reply(());
-            }
-        } else {
-            end_reception(usart, receivers, index).reply_fail(ChannelError::BadArgument);
-        }
-    }
-}*/

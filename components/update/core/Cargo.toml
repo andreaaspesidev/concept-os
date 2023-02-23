@@ -8,6 +8,7 @@ log-itm = ["userlib/log-itm"]
 log-semihosting = ["dep:cortex-m-semihosting", "userlib/log-semihosting"]
 board_stm32f303re = []
 board_stm32l432kc = []
+board_stm32l476rg = []
 
 [dependencies]
 userlib = {path = "../../../sys/userlib"}

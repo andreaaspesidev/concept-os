@@ -8,6 +8,7 @@ log-itm = ["userlib/log-itm"]
 log-semihosting = ["dep:cortex-m-semihosting", "userlib/log-semihosting"]
 board_stm32f303re = ["dep:stm32f303re"]
 board_stm32l432kc = ["dep:stm32l432kc"]
+board_stm32l476rg = ["dep:stm32l476rg"]
 
 [dependencies]
 storage-api = {path = "../api"}
@@ -25,6 +26,10 @@ optional = true
 
 [dependencies.stm32l432kc]
 path = "../../../boards/stm32l432kc"
+optional = true
+
+[dependencies.stm32l476rg]
+path = "../../../boards/stm32l476rg"
 optional = true
 
 # This section is here to discourage RLS/rust-analyzer from doing test builds,

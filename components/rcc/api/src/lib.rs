@@ -23,6 +23,10 @@ cfg_if::cfg_if! {
     } else if #[cfg(feature = "stm32l432kc")] {
         mod stm32l432kc;
         use stm32l432kc::*;
+    // STM32L4X6
+    } else if #[cfg(feature = "stm32l476rg")] {
+        mod stm32l476rg;
+        use stm32l476rg::*;
     } else {
         compile_error!("Board not supported");
     }
@@ -109,6 +113,7 @@ pub enum Peripheral {
     GPIOF = 34,
     GPIOH = 35,
     GPIOG = 36,
+    TIM5 = 37,
 }
 
 /// Enable clock

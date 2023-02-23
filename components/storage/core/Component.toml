@@ -3,5 +3,5 @@ id = 4
 version = 1
 priority = 20
 flags = ['START_AT_BOOT']
-min_ram = 2048
+min_ram = 4096 # 2048 for F303/L432
 peripherals = ['flash-region']

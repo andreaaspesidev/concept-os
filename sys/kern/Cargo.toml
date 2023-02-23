@@ -9,6 +9,7 @@ log-itm = ["log-enabled"]
 log-semihosting = ["log-enabled", "dep:cortex-m-semihosting"]
 f303re = ["dep:stm32f303re"]
 l432kc = ["dep:stm32l432kc"]
+l476rg = ["dep:stm32l476rg"]
 
 [dependencies]
 abi = {path = "../abi"}
@@ -29,6 +30,7 @@ cortex-m-semihosting =  { version = "0.5.0", optional=true}
 # Board dependencies
 stm32f303re = {path = "../../boards/stm32f303re", optional=true}
 stm32l432kc = {path = "../../boards/stm32l432kc", optional=true}
+stm32l476rg = {path = "../../boards/stm32l476rg", optional=true}
 
 [build-dependencies]
 serde = "1"

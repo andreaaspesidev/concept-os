@@ -1,0 +1,60 @@
+[board]
+target = "thumbv7em-none-eabihf"
+
+[linker]
+flash_origin = "0x08000000"
+flash_size = "1024K"
+ram_origin = "0x20000000"
+ram_size = "64K" # actually 96K
+
+# Flash
+[peripheral.flash-region]
+base_address = '0x08000000'
+size = '0x100000' # 1048576
+attributes = [
+    'READ',
+    'WRITE',    # Needed for some reason, or the MPU will cause a crash
+    'EXECUTE'   # Needed for some reason, or the MPU will cause a crash
+]
+
+# RCC
+[peripheral.rcc]
+base_address = '0x40021000'
+size = '0x0400' # 1024
+attributes = [
+    'READ',
+    'WRITE',
+    'DEVICE'
+]
+
+# USART2
+[peripheral.usart2]
+base_address = '0x40004400'
+size = '0x0400' # 1024
+attributes = [
+    'READ',
+    'WRITE',
+    'DEVICE'
+]
+interrupts = {irq = 38}
+
+# GPIOA
+[peripheral.gpioa]
+base_address = '0x48000000'
+size = '0x0400' # 1024
+attributes = [
+    'READ',
+    'WRITE',
+    'DEVICE'
+]
+
+# DMA1
+[peripheral.dma1]
+base_address = '0x40020000'
+size = '0x0400' # 1024
+attributes = [
+    'READ',
+    'WRITE',
+    'DEVICE'
+]
+interrupts = {irq6 = 16}

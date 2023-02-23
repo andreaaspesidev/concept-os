@@ -6,17 +6,15 @@ edition = "2021"
 [features]
 log-itm = ["userlib/log-itm"]
 log-semihosting = ["dep:cortex-m-semihosting", "userlib/log-semihosting"]
+# Supported boards
 board_stm32f303re = []
 board_stm32l432kc = []
+board_stm32l476rg = []
 
 [dependencies]
 userlib = {path = "../../../sys/userlib"}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
 cortex-m-semihosting =  { version = "0.5.0", optional=true}
-
-[dependencies.stm32f3]
-version = "0.15.1"
-features = ["stm32f303", "rt"]
 
 # This section is here to discourage RLS/rust-analyzer from doing test builds,
 # since test builds don't work for cross compilation.

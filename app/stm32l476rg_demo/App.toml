@@ -1,0 +1,26 @@
+name = "stm32l476rg_demo"
+board = "stm32l476rg"
+kernel_ram = 6656
+clock_speed = 80000000
+strip_panics = true
+
+[components.idle]
+features = ["log-itm"]
+
+[components.test_a]
+features = ["log-itm"]
+
+[components.test_b]
+features = ["log-itm"]
+
+[components.rcc]
+features = ["log-itm"]
+
+[components.storage]
+features = ["log-itm"]
+
+[components.uart-channel-usb]
+features = ["log-itm"]
+
+[components.update]
+features = ["log-itm"]

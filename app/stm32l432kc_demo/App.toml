@@ -1,6 +1,6 @@
 name = "stm32l432kc_demo"
 board = "stm32l432kc"
-kernel_ram = 6400
+kernel_ram = 6656
 clock_speed = 80000000
 strip_panics = true
 

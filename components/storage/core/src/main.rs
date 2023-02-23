@@ -9,6 +9,8 @@ cfg_if::cfg_if! {
         use stm32f303re::*;
     } else if #[cfg(feature = "board_stm32l432kc")] {
         use stm32l432kc::*;
+    } else if #[cfg(feature = "board_stm32l476rg")] {
+        use stm32l476rg::*;
     } else {
         compile_error!("Board not supported");
     }
