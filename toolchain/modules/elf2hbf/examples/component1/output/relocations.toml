@@ -1,3 +1,4 @@
 [relocations]
+text = []
 rodata = []
 data = []

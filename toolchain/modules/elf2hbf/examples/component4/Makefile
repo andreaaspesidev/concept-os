@@ -15,7 +15,7 @@ disassemble: build
 	arm-none-eabi-objdump -h output/image.elf > disassemble/sections
 	arm-none-eabi-objdump -s -j .data output/image.elf > disassemble/data
 	arm-none-eabi-objdump -s -j .rodata output/image.elf > disassemble/rodata
-	arm-none-eabi-objdump -d output/image.elf --visualize-jumps > disassemble/text.asm
+	arm-none-eabi-objdump -d -r output/image.elf --visualize-jumps > disassemble/text.asm
 
 dump: build
 	arm-none-eabi-objcopy -O binary --only-section=.text output/image.elf output/image.text
@@ -23,4 +23,4 @@ dump: build
 	arm-none-eabi-objcopy -O binary --only-section=.data output/image.elf output/image.data
 
 output-reloc: build
-	python3 ../../../../scripts/relocations/elf_relocations.py output/image.elf output/out.map output/relocations.toml 
+	python3 ../../../../scripts/relocations/elf_relocations.py output/image.elf output/relocations.toml 

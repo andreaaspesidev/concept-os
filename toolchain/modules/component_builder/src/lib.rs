@@ -39,15 +39,13 @@ fn build_component(
         &format!(
             "-C link-arg=--nmagic \
              -C link-arg=-T{}/link.x \
-             -C link-arg=-Map={}/image.map \
+             -C link-arg=-q \
              -C panic=abort \
-             -C relocation-model=ropi-rwpi \
              -Z emit-stack-sizes \
              --emit=obj
             ",
-            component_build_path.display(),
             component_build_path.display()
-        ),
+        ), //-C relocation-model=ropi-rwpi \
     );
     cmd.env("CARGO_TARGET_DIR", &component_build_path); // Location of where to place all generated artifacts, relative to the current working directory.
     cmd.env("CARGO_BUILD_TARGET", target);
@@ -76,7 +74,7 @@ fn compute_relocations(
     component_build_path: &PathBuf,
     root_path: &Path,
     artifact_path: &PathBuf,
-    verbose: bool,
+    _verbose: bool,
 ) -> Result<PathBuf, ()> {
     println!("Scanning relocations for '{}'", artifact_path.display());
     let mut script_path = PathBuf::from(root_path);
@@ -87,15 +85,9 @@ fn compute_relocations(
     let mut cmd = Command::new("python3");
     cmd.arg(script_path);
     cmd.arg(artifact_path);
-    let mut map_path = component_build_path.clone();
-    map_path.push("image.map");
-    cmd.arg(map_path);
     let mut reloc_path = component_build_path.clone();
     reloc_path.push("image.relocations.toml");
     cmd.arg(reloc_path.display().to_string());
-    if verbose {
-        cmd.arg("True");
-    }
     // Launch script
     let status = cmd.status();
     if !status.is_ok() || !status.unwrap().success() {

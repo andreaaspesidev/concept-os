@@ -6,7 +6,7 @@ rustflags = [
 
   # LLD (shipped with the Rust toolchain) is used as the default linker
   "-C", "link-arg=-Tlink.ld",
-  "-C", "link-arg=-Map=output/out.map",
+  "-C", "link-arg=-q",
 
   # No unwinder.
   "-C", "panic=abort",

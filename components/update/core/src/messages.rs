@@ -21,6 +21,7 @@ pub enum MessageError {
     IllegalDowngrade = 0xEB,
     //CannotFindComponent = 0xEC,
     //CannotFindVersion = 0xED,
+    CannotStartComponent = 0xEE,
     ChannelError = 0xFF,
 }
 #[derive(Clone, Copy)]
@@ -117,23 +118,12 @@ impl HelloResponseMessage {
 }
 
 /// Raw Incoming Packet
-#[derive(Debug)]
-pub struct RawPacket<'a> {
-    buffer: &'a [u8],
+pub struct RawPacket {
+    //buffer: &'a [u8],
 }
 
-impl<'a> RawPacket<'a> {
-    pub fn from(buffer: &'a [u8]) -> Result<Self, MessageError> {
-        // Validate buffer
-        Self::validate(buffer)?;
-        // Return instance
-        Ok(Self { buffer: buffer })
-    }
-    pub fn get_raw(&self) -> &'a [u8] {
-        // Already validated
-        &self.buffer[0..self.buffer.len() - 1]
-    }
-    fn validate(buffer: &'a [u8]) -> Result<(), MessageError> {
+impl RawPacket {
+    pub fn validate(buffer: &[u8]) -> Result<(), MessageError> {
         // Check CRC
         let mut crc = 0x00;
         for i in 0..(buffer.len() - 1) {

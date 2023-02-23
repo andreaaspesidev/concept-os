@@ -15,7 +15,7 @@ path = "../../boards/stm32f303re"
 [dependencies.kern]
 path = "../../sys/kern"
 default-features = false
-features = ["f303re"] # "log-itm"
+features = ["f303re", "log-itm"] # "log-itm"
 
 [[bin]]
 name = "stm32f303re_demo"

@@ -10,6 +10,7 @@ use component_config::structures::ComponentFlag as CF;
 use component_config::structures::RegionAttribute as RF;
 
 use crate::parse_elf::ElfSection;
+use crate::relocations::RelocationPoint;
 
 const ALIGN_TO: usize = 8;
 
@@ -140,7 +141,7 @@ struct HbfHeaderInterrupt {
 }
 
 struct HbfHeaderRelocation {
-    address_offset: u32, //0
+    point: RelocationPoint, //0
 }
 
 struct HbfHeaderDependency {
@@ -253,14 +254,6 @@ impl Validable for HbfHeaderInterrupt {
         return true;
     }
 }
-impl Validable for HbfHeaderRelocation {
-    fn is_valid(&self) -> bool {
-        if self.address_offset == 0 {
-            return false;
-        }
-        return true;
-    }
-}
 impl Validable for HbfHeaderDependency {
     fn is_valid(&self) -> bool {
         if self.component_id == 0 {
@@ -290,14 +283,6 @@ impl Validable for HbfHeader {
             let interrupts = (&self.interrupts).as_ref().unwrap();
             for i in interrupts.iter() {
                 if !i.is_valid() {
-                    return false;
-                }
-            }
-        }
-        if self.relocations.is_some() {
-            let relocations = (&self.relocations).as_ref().unwrap();
-            for r in relocations.iter() {
-                if !r.is_valid() {
                     return false;
                 }
             }
@@ -342,14 +327,6 @@ impl Validable for HbfHeader {
             && self.main.data_section_offset <= core::mem::size_of::<HbfHeader> as u32
         {
             return false;
-        }
-        if self.relocations.is_some() {
-            let relocs = (&self.relocations).as_ref().unwrap();
-            for r in relocs.iter() {
-                if r.address_offset <= core::mem::size_of::<HbfHeader> as u32 {
-                    return false;
-                }
-            }
         }
         return true;
     }
@@ -576,7 +553,7 @@ impl Serializable for HbfHeaderRelocation {
             address_offset: u32     //0
         */
         let mut buffer = Vec::<u8>::new();
-        buffer.extend_from_slice(&self.address_offset.to_le_bytes());
+        buffer.extend_from_slice(&self.point.encode().to_le_bytes());
         return buffer;
     }
 }
@@ -795,9 +772,10 @@ impl HbfFile {
         &mut self,
         text_section: &ElfSection,
         rodata_section: Option<&ElfSection>,
-        rel_entrypoint: u32,            // Base start .text
-        rodata_rels: Option<&Vec<u32>>, // Base start .rodata
-        data_rels: Option<&Vec<u32>>,   // Base start .data
+        rel_entrypoint: u32,                        // Base start .text
+        text_rels: Option<&Vec<RelocationPoint>>,   // Base start .text
+        rodata_rels: Option<&Vec<RelocationPoint>>, // Base start .rodata
+        data_rels: Option<&Vec<RelocationPoint>>,   // Base start .data
     ) {
         let mut ro_len: u32 = 0;
         let mut rodata_size: u32 = 0;
@@ -812,11 +790,21 @@ impl HbfFile {
         }
         // Append relocations
         let mut rels = Vec::<HbfHeaderRelocation>::new();
+        if text_rels.is_some() {
+            let comp_rels = text_rels.unwrap();
+            for r in comp_rels {
+                rels.push(HbfHeaderRelocation {
+                    point: r.shift(0)
+                    //address_offset: text_section.size + r, // MUST BE FIXED in finalize + self.header.size()
+                });
+            }
+        }
         if rodata_rels.is_some() {
             let comp_rels = rodata_rels.unwrap();
             for r in comp_rels {
                 rels.push(HbfHeaderRelocation {
-                    address_offset: text_section.size + r, // MUST BE FIXED in finalize + self.header.size()
+                    point: r.shift(text_section.size)
+                    //address_offset: text_section.size + r, // MUST BE FIXED in finalize + self.header.size()
                 });
             }
         }
@@ -824,7 +812,8 @@ impl HbfFile {
             let comp_rels = data_rels.unwrap();
             for r in comp_rels {
                 rels.push(HbfHeaderRelocation {
-                    address_offset: text_section.size + rodata_size + r,
+                    point: r.shift(text_section.size + rodata_size)
+                    //address_offset: text_section.size + rodata_size + r,
                 });
             }
         }
@@ -913,7 +902,8 @@ impl HbfFile {
             let header_size = self.header.size();
             let relocs = (&mut self.header.relocations).as_mut().unwrap();
             for r in relocs.iter_mut() {
-                r.address_offset += header_size;
+                //r.address_offset += header_size;
+                r.point = r.point.shift(header_size);
             }
         }
         // Total size

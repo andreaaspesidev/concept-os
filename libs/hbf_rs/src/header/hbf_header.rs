@@ -214,7 +214,7 @@ pub struct HbfHeaderRelocationGen {
 }
 
 impl<'a> HbfHeaderRelocation<'a> for HbfHeaderRelocationGen {
-    fn offset(&self) -> u32 {
+    fn value(&self) -> u32 {
         let p = core::ptr::addr_of!(self.address_offset);
         unsafe { p.read_unaligned() }
     }

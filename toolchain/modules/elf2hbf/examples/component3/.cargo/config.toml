@@ -6,13 +6,10 @@ rustflags = [
 
   # LLD (shipped with the Rust toolchain) is used as the default linker
   "-C", "link-arg=-Tlink.ld",
-  "-C", "link-arg=-Map=output/out.map",
+  "-C", "link-arg=-q",
 
   # No unwinder.
   "-C", "panic=abort",
-  
-  # Turn on ropi-rwpi relocation model.
-  "-C", "relocation-model=ropi-rwpi",
 
   # Overflow checks
   #"-C", "overflow-checks=y",

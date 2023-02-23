@@ -1,7 +1,10 @@
-use flash_allocator::flash::{FlashAllocatorImpl, FlashMethods, BlockType};
+use flash_allocator::flash::{BlockType, FlashAllocatorImpl, FlashMethods};
 use goblin::{container::Container, elf64::program_header::PT_LOAD};
 use hbf_rs::HbfFile;
 use ram_allocator::{RAMAllocator, RAMAllocatorImpl};
+use relocator::RelocatorMethods;
+use std::fs::File;
+use std::io::Write;
 use std::process::Command;
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -44,25 +47,28 @@ pub struct ElfEditor<'a> {
 
 impl<'a> ElfEditor<'a> {
     pub fn new(dest_path: &'a PathBuf, board_name: &'a String) -> Self {
-        let (flash_start, flash_size, ram_start, ram_size, kernel_ram, kernel_flash) = match board_name.as_str() {
-            "stm32f303re" => (
-                stm32f303re::FLASH_START_ADDR,
-                stm32f303re::FLASH_ALLOCATOR_SIZE as u32,
-                stm32f303re::SRAM_START_ADDR,
-                stm32f303re::SRAM_END_ADDR - stm32f303re::SRAM_START_ADDR + 1,
-                stm32f303re::SRAM_RESERVED,
-                stm32f303re::FLASH_ALLOCATOR_START_SCAN_ADDR - stm32f303re::FLASH_ALLOCATOR_START_ADDR
-            ),
-            "stm32l432kc" => (
-                stm32l432kc::FLASH_START_ADDR,
-                stm32l432kc::FLASH_ALLOCATOR_SIZE as u32,
-                stm32l432kc::SRAM_START_ADDR,
-                stm32l432kc::SRAM_END_ADDR - stm32l432kc::SRAM_START_ADDR + 1,
-                stm32l432kc::SRAM_RESERVED,
-                stm32l432kc::FLASH_ALLOCATOR_START_SCAN_ADDR - stm32l432kc::FLASH_ALLOCATOR_START_ADDR
-            ),
-            _ => panic!("Unsupported board"),
-        };
+        let (flash_start, flash_size, ram_start, ram_size, kernel_ram, kernel_flash) =
+            match board_name.as_str() {
+                "stm32f303re" => (
+                    stm32f303re::FLASH_START_ADDR,
+                    stm32f303re::FLASH_ALLOCATOR_SIZE as u32,
+                    stm32f303re::SRAM_START_ADDR,
+                    stm32f303re::SRAM_END_ADDR - stm32f303re::SRAM_START_ADDR + 1,
+                    stm32f303re::SRAM_RESERVED,
+                    stm32f303re::FLASH_ALLOCATOR_START_SCAN_ADDR
+                        - stm32f303re::FLASH_ALLOCATOR_START_ADDR,
+                ),
+                "stm32l432kc" => (
+                    stm32l432kc::FLASH_START_ADDR,
+                    stm32l432kc::FLASH_ALLOCATOR_SIZE as u32,
+                    stm32l432kc::SRAM_START_ADDR,
+                    stm32l432kc::SRAM_END_ADDR - stm32l432kc::SRAM_START_ADDR + 1,
+                    stm32l432kc::SRAM_RESERVED,
+                    stm32l432kc::FLASH_ALLOCATOR_START_SCAN_ADDR
+                        - stm32l432kc::FLASH_ALLOCATOR_START_ADDR,
+                ),
+                _ => panic!("Unsupported board"),
+            };
         println!("Flash Start: {:#010x}", flash_start);
         println!("Flash Size: {}", flash_size);
         println!("RAM Start: {:#010x}", ram_start);
@@ -153,13 +159,12 @@ impl<'a> ElfEditor<'a> {
         if self.allocation_stats.kernel_reserved_flash < flash_used {
             panic!(
                 "Not enough flash for kernel: {} bytes available, but {} bytes needed",
-                self.allocation_stats.kernel_reserved_flash,
-                flash_used
+                self.allocation_stats.kernel_reserved_flash, flash_used
             );
         }
     }
 
-    pub fn add_component(&mut self, hbf_path: &PathBuf) {
+    pub fn add_component(&mut self, hbf_path: &PathBuf, verbose: bool) {
         // Read bytes
         let mut hbf_bytes =
             std::fs::read(hbf_path).expect(&format!("Cannot read HBF at: {}", hbf_path.display()));
@@ -211,10 +216,23 @@ impl<'a> ElfEditor<'a> {
         component_bytes.extend_from_slice(&alloc_result.data);
         // Edit hbf and append
         let relocs = extract_hbf_relocations(&hbf);
-        let dest_base_address = block_base_addr + 8 + hbf.read_only_section().offset() + flash_allocator::flash::HEADER_SIZE as u32;
+        let new_flash_base_address = block_base_addr
+            + 8
+            + hbf.read_only_section().offset()
+            + flash_allocator::flash::HEADER_SIZE as u32;
+        let new_sram_base_address = alloc_result.sram_address;
         let checksum_offset = hbf.checksum_offset() as usize;
+        let mut out_hbf = String::from(self.dest_path.to_str().unwrap());
+        out_hbf += &format!("_component_{}.hbf", hbf.header_base().component_id());
         drop(hbf);
-        relocate_hbf(&mut hbf_bytes, dest_base_address, &relocs);
+        relocate_hbf(
+            &out_hbf,
+            &mut hbf_bytes,
+            new_flash_base_address,
+            new_sram_base_address,
+            &relocs,
+            verbose
+        );
         fix_checksum_hbf(&mut hbf_bytes, checksum_offset);
         component_bytes.extend_from_slice(&hbf_bytes);
         // Add section
@@ -309,29 +327,94 @@ fn objcopy_translate_to_binary(in_format: &str, src: &PathBuf, dest: &PathBuf) {
     }
 }
 
-fn extract_hbf_relocations(hbf: &dyn HbfFile) -> Vec<(u32, u32)> {
-    let mut result: Vec<(u32, u32)> = Vec::new();
+fn extract_hbf_relocations(hbf: &dyn HbfFile) -> Vec<u32> {
+    let mut result: Vec<u32> = Vec::new();
     for reloc in hbf.relocation_iter() {
-        let pointed_addr = reloc.pointed_addr();
-        let offset = reloc.offset();
-        result.push((pointed_addr, offset));
+        let r = reloc.value();
+        result.push(r);
     }
     result
 }
 
-pub const ORIGINAL_FLASH_ADDR: u32 = 0x0800_0000;
+pub const LINKED_FLASH_BASE: u32 = 0x0800_0000;
+pub const LINKED_SRAM_BASE: u32 = 0x2000_0000;
+pub const BUFF_SIZE: usize = 2048;
+pub const RELOC_BUFF_SIZE: usize = 512;
 
-fn relocate_hbf(hbf_bytes: &mut [u8], dest_base_address: u32, relocs: &Vec<(u32, u32)>) {
-    // Read hbf relocations
-    for (pointed_addr, offset) in relocs {
-        // Calculate relocation
-        let new_addr = *pointed_addr - ORIGINAL_FLASH_ADDR + dest_base_address;
-        let new_addr_bytes = new_addr.to_le_bytes();
-        // Apply bytes
-        for i in 0..4 {
-            hbf_bytes[(*offset as usize) + i] = new_addr_bytes[i];
+struct FileRelocationMethods<'a> {
+    points: &'a Vec<u32>,
+    output_buff: &'a mut [u8],
+}
+
+impl<'a> RelocatorMethods<()> for FileRelocationMethods<'a> {
+    fn read_relocations(&self, start_index: usize, dst: &mut [u32], _aux: &mut ()) -> Result<usize,()> {
+        assert!(start_index + dst.len() <= self.points.len());
+        for i in 0..dst.len() {
+            dst[i] = self.points[start_index + i];
         }
+        return Ok(dst.len());
     }
+
+    fn flush(&mut self, position: usize, src: &[u8], _aux: &mut ()) -> Result<(),()> {
+        // println!("Flushing: from {} up to {}",position,position+src.len()-1);
+        for i in 0..src.len() {
+            self.output_buff[position + i] = src[i];
+        }
+        Ok(())
+    }
+}
+
+fn relocate_hbf(
+    out_hbf_path: &String,
+    hbf_bytes: &mut [u8],
+    flash_base_address: u32,
+    sram_base_address: u32,
+    relocs: &Vec<u32>,
+    verbose: bool,
+) {
+    let mut relocator = relocator::Relocator::<
+        LINKED_FLASH_BASE,
+        LINKED_SRAM_BASE,
+        BUFF_SIZE,
+        RELOC_BUFF_SIZE,
+    >::new(flash_base_address, sram_base_address, 0, relocs.len());
+
+    //let mut temp_vec: Vec<u8> = Vec::new();
+    //temp_vec.reserve(hbf_bytes.len());
+    //for _ in 0..hbf_bytes.len() {
+    //    temp_vec.push(0x00);
+    //}
+
+    let mut curr_pos: usize = 0;
+    let total_length = hbf_bytes.len();
+    while curr_pos < total_length {
+        // Read a chunk of max 2048 bytes
+        let mut buff: [u8; 2048] = [0x00; 2048];
+        let to_read = core::cmp::min(total_length - curr_pos, buff.len());
+        // Copy data in the buffer
+        let (right, _) = buff.split_at_mut(to_read);
+        right.copy_from_slice(&hbf_bytes[curr_pos..curr_pos + to_read]);
+        curr_pos += to_read;
+        // Create a temp object to supply methods to the relocator
+        let mut relocator_methods = FileRelocationMethods {
+            points: &relocs,
+            output_buff: hbf_bytes,
+        };
+        // Process the buffer
+        relocator.consume_current_buffer(&mut buff[0..to_read], &mut relocator_methods, &mut ()).unwrap();
+    }
+    let mut relocator_methods = FileRelocationMethods {
+        points: &relocs,
+        output_buff: hbf_bytes,
+    };
+    relocator.finish(&mut relocator_methods, &mut ()).unwrap();
+    // Rewrite HBF in output
+    if verbose {
+        let mut dst = File::create(out_hbf_path).unwrap();
+        dst.write_all(hbf_bytes).unwrap();
+    }
+    // Write back
+    //hbf_bytes.copy_from_slice(&temp_vec);
 }
 
 fn fix_checksum_hbf(hbf_bytes: &mut [u8], checksum_offset: usize) {
@@ -402,7 +485,7 @@ fn perform_allocation(
                 FLASH_BLOCK_SIZE,
                 FLASH_NUM_BLOCKS,
                 FLASH_TREE_MAX_LEVEL,
-                FLASH_NUM_NODES
+                FLASH_NUM_NODES,
             >::from_flash(flash_buffer, false, false);
             // Perform the allocation
             let flash_block = flash_alloc
@@ -418,7 +501,7 @@ fn perform_allocation(
             const SRAM_NUM_BLOCKS: usize = stm32f303re::SRAM_NUM_BLOCKS;
             const SRAM_TREE_MAX_LEVEL: usize = stm32f303re::SRAM_TREE_MAX_LEVEL;
             const SRAM_NUM_NODES: usize = stm32f303re::SRAM_NUM_NODES;
-            
+
             const SRAM_RESERVED: u32 = stm32f303re::SRAM_RESERVED;
 
             let mut ram_alloc = RAMAllocatorImpl::<
@@ -432,7 +515,7 @@ fn perform_allocation(
                 FLASH_START_ADDR,
                 FLASH_END_ADDR,
                 FLASH_ALLOCATOR_SCAN,
-                FLASH_TREE_MAX_LEVEL
+                FLASH_TREE_MAX_LEVEL,
             >::from_flash(flash_buffer);
 
             let ram_block = ram_alloc
@@ -460,7 +543,7 @@ fn perform_allocation(
                 sram_size: ram_block.get_size(),
                 data: Vec::from(header_bytes),
             };
-        },
+        }
         "stm32l432kc" => {
             const FLASH_START_ADDR: u32 = stm32l432kc::FLASH_ALLOCATOR_START_ADDR;
             const FLASH_END_ADDR: u32 = stm32l432kc::FLASH_ALLOCATOR_END_ADDR;
@@ -479,7 +562,7 @@ fn perform_allocation(
                 FLASH_BLOCK_SIZE,
                 FLASH_NUM_BLOCKS,
                 FLASH_TREE_MAX_LEVEL,
-                FLASH_NUM_NODES
+                FLASH_NUM_NODES,
             >::from_flash(flash_buffer, false, false);
             // Perform the allocation
             let flash_block = flash_alloc
@@ -495,7 +578,7 @@ fn perform_allocation(
             const SRAM_NUM_BLOCKS: usize = stm32l432kc::SRAM_NUM_BLOCKS;
             const SRAM_TREE_MAX_LEVEL: usize = stm32l432kc::SRAM_TREE_MAX_LEVEL;
             const SRAM_NUM_NODES: usize = stm32l432kc::SRAM_NUM_NODES;
-            
+
             const SRAM_RESERVED: u32 = stm32l432kc::SRAM_RESERVED;
 
             let mut ram_alloc = RAMAllocatorImpl::<
@@ -509,7 +592,7 @@ fn perform_allocation(
                 FLASH_START_ADDR,
                 FLASH_END_ADDR,
                 FLASH_ALLOCATOR_SCAN,
-                FLASH_TREE_MAX_LEVEL
+                FLASH_TREE_MAX_LEVEL,
             >::from_flash(flash_buffer);
 
             let ram_block = ram_alloc

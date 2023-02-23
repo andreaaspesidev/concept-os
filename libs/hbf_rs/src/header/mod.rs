@@ -118,7 +118,7 @@ pub trait HbfHeaderInterrupt<'a> {
 }
 
 pub trait HbfHeaderRelocation<'a> {
-    fn offset(&self) -> u32;
+    fn value(&self) -> u32;
 
     fn get_raw(&self) -> &'a [u8];
 }
@@ -270,13 +270,6 @@ impl<'a> HbfHeaderRelocationWrapper<'a> {
             inner,
         }
     }
-    pub fn pointed_addr(&self) -> u32 {
-        let offset = self.inner.offset() as usize;
-        unsafe {
-            let addr_ptr = self._hbf_file.content().as_ptr().add(offset);
-            *(addr_ptr as *const u32)
-        }
-    }
 }
 impl<'a> Deref for HbfHeaderRelocationWrapper<'a> {
     type Target = dyn HbfHeaderRelocation<'a> + 'a;
@@ -287,11 +280,7 @@ impl<'a> Deref for HbfHeaderRelocationWrapper<'a> {
 impl<'a> Debug for HbfHeaderRelocationWrapper<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf Relocation")
-            .field("Offset", &format_args!("{:#010x}", &self.offset()))
-            .field(
-                "Pointed Address",
-                &format_args!("{:#010x}", &self.pointed_addr()),
-            )
+            .field("Value", &format_args!("{:#010x}", &self.value()))
             .finish()
     }
 }
