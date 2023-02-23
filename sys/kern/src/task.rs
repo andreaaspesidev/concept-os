@@ -9,19 +9,20 @@ use core::convert::TryFrom;
 use abi::{
     FaultInfo, FaultSource, Generation, Priority, RegionAttributes,
     RegionDescriptor, ReplyFaultReason, SchedState, TaskDescriptor, TaskFlags,
-    TaskId, TaskState, ULease, UsageError, HUBRIS_MAX_SUPPORTED_TASKS,
-    REGIONS_PER_TASK,STATE_TRANSFER_REQUESTED_MASK, CANCELLED_SYSCALL
+    TaskId, TaskState, ULease, UsageError, CANCELLED_SYSCALL,
+    HUBRIS_MAX_SUPPORTED_TASKS, REGIONS_PER_TASK,
+    STATE_TRANSFER_REQUESTED_MASK,
 };
-use heapless::{FnvIndexMap, Vec};
+use unwrap_lite::UnwrapLite;
 use zerocopy::FromBytes;
 
 use crate::err::UserError;
-use crate::startup::HUBRIS_FAULT_NOTIFICATION;
-use crate::structures::revert_update;
 use crate::log::sys_log;
+use crate::startup::HUBRIS_FAULT_NOTIFICATION;
+use crate::structures::{revert_update, KVec, TaskIndexes};
 use crate::time::Timestamp;
 use crate::umem::USlice;
-use crate::utils::{get_task, log_task};
+use crate::log::log_task;
 
 /// Internal representation of a task.
 ///
@@ -50,7 +51,7 @@ pub struct Task {
     generation: u32,
 
     /// Vector defining this task's memory regions.
-    region_table: Vec<RegionDescriptor, REGIONS_PER_TASK>,
+    region_table: KVec<RegionDescriptor, REGIONS_PER_TASK>,
 
     // Pointer to task .data section
     data_section: &'static [u8],
@@ -70,40 +71,64 @@ pub struct Task {
     update_since: Option<Timestamp>,
 }
 
-impl Task {
-    /// Creates a `Task` in its initial state, filling in fields from
-    /// `descriptor`.
-    pub fn from_descriptor(
-        descriptor: &TaskDescriptor,
-        region_table: &Vec<RegionDescriptor, REGIONS_PER_TASK>,
-        data_section: &'static [u8],
-    ) -> Self {
-        // Create a new instance
-        let mut task = Task {
-            priority: abi::Priority(descriptor.priority()),
-            state: if descriptor.flags().contains(TaskFlags::START_AT_BOOT) {
-                TaskState::Healthy(SchedState::Runnable)
-            } else {
-                TaskState::default()
-            },
-            component_id: descriptor.component_id(),
-            descriptor: descriptor.clone(),
-            region_table: Vec::new(),
+impl Default for Task {
+    fn default() -> Self {
+        Self {
+            priority: abi::Priority(255),
+            state: TaskState::default(),
+            component_id: 0,
+            descriptor: TaskDescriptor::new(0, 0),
+            region_table: KVec::new(),
             generation: 0,
             notifications: 0,
-            data_section: data_section,
+            data_section: &[],
             save: crate::arch::SavedState::default(),
             timer: crate::task::TimerState::default(),
             transfer_state_support: false,
             transfer_state_requested: false,
             update_since: None,
-        };
+        }
+    }
+}
+
+impl Task {
+    /// Clears this element (debug purposes)
+    pub unsafe fn reset_element(&mut self) {
+        // Just put to 0 the descriptor and component ID
+        self.component_id = 0;
+        self.descriptor = TaskDescriptor::new(0, 0);
+        self.region_table.clear();
+    }
+
+    /// Creates a `Task` in its initial state, filling in fields from
+    /// `descriptor`.
+    pub fn init_from_descriptor(
+        &mut self,
+        descriptor: &TaskDescriptor,
+        region_table: &KVec<RegionDescriptor, REGIONS_PER_TASK>,
+        data_section: &'static [u8],
+    ) {
+        self.priority = abi::Priority(descriptor.priority());
+        self.state = if descriptor.flags().contains(TaskFlags::START_AT_BOOT) {
+                TaskState::Healthy(SchedState::Runnable)
+            } else {
+                TaskState::default()
+            };
+        self.component_id = descriptor.component_id();
+        self.descriptor = descriptor.clone();
+        self.region_table.clear();
+        self.generation = 0;
+        self.notifications = 0;
+        self.data_section = data_section;
+        self.save = crate::arch::SavedState::default();
+        self.timer = crate::task::TimerState::default();
+        self.transfer_state_support = false;
+        self.transfer_state_requested = false;
+        self.update_since = None;
         // Append all the regions
         for r in region_table {
-            task.region_table.push(r.clone()).unwrap();
+            self.region_table.push(*r).unwrap_lite();
         }
-        // Return the instance
-        return task;
     }
 
     /// Tests whether this task has read access to `slice` as normal memory.
@@ -210,7 +235,7 @@ impl Task {
             // according to the task's region map... but fine with us.
             return true;
         }
-        self.region_table.iter().any(|region| {
+        self.region_table.into_iter().any(|region| {
             region_covers(region, slice)
                 && region.attributes.contains(atts)
                 && !region.attributes.contains(RegionAttributes::DEVICE)
@@ -364,9 +389,12 @@ impl Task {
                             // - If InReply, then when the original task replyes,
                             //   it's already managed. For the responding task,
                             //   everything went successfully
-                            self.save_mut().set_send_response_and_length(CANCELLED_SYSCALL, 0);
+                            self.save_mut().set_send_response_and_length(
+                                CANCELLED_SYSCALL,
+                                0,
+                            );
                             self.set_healthy_state(SchedState::Runnable);
-                        },
+                        }
                         _ => {}
                     }
                 }
@@ -417,7 +445,7 @@ impl Task {
     /// Returns a reference to the task's memory region descriptor table.
     pub fn region_table(
         &self,
-    ) -> &Vec<RegionDescriptor, { abi::REGIONS_PER_TASK }> {
+    ) -> &KVec<RegionDescriptor, { abi::REGIONS_PER_TASK }> {
         &self.region_table
     }
 
@@ -816,7 +844,7 @@ pub enum NextTask {
     Other,
     /// We need to switch tasks, and we already know which one should run next.
     /// This is an optimization available in certain IPC cases.
-    Specific(u16),
+    Specific(usize),
 }
 
 impl NextTask {
@@ -842,12 +870,20 @@ impl NextTask {
 /// Processes all enabled timers in the task table, posting notifications for
 /// any that have expired by `current_time` (and disabling them atomically).
 pub fn process_timers(
-    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+    task_map: &mut TaskIndexes,
     current_time: Timestamp,
 ) -> NextTask {
     let mut sched_hint = NextTask::Same;
     let mut task_revert: bool = false;
-    for (cid, task) in tasks.iter_mut() {
+
+    let valid_indexes = task_map.valid_indexes();
+
+    for i in 0..valid_indexes.len() {
+        // Get the index
+        let index = valid_indexes[i];
+        // Obtain task
+        let task = &mut task_list[index];
         // Check for dying tasks
         if !task_revert {
             match task.is_still_updating() {
@@ -868,7 +904,7 @@ pub fn process_timers(
             if deadline <= current_time {
                 task.timer.deadline = None;
                 let task_hint = if task.post(task.timer.to_post) {
-                    NextTask::Specific(*cid)
+                    NextTask::Specific(index)
                 } else {
                     NextTask::Same
                 };
@@ -878,7 +914,7 @@ pub fn process_timers(
     }
     // Actually revert if needed
     if task_revert {
-        revert_update(tasks);
+        revert_update(task_list, task_map);
     }
     sched_hint
 }
@@ -890,19 +926,22 @@ pub fn process_timers(
 ///
 /// On failure, indicates the condition by `UserError`.
 pub fn check_task_id_against_table(
-    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+    task_map: &mut TaskIndexes,
     id: TaskId,
-) -> Result<u16, UserError> {
+) -> Result<usize, UserError> {
     // Check if we actually have this component
-    let task = tasks.get(&id.component_id());
-    if task.is_none() {
+    let task_index = task_map.get_task_index(id.component_id());
+    if task_index.is_none() {
         return Err(FaultInfo::SyscallUsage(UsageError::TaskNotFound).into());
     }
 
     // Check for dead task ID: the id of a task is updated at every
     // reboot from failure, so we have to avoid serving old requests
     // to the rebooted component.
-    let table_generation = task.unwrap().generation();
+    let task_index = task_index.unwrap_lite();
+    let task = &task_list[task_index];
+    let table_generation = task.generation();
 
     if table_generation != id.generation() {
         let code = abi::dead_response_code(table_generation);
@@ -910,17 +949,18 @@ pub fn check_task_id_against_table(
         return Err(UserError::Recoverable(code, NextTask::Same));
     }
 
-    Ok(id.component_id())
+    Ok(task_index)
 }
 
 /// Selects a new task to run after `previous`. Tries to be fair, kind of.
 ///
 /// If no tasks are runnable, the kernel panics.
 pub fn select(
-    previous_id: u16,
-    tasks: &FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
-) -> u16 {
-    priority_scan(previous_id, tasks, |t| t.is_runnable())
+    previous_index: usize,
+    task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+    task_map: &mut TaskIndexes,
+) -> usize {
+    priority_scan(previous_index, task_list, task_map, |t| t.is_runnable())
         .expect("no tasks runnable")
 }
 
@@ -938,15 +978,16 @@ pub fn select(
 ///
 /// If `previous` is not a valid index in `tasks`.
 pub fn priority_scan(
-    previous_id: u16,
-    tasks: &FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
+    previous_index: usize,
+    task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+    task_map: &mut TaskIndexes,
     pred: impl Fn(&Task) -> bool,
-) -> Option<u16> {
+) -> Option<usize> {
     fn priority_scan_core(
         task: &Task,
-        current_id: u16,
+        current_index: usize,
         pred: &impl Fn(&Task) -> bool,
-        choice: &mut Option<(u16, Priority)>,
+        choice: &mut Option<(usize, Priority)>,
     ) {
         // Check predicate
         if !pred(task) {
@@ -959,30 +1000,31 @@ pub fn priority_scan(
             }
         }
         // Select this task
-        *choice = Some((current_id, task.priority));
+        *choice = Some((current_index, task.priority));
     }
+
+    // The idea is to scan the tasks, preferibly continuing from the one in execution (to be fair),
+    // and return again the same task if no other task with higher priority or same priority free is available.
+    // Differently from Hubris, here we still have the array, but only some indexes are valid and those can be retrieved from task_map
+    let valid_indexes = task_map.valid_indexes();
+    
     let mut choice = None;
-    // The idea is to scan starting from the task next this current one.
-    // The problem is that now we don't have anymore random access to elements, so we have to
-    // iterate from the beginning and skip
-    let mut found_index = tasks.len(); // Out of range value
-    for (index, (cid, task)) in tasks.iter().enumerate() {
-        if *cid == previous_id {
-            found_index = index;
+
+    let mut found_i = valid_indexes.len(); // Value on purpose out-of-range
+    for i in 0..valid_indexes.len() {
+        let index = valid_indexes[i];
+        if index == previous_index {
+            found_i = i;
         }
-        if found_index < tasks.len() {
-            // Finally found the component
-            priority_scan_core(task, *cid, &pred, &mut choice);
+        if found_i < valid_indexes.len() {
+            priority_scan_core(&task_list[index], index, &pred, &mut choice);
         }
     }
-    // Now again from the beginning, up to that element
-    for (index, (cid, task)) in tasks.iter().enumerate() {
-        if index > found_index {
-            break;
-        }
-        priority_scan_core(task, *cid, &pred, &mut choice);
+    for i in 0..found_i {
+        let index = valid_indexes[i];
+        priority_scan_core(&task_list[index], index, &pred, &mut choice);
     }
-    // Return the choice
+    // Keep only the task id
     choice.map(|(idx, _)| idx)
 }
 
@@ -1004,14 +1046,15 @@ pub fn priority_scan(
 /// makes it harder to forget to request rescheduling. If you're faulting
 /// some other task you can explicitly ignore the result.
 pub fn force_fault(
-    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
-    task_id: u16,
+    task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+    task_map: &mut TaskIndexes,
+    task_index: usize,
     fault: FaultInfo,
 ) -> NextTask {
-    let task = tasks.get_mut(&task_id).expect("Cannot find component");
+    let task = &mut task_list[task_index];
     sys_log!(
         "Component {} [descr: {}] fault: {:?}",
-        task_id,
+        task.id(),
         task.descriptor().component_id(),
         fault
     );
@@ -1030,30 +1073,34 @@ pub fn force_fault(
             }
         }
     };
-    let supervisor_awoken: bool;
-    if let Some(supervisor) = tasks.get_mut(&abi::SUPERVISOR_ID) {
-        supervisor_awoken = supervisor.post(NotificationSet(HUBRIS_FAULT_NOTIFICATION))
-    } else {
-        supervisor_awoken = false;
+    let supervisor_task_index = task_map.get_task_index(abi::SUPERVISOR_ID);
+    if let Some(supervisor_index) = supervisor_task_index {
+        let supervisor = &mut task_list[supervisor_index];
+        if supervisor.post(NotificationSet(HUBRIS_FAULT_NOTIFICATION)) {
+            return NextTask::Specific(supervisor_index);
+        }
     }
-    if supervisor_awoken {
-        NextTask::Specific(abi::SUPERVISOR_ID)
-    } else {
-        NextTask::Other
-    }
+    NextTask::Other
 }
 
 pub fn restart_pending_tasks(
-    tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
-    task_id: u16,
+    task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+    task_map: &mut TaskIndexes,
+    task_index: usize,
     old_identifier: TaskId,
 ) {
-    let new_identifier = get_task(tasks, task_id).current_identifier();
+    let new_identifier = task_list[task_index].current_identifier();
     // Restarting a task can have implications for other tasks. We don't want to
     // leave tasks sitting around waiting for a reply that will never come, for
     // example. So, make a pass over the task table and unblock anyone who was
     // expecting useful work from the now-defunct task.
-    for (_id, task) in tasks.iter_mut() {
+    // Here we still have to iterate, but using the mask
+    let mask = task_map.indexes_mask();
+    for (i, task) in task_list.iter_mut().enumerate() {
+        // Ignore not valid items
+        if !mask[i] {
+            continue;
+        }
         // We'll skip processing faulted tasks, because we don't want to lose
         // information in their fault records by changing their states.
         if let TaskState::Healthy(sched) = task.state() {

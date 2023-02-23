@@ -67,7 +67,7 @@ pub const SRAM_START_ADDR: u32 = 0x2000_0000;
 pub const SRAM_END_ADDR: u32 = 0x2000_FFFF;
 pub const SRAM_SIZE: usize = (SRAM_END_ADDR - SRAM_START_ADDR + 1) as usize; // 64Kb
 
-pub const SRAM_RESERVED: u32 = 8704;    // Kernel memory
+pub const SRAM_RESERVED: u32 = 6656;    // Kernel memory
 pub const SRAM_BLOCK_SIZE: usize = 256;
 pub const SRAM_NUM_BLOCKS: usize = SRAM_SIZE / SRAM_BLOCK_SIZE as usize; // 256
 pub const SRAM_TREE_MAX_LEVEL: usize = 8; // log2(num_blocks) = log2(memory_area / block_size)
@@ -251,6 +251,27 @@ impl<'b, const FLASH_START_ADDRESS: u32, const PAGE_SIZE: u32, const FLASH_END_A
         }
         Ok(())
     }
+    pub fn page_from_address(address: u32) -> Option<FlashPage> {
+        if address <= FLASH_END_ADDRESS {
+            let offset = address - FLASH_START_ADDRESS;
+            let page_num = offset / PAGE_SIZE;
+            let base_addr = FLASH_START_ADDRESS + page_num * PAGE_SIZE;
+            return Some(FlashPage::new(page_num as u16, base_addr, PAGE_SIZE as u16));
+        }
+        return None;
+    }
+    pub fn page_from_number(page_num: u16) -> Option<FlashPage> {
+        let max_num: u32 = (FLASH_END_ADDRESS - FLASH_START_ADDRESS + 1) / PAGE_SIZE;
+        if page_num < max_num as u16 {
+            let base_addr = FLASH_START_ADDRESS + page_num as u32 * PAGE_SIZE;
+            return Some(FlashPage::new(page_num, base_addr, PAGE_SIZE as u16));
+        }
+        return None;
+    }
+    pub fn prev_page(page_num: u16) -> Option<FlashPage> {
+        let prev_num = page_num - 1;
+        Self::page_from_number(prev_num)
+    }
 }
 
 impl<
@@ -324,26 +345,13 @@ impl<
 
         Ok(())
     }
-
     fn page_from_address(&self, address: u32) -> Option<FlashPage> {
-        if address <= FLASH_END_ADDRESS {
-            let offset = address - FLASH_START_ADDRESS;
-            let page_num = offset / PAGE_SIZE;
-            let base_addr = FLASH_START_ADDRESS + page_num * PAGE_SIZE;
-            return Some(FlashPage::new(page_num as u16, base_addr, PAGE_SIZE as u16));
-        }
-        return None;
+        Self::page_from_address(address)
     }
     fn page_from_number(&self, page_num: u16) -> Option<FlashPage> {
-        let max_num: u32 = (FLASH_END_ADDRESS - FLASH_START_ADDRESS + 1) / PAGE_SIZE;
-        if page_num < max_num as u16 {
-            let base_addr = FLASH_START_ADDRESS + page_num as u32 * PAGE_SIZE;
-            return Some(FlashPage::new(page_num, base_addr, PAGE_SIZE as u16));
-        }
-        return None;
+        Self::page_from_number(page_num)
     }
     fn prev_page(&self, page_num: u16) -> Option<FlashPage> {
-        let prev_num = page_num - 1;
-        self.page_from_number(prev_num)
+        Self::prev_page(page_num)
     }
 }

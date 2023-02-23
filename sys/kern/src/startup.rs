@@ -4,14 +4,11 @@
 
 //! Kernel startup.
 
-use heapless::FnvIndexMap;
-use unwrap_lite::UnwrapLite;
-
-use crate::structures::populate_kernel_structures;
-use crate::task::Task;
-use crate::log::sys_log;
-use crate::utils::log_structures;
 use crate::atomic::AtomicExt;
+use crate::log::sys_log;
+use crate::structures::{populate_kernel_structures, KHash, TaskIndexes};
+use crate::task::Task;
+use crate::log::log_structures;
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -32,15 +29,16 @@ pub const HUBRIS_STORAGE_ANALYZE_NOTIFICATION: u32 = 1;
 // These new structures becomes defined in the kernel, instead of being
 // generated during build process.
 
-/// Structure of Task structures, sorted by Task ID
-static mut TASK_MAP: MaybeUninit<
-    FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
-> = MaybeUninit::uninit();
+/// Task descriptors
+static mut TASK_TABLE: MaybeUninit<[Task; HUBRIS_MAX_SUPPORTED_TASKS]> =
+    MaybeUninit::uninit();
 
-/// Structure of IRQs, in order to get to the tasks
+/// Map ID -> task index
+static mut TASK_MAP: MaybeUninit<TaskIndexes> = MaybeUninit::uninit();
+
+/// Map ID -> interrupt descriptor (mask & owner)
 pub static mut IRQ_TO_TASK: MaybeUninit<
-    FnvIndexMap<
-        u32,            // IRQ
+    KHash<
         InterruptOwner, // Task
         HUBRIS_MAX_IRQS,
     >,
@@ -74,36 +72,55 @@ pub unsafe fn start_kernel(tick_divisor: u32) -> ! {
     }
 
     // Initialize structures
-    unsafe {
-        TASK_MAP.write(FnvIndexMap::new());
-        IRQ_TO_TASK.write(FnvIndexMap::new());
+    // ---- > Task Table
+    // Safety: MaybeUninit<[T]> -> [MaybeUninit<T>] is defined as safe.
+    let task_table: &mut [MaybeUninit<Task>; HUBRIS_MAX_SUPPORTED_TASKS] =
+        unsafe { &mut *(&mut TASK_TABLE as *mut _ as *mut _) };
+    for task in task_table.iter_mut() {
+        *task = MaybeUninit::new(Task::default());
     }
+    // Safety: we have fully initialized this and can shed the uninit part.
+    let task_table: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS] = unsafe { &mut *(task_table as *mut _ as *mut _) };
+    
+    // ---- > Task Map
+    let task_map: &mut MaybeUninit<TaskIndexes> = unsafe {&mut TASK_MAP};
+    *task_map = MaybeUninit::new(TaskIndexes::new());
+    let task_map: &mut TaskIndexes = unsafe {&mut *(task_map as *mut _ as *mut _)};
+
+    // ---- > IRQs
+    let irq_map: &mut MaybeUninit<KHash<InterruptOwner,HUBRIS_MAX_IRQS>> = unsafe {&mut IRQ_TO_TASK};
+    *irq_map = MaybeUninit::new(KHash::new());
+    let irq_map: &mut KHash<InterruptOwner,HUBRIS_MAX_IRQS> = unsafe {&mut *(irq_map as *mut _ as *mut _)};
+
+    sys_log!("Populating structures...");
 
     // Load structures from flash
-    populate_kernel_structures(unsafe { TASK_MAP.assume_init_mut() }, unsafe {
-        IRQ_TO_TASK.assume_init_mut()
-    });
-
-    // Get a safe reference
-    let task_map = unsafe { TASK_MAP.assume_init_mut() };
+    populate_kernel_structures(
+        task_table,
+        task_map,
+        irq_map,
+    );
 
     // Debug!
     sys_log!("--------- Kernel Start ----------");
-    log_structures(task_map, unsafe { IRQ_TO_TASK.assume_init_mut() });
+    log_structures(task_table, task_map, irq_map);
 
     // With that done, set up initial register state etc.
-    for (_, task) in task_map.iter_mut() {
-        crate::arch::reinitialize(task);
+    let valid_indexes = task_map.valid_indexes();
+    for i in 0..valid_indexes.len() {
+        let index = valid_indexes[i];
+        crate::arch::reinitialize(&mut task_table[index]);
     }
 
     // Great! Pick our first task. We'll act like we're scheduling after the
     // last task, which will cause a scan from 0 on.
-    let first_task_id = crate::task::select(
-        *task_map.keys().last().expect("No Component Loaded"),
-        &task_map,
+    let first_task_index = crate::task::select(
+        task_map.first_index().expect("No Component Loaded"),
+        task_table,
+        task_map
     );
 
-    let first_task = task_map.get_mut(&first_task_id).unwrap_lite();
+    let first_task = &mut task_table[first_task_index];
 
     // Setup memory protection for this task
     crate::arch::apply_memory_protection(first_task);
@@ -119,7 +136,10 @@ pub unsafe fn start_kernel(tick_divisor: u32) -> ! {
 /// To preserve uniqueness of the `&mut` reference passed into `body`, this
 /// function will detect any attempts to call it recursively and panic.
 pub(crate) fn with_task_table<R>(
-    body: impl FnOnce(&mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>) -> R,
+    body: impl FnOnce(
+        &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+        &mut TaskIndexes,
+    ) -> R,
 ) -> R {
     if TASK_TABLE_IN_USE.swap_polyfill(true, Ordering::Acquire) {
         panic!(); // recursive use of with_task_table
@@ -130,9 +150,10 @@ pub(crate) fn with_task_table<R>(
     // produce a reference to the task table without aliasing, and we can be
     // confident that the memory it's pointing to is initialized.
 
-    let task_map_ptr = unsafe { TASK_MAP.assume_init_mut() };
+    let task_table_ptr = unsafe { TASK_TABLE.assume_init_mut() };
+    let task_indexes_ptr = unsafe { TASK_MAP.assume_init_mut() };
 
-    let r = body(task_map_ptr);
+    let r = body(task_table_ptr, task_indexes_ptr);
 
     // Mark we are no more using the structure
     TASK_TABLE_IN_USE.store(false, Ordering::Release);
@@ -141,7 +162,7 @@ pub(crate) fn with_task_table<R>(
 }
 
 pub(crate) fn with_irq_table<R>(
-    body: impl FnOnce(&mut FnvIndexMap<u32, InterruptOwner, HUBRIS_MAX_IRQS>) -> R,
+    body: impl FnOnce(&mut KHash<InterruptOwner, HUBRIS_MAX_IRQS>) -> R,
 ) -> R {
     let irq_map_ptr = unsafe { IRQ_TO_TASK.assume_init_mut() };
     let r = body(irq_map_ptr);

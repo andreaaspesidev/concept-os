@@ -1,3 +1,4 @@
+#[cfg(feature = "fmt")]
 use core::fmt::{Debug, Error, Formatter};
 
 /**
@@ -33,6 +34,7 @@ impl<'a> HbfTrailer {
     }
 }
 
+#[cfg(feature = "fmt")]
 impl Debug for HbfTrailer {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf Trailer")

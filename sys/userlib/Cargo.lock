@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "byteorder",
+ "hbf_lite",
  "serde",
  "zerocopy",
 ]
@@ -158,6 +159,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0c35f58762feb77d74ebe43bdbc3210f09be9fe6742234d573bacc26ed92b67"
 dependencies = [
  "byteorder",
+]
+
+[[package]]
+name = "hbf_lite"
+version = "0.0.1"
+dependencies = [
+ "bitflags",
 ]
 
 [[package]]

@@ -21,8 +21,8 @@ unsafe fn clear_ram() {
     asm!("
         ldr r0,=__sheap
         ldr r1,=_stack_start
-        movw r2,#65535
-        movt r2,#65535
+        movw r2,#43947
+        movt r2,#43947
      0: cmp r1, r0
         beq 1f
         stm r0!, {{r2}}

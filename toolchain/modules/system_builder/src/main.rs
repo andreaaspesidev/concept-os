@@ -171,16 +171,35 @@ MEMORY
         cmd.arg("-v");
     }
     cmd.current_dir(&app_root);
+
+    if app_config.strip_panics {
+        cmd.arg("-Z")
+            .arg("build-std=core,panic_abort")
+            .arg("-Z")
+            .arg("build-std-features=panic_immediate_abort");
+    }
+
     cmd.env(
         "RUSTFLAGS",
-        &format!(
-            "-C link-arg=--nmagic \
-             -C link-arg=-T{}/kernel-link.x \
-             -Z emit-stack-sizes \
-             --emit=obj
-            ",
-            kernel_out.display(),
-        ),
+        match app_config.strip_panics {
+            true => format!(
+                "-C link-arg=--nmagic \
+                     -C link-arg=-T{}/kernel-link.x \
+                     -C panic=abort \
+                     -Z emit-stack-sizes \
+                     --emit=obj
+                    ",
+                kernel_out.display(),
+            ),
+            false => format!(
+                "-C link-arg=--nmagic \
+                     -C link-arg=-T{}/kernel-link.x \
+                     -Z emit-stack-sizes \
+                     --emit=obj
+                    ",
+                kernel_out.display(),
+            ),
+        },
     );
     cmd.env("CARGO_TARGET_DIR", &kernel_out); // Location of where to place all generated artifacts, relative to the current working directory.
     cmd.env("CARGO_BUILD_TARGET", &board_config.board.target);

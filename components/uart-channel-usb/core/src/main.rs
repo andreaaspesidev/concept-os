@@ -505,7 +505,9 @@ fn setup_dma(
     // Turn on clock
     let mut rcc = rcc_api::RCC::new();
     rcc.enable_clock(rcc_api::Peripheral::DMA1)?;
+    #[cfg(feature = "board_stm32l432kc")]
     rcc.enter_reset(rcc_api::Peripheral::DMA1)?;
+    #[cfg(feature = "board_stm32l432kc")]
     rcc.leave_reset(rcc_api::Peripheral::DMA1)?;
 
     // Configure DMA

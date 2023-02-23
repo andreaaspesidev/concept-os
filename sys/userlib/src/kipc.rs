@@ -3,7 +3,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Operations implemented by IPC with the kernel task.
-use flash_allocator::flash::page::FlashPage;
 use unwrap_lite::UnwrapLite;
 use zerocopy::AsBytes;
 
@@ -75,15 +74,6 @@ pub fn load_component(block_base_address: u32) -> bool {
     return rc == 0;
 }
 
-pub fn read_flash(address: u32, buffer: &mut [u8]) -> Result<(), ()> {
-    let (rc, _len) = sys_send(TaskId::KERNEL, 30, address.as_bytes(), buffer, &[]);
-    if rc == 0 {
-        Ok(())
-    } else {
-        Err(())
-    }
-}
-
 pub fn write_flash(address: u32, buffer: &[u8]) -> Result<(), ()> {
     let mut addr_buff = address.to_le_bytes();
     let (rc, _len) = sys_send(TaskId::KERNEL, 31, buffer, &mut addr_buff, &[]);
@@ -100,66 +90,6 @@ pub fn flash_flush_buffer() -> Result<(), ()> {
         Ok(())
     } else {
         Err(())
-    }
-}
-
-pub fn flash_page_from_address(address: u32) -> Option<FlashPage> {
-    // Create enough space to store a FlashPage
-    let mut incoming_buffer: [u8; core::mem::size_of::<FlashPage>()] =
-        [0x00; core::mem::size_of::<FlashPage>()];
-    let (rc, _len) = sys_send(
-        TaskId::KERNEL,
-        33,
-        address.as_bytes(),
-        &mut incoming_buffer,
-        &[],
-    );
-    if rc == 0 {
-        // Try parse as FlashPage
-        let (flash_page, _) = ssmarshal::deserialize::<FlashPage>(&incoming_buffer).unwrap_lite();
-        return Some(flash_page);
-    } else {
-        return None;
-    }
-}
-
-pub fn flash_page_from_number(page_num: u16) -> Option<FlashPage> {
-    // Create enough space to store a FlashPage
-    let mut incoming_buffer: [u8; core::mem::size_of::<FlashPage>()] =
-        [0x00; core::mem::size_of::<FlashPage>()];
-    let (rc, _len) = sys_send(
-        TaskId::KERNEL,
-        34,
-        page_num.as_bytes(),
-        &mut incoming_buffer,
-        &[],
-    );
-    if rc == 0 {
-        // Try parse as FlashPage
-        let (flash_page, _) = ssmarshal::deserialize::<FlashPage>(&incoming_buffer).unwrap_lite();
-        return Some(flash_page);
-    } else {
-        return None;
-    }
-}
-
-pub fn flash_prev_page(page_num: u16) -> Option<FlashPage> {
-    // Create enough space to store a FlashPage
-    let mut incoming_buffer: [u8; core::mem::size_of::<FlashPage>()] =
-        [0x00; core::mem::size_of::<FlashPage>()];
-    let (rc, _len) = sys_send(
-        TaskId::KERNEL,
-        35,
-        page_num.as_bytes(),
-        &mut incoming_buffer,
-        &[],
-    );
-    if rc == 0 {
-        // Try parse as FlashPage
-        let (flash_page, _) = ssmarshal::deserialize::<FlashPage>(&incoming_buffer).unwrap_lite();
-        return Some(flash_page);
-    } else {
-        return None;
     }
 }
 

@@ -21,7 +21,7 @@ features = ["stm32l432"]
 [dependencies.kern]
 path = "../../sys/kern"
 default-features = false
-features = ["l432kc"]
+features = ["l432kc"] # ,"log-semihosting"]
 
 [[bin]]
 name = "stm32l432kc_demo"

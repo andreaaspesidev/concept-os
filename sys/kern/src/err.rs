@@ -10,9 +10,7 @@
 
 use abi::{FaultInfo, UsageError, HUBRIS_MAX_SUPPORTED_TASKS};
 
-use crate::task::{self, NextTask, Task};
-
-use heapless::FnvIndexMap;
+use crate::{task::{self, NextTask, Task}, structures::TaskIndexes};
 
 /// An error committed by user code when interacting with a syscall.
 ///
@@ -83,11 +81,12 @@ impl InteractFault {
     /// perspective, to store the src fault and then deal with dst.
     pub fn apply_to_src(
         self,
-        tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
-        src_id: u16,
+        task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+        task_map: &mut TaskIndexes,
+        src_index: usize,
     ) -> Result<task::NextTask, FaultInfo> {
         let nt = if let Some(f) = self.src {
-            task::force_fault(tasks, src_id, f)
+            task::force_fault(task_list, task_map, src_index, f)
         } else {
             task::NextTask::Same
         };
@@ -105,11 +104,12 @@ impl InteractFault {
     /// perspective, to store the dst fault and then deal with dst.
     pub fn apply_to_dst(
         self,
-        tasks: &mut FnvIndexMap<u16, Task, HUBRIS_MAX_SUPPORTED_TASKS>,
-        dst_id: u16,
+        task_list: &mut [Task; HUBRIS_MAX_SUPPORTED_TASKS],
+        task_map: &mut TaskIndexes,
+        dst_index: usize,
     ) -> Result<task::NextTask, FaultInfo> {
         let nt = if let Some(f) = self.dst {
-            task::force_fault(tasks, dst_id, f)
+            task::force_fault(task_list, task_map, dst_index, f)
         } else {
             task::NextTask::Same
         };

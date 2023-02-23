@@ -3,4 +3,5 @@ id = 4
 version = 1
 priority = 20
 flags = ['START_AT_BOOT']
-min_ram = 8192
+min_ram = 2048
+peripherals = ['flash-region']

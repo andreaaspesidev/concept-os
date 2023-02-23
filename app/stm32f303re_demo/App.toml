@@ -1,7 +1,8 @@
 name = "stm32f303re_demo"
 board = "stm32f303re"
-kernel_ram = 8704
+kernel_ram = 6656
 clock_speed = 72000000
+strip_panics = true
 
 [components.idle]
 features = ["log-itm"]

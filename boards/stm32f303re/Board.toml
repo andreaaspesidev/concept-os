@@ -7,6 +7,16 @@ flash_size = "1024K"
 ram_origin = "0x20000000"
 ram_size = "64K"
 
+# Flash
+[peripheral.flash-region]
+base_address = '0x08000000'
+size = '0x80000' # 524288
+attributes = [
+    'READ',
+    'WRITE',    # Needed for some reason, or the MPU will cause a crash
+    'EXECUTE'   # Needed for some reason, or the MPU will cause a crash
+]
+
 # RCC
 [peripheral.rcc]
 base_address = '0x40021000'

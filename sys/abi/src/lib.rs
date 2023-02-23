@@ -10,6 +10,7 @@ pub mod flash;
 
 use hbf_lite::{BufferReaderImpl, HbfHeaderBase, HbfHeaderInterrupt, HbfHeaderMain};
 use serde::{Deserialize, Serialize};
+use unwrap_lite::UnwrapLite;
 use zerocopy::{AsBytes, FromBytes};
 
 /// Number of region slots in a `TaskDesc` record. Needs to be less or equal to
@@ -149,8 +150,8 @@ impl TaskDescriptor {
         };
         let block_reader = BufferReaderImpl::from(raw_block_bytes);
         // Let's read the hbf
-        let hbf = hbf_lite::HbfFile::from_reader(&block_reader).unwrap();
-        hbf.header_base().unwrap()
+        let hbf = hbf_lite::HbfFile::from_reader(&block_reader).unwrap_lite();
+        hbf.header_base().unwrap_lite()
     }
     fn get_hbf_main(&self) -> HbfHeaderMain {
         let raw_block_bytes = unsafe {
@@ -161,8 +162,8 @@ impl TaskDescriptor {
         };
         let block_reader = BufferReaderImpl::from(raw_block_bytes);
         // Let's read the hbf
-        let hbf = hbf_lite::HbfFile::from_reader(&block_reader).unwrap();
-        hbf.header_main().unwrap()
+        let hbf = hbf_lite::HbfFile::from_reader(&block_reader).unwrap_lite();
+        hbf.header_main().unwrap_lite()
     }
     fn get_hbf_interrupt_nth(&self, interrupt_num: u16) -> HbfHeaderInterrupt {
         let raw_block_bytes = unsafe {
@@ -173,8 +174,8 @@ impl TaskDescriptor {
         };
         let block_reader = BufferReaderImpl::from(raw_block_bytes);
         // Let's read the hbf
-        let hbf = hbf_lite::HbfFile::from_reader(&block_reader).unwrap();
-        hbf.interrupt_nth(interrupt_num).unwrap()
+        let hbf = hbf_lite::HbfFile::from_reader(&block_reader).unwrap_lite();
+        hbf.interrupt_nth(interrupt_num).unwrap_lite()
     }
     pub fn get_descriptor_block(&self) -> u32 {
         self.block_start_address
