@@ -212,6 +212,7 @@ dependencies = [
  "ssmarshal",
  "stm32f303re",
  "stm32l432kc",
+ "stm32l476rg",
  "unwrap-lite",
  "zerocopy",
 ]
@@ -435,6 +436,17 @@ dependencies = [
 
 [[package]]
 name = "stm32l432kc"
+version = "0.1.0"
+dependencies = [
+ "bare-metal 1.0.0",
+ "cortex-m",
+ "flash_allocator",
+ "static_assertions",
+ "vcell",
+]
+
+[[package]]
+name = "stm32l476rg"
 version = "0.1.0"
 dependencies = [
  "bare-metal 1.0.0",

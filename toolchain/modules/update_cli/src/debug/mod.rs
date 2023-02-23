@@ -22,12 +22,13 @@ pub fn debug(app_config: String, verbose: bool) {
         .expect("Cannot read app config");
     // Extract needed information
     let target_chip = openocd_board_to_chip(&app_config.board);
+    let target_freq = app_config.clock_speed as u32;
     // Create the channel
     let channel = create_channel(verbose);
     // Start openocd
     let mut openocd = openocd_start(&target_chip, verbose);
     // Start gdb
-    let mut gdb = gdb_start(&channel, verbose);
+    let mut gdb = gdb_start(&channel, target_freq, verbose);
     // Parsing loop
     let mut reader = BufReader::new(File::open(channel).expect("Cannot open itm channel pipe"));
     let mut tmp_buff: Vec<u8> = Vec::new();
@@ -90,14 +91,15 @@ fn openocd_start(target_chip: &String, verbose: bool) -> Child {
     status.unwrap()
 }
 
-fn gdb_start(channel: &PathBuf, verbose: bool) -> Child {
+fn gdb_start(channel: &PathBuf, target_freq: u32, verbose: bool) -> Child {
     let mut cmd = Command::new("gdb-multiarch");
     cmd.arg("-ex")
         .arg("target extended-remote localhost:3333")
         .arg("-ex")
         .arg(format!(
-            "monitor tpiu config internal {} uart off 72000000",
-            channel.display()
+            "monitor tpiu config internal {} uart off {}",
+            channel.display(),
+            target_freq
         ))
         .arg("-ex")
         .arg("monitor itm ports on");

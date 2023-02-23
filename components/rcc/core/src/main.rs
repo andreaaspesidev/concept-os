@@ -7,9 +7,13 @@ use rcc_api::*;
 #[cfg(feature = "board_stm32f303re")]
 use stm32f303re::device as device;
 
-// STM32L4
+// STM32L432
 #[cfg(feature = "board_stm32l432kc")]
 use stm32l432kc::device as device;
+
+// STM32L476
+#[cfg(feature = "board_stm32l476rg")]
+use stm32l476rg::device as device;
 
 use userlib::*;
 use zerocopy::AsBytes;
@@ -58,7 +62,7 @@ fn main() -> ! {
                     Bus::AHB1 => {
                         #[cfg(feature = "board_stm32f303re")]
                         set_bits!(rcc.ahbenr, pmask);
-                        #[cfg(feature = "board_stm32l432kc")]
+                        #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         set_bits!(rcc.ahb1enr, pmask);
                     },
                     Bus::AHB2 => {
@@ -66,7 +70,7 @@ fn main() -> ! {
                         sys_log!("Wrong bus for f303re!");
                         #[cfg(feature = "board_stm32f303re")]
                         panic!(); // The function of mapping should be correct
-                        #[cfg(feature = "board_stm32l432kc")]
+                        #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         set_bits!(rcc.ahb2enr, pmask);
                     }
                     Bus::AHB3 => {
@@ -76,7 +80,7 @@ fn main() -> ! {
                     Bus::APB1 => {
                         #[cfg(feature = "board_stm32f303re")]
                         set_bits!(rcc.apb1enr, pmask);
-                        #[cfg(feature = "board_stm32l432kc")]
+                        #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         set_bits!(rcc.apb1enr1, pmask);
                     },
                     Bus::APB2 => set_bits!(rcc.apb2enr, pmask),
@@ -98,7 +102,7 @@ fn main() -> ! {
                     Bus::AHB1 => {
                         #[cfg(feature = "board_stm32f303re")]
                         clear_bits!(rcc.ahbenr, pmask);
-                        #[cfg(feature = "board_stm32l432kc")]
+                        #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         clear_bits!(rcc.ahb1enr, pmask);
                     }
                     Bus::AHB2 => {
@@ -106,7 +110,7 @@ fn main() -> ! {
                         sys_log!("Wrong bus for f303re!");
                         #[cfg(feature = "board_stm32f303re")]
                         panic!(); // The function of mapping should be correct
-                        #[cfg(feature = "board_stm32l432kc")]
+                        #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         clear_bits!(rcc.ahb2enr, pmask);
                     }
                     Bus::AHB3 => {
@@ -116,7 +120,7 @@ fn main() -> ! {
                     Bus::APB1 => {
                         #[cfg(feature = "board_stm32f303re")]
                         clear_bits!(rcc.apb1enr, pmask);
-                        #[cfg(feature = "board_stm32l432kc")]
+                        #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         clear_bits!(rcc.apb1enr1, pmask);
                     },
                     Bus::APB2 => clear_bits!(rcc.apb2enr, pmask),
@@ -138,7 +142,7 @@ fn main() -> ! {
                     Bus::AHB1 => {
                         #[cfg(feature = "board_stm32f303re")]
                         set_bits!(rcc.ahbrstr, pmask);
-                        #[cfg(feature = "board_stm32l432kc")]
+                        #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         set_bits!(rcc.ahb1rstr, pmask);
                     }
                     Bus::AHB2 => {
@@ -146,7 +150,7 @@ fn main() -> ! {
                         sys_log!("Wrong bus for f303re!");
                         #[cfg(feature = "board_stm32f303re")]
                         panic!(); // The function of mapping should be correct
-                        #[cfg(feature = "board_stm32l432kc")]
+                        #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         set_bits!(rcc.ahb2rstr, pmask);
                     }
                     Bus::AHB3 => {
@@ -156,7 +160,7 @@ fn main() -> ! {
                     Bus::APB1 => {
                         #[cfg(feature = "board_stm32f303re")]
                         set_bits!(rcc.apb1rstr, pmask);
-                        #[cfg(feature = "board_stm32l432kc")]
+                        #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         set_bits!(rcc.apb1rstr1, pmask);
                     },
                     Bus::APB2 => set_bits!(rcc.apb2rstr, pmask),
@@ -178,7 +182,7 @@ fn main() -> ! {
                     Bus::AHB1 => {
                         #[cfg(feature = "board_stm32f303re")]
                         clear_bits!(rcc.ahbrstr, pmask);
-                        #[cfg(feature = "board_stm32l432kc")]
+                        #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         clear_bits!(rcc.ahb1rstr, pmask);
                     }
                     Bus::AHB2 => {
@@ -186,7 +190,7 @@ fn main() -> ! {
                         sys_log!("Wrong bus for f303re!");
                         #[cfg(feature = "board_stm32f303re")]
                         panic!(); // The function of mapping should be correct
-                        #[cfg(feature = "board_stm32l432kc")]
+                        #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         clear_bits!(rcc.ahb2rstr, pmask);
                     }
                     Bus::AHB3 => {
@@ -196,7 +200,7 @@ fn main() -> ! {
                     Bus::APB1 => {
                         #[cfg(feature = "board_stm32f303re")]
                         clear_bits!(rcc.apb1rstr, pmask);
-                        #[cfg(feature = "board_stm32l432kc")]
+                        #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         clear_bits!(rcc.apb1rstr1, pmask);
                     },
                     Bus::APB2 => clear_bits!(rcc.apb2rstr, pmask),

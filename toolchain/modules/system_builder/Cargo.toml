@@ -24,3 +24,6 @@ path = "../../../boards/stm32f303re"
 
 [dependencies.stm32l432kc]
 path = "../../../boards/stm32l432kc"
+
+[dependencies.stm32l476rg]
+path = "../../../boards/stm32l476rg"
