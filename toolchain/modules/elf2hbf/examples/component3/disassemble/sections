@@ -3,11 +3,11 @@ output/image.elf:     file format elf32-littlearm
 
 Sections:
 Idx Name          Size      VMA       LMA       File off  Algn
-  0 .text         00000144  08000000  08000000  000000b4  2**1
-                  CONTENTS, ALLOC, LOAD, READONLY, CODE
-  1 .rodata       00000060  08000144  08000144  000001f8  2**2
+  0 .text         00000120  08000000  08000000  000000b4  2**1
+                  CONTENTS, ALLOC, LOAD, RELOC, READONLY, CODE
+  1 .rodata       00000060  08000120  08000120  000001d4  2**2
                   CONTENTS, ALLOC, LOAD, READONLY, DATA
-  2 .data         00000028  20000000  20000000  00000258  2**2
-                  CONTENTS, ALLOC, LOAD, DATA
-  3 .bss          00000000  20000028  20000028  00000280  2**2
+  2 .data         00000028  20000000  20000000  00000234  2**2
+                  CONTENTS, ALLOC, LOAD, RELOC, DATA
+  3 .bss          00000000  20000028  20000028  0000025c  2**2
                   ALLOC

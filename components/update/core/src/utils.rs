@@ -75,7 +75,7 @@ pub fn u32_from_le_bytes(buff: &[u8]) -> u32 {
         | ((buff[3] as u32) << 24);
 }
 
-pub fn wrap_hbf_error<T, E>(r: Result<T, E>) -> Result<T, MessageError> {
+pub fn wrap_hbf_error<T>(r: Result<T, hbf_lite::HbfError>) -> Result<T, MessageError> {
     r.map_err(|_| {
         return MessageError::CannotReadHBF;
     })

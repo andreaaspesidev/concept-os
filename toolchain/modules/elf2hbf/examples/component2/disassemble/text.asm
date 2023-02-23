@@ -8,6 +8,7 @@ Disassembly of section .text:
  8000000:	f3bf 8f4f 	dsb	sy
  8000004:	f3bf 8f6f 	isb	sy
  8000008:	f000 f81a 	bl	8000040 <main>
+			8000008: R_ARM_THM_CALL	main
  800000c:	defe      	udf	#254	; 0xfe
 
 0800000e <print>:
@@ -15,8 +16,10 @@ Disassembly of section .text:
  8000010:	466f      	mov	r7, sp
  8000012:	b088      	sub	sp, #32
  8000014:	f241 0276 	movw	r2, #4214	; 0x1076
+			8000014: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_1
  8000018:	f10d 0c08 	add.w	ip, sp, #8
  800001c:	f2c0 0200 	movt	r2, #0
+			800001c: R_ARM_THM_MOVT_PREL	.L__unnamed_1
  8000020:	2300      	movs	r3, #0
  8000022:	447a      	add	r2, pc
  8000024:	e88c 000f 	stmia.w	ip, {r0, r1, r2, r3}
@@ -24,8 +27,10 @@ Disassembly of section .text:
  800002c:	9001      	str	r0, [sp, #4]
  800002e:	a801      	add	r0, sp, #4
  8000030:	e9cd 2306 	strd	r2, r3, [sp, #24]
- 8000034:	f000 fafc 	bl	8000630 <_ZN7userlib13sys_send_stub17h2444658aabf553a4E>
- 8000038:	f000 faf9 	bl	800062e <_ZN7userlib91_$LT$impl$u20$core..convert..From$LT$userlib..RcLen$GT$$u20$for$u20$$LP$u32$C$usize$RP$$GT$4from17h02b830a50f92d613E>
+ 8000034:	f000 fafc 	bl	8000630 <_ZN7userlib13sys_send_stub17h888361065a580dfcE>
+			8000034: R_ARM_THM_CALL	_ZN7userlib13sys_send_stub17h888361065a580dfcE
+ 8000038:	f000 faf9 	bl	800062e <_ZN7userlib91_$LT$impl$u20$core..convert..From$LT$userlib..RcLen$GT$$u20$for$u20$$LP$u32$C$usize$RP$$GT$4from17h1e460157d6ea36b0E>
+			8000038: R_ARM_THM_CALL	_ZN7userlib91_$LT$impl$u20$core..convert..From$LT$userlib..RcLen$GT$$u20$for$u20$$LP$u32$C$usize$RP$$GT$4from17h1e460157d6ea36b0E
  800003c:	b008      	add	sp, #32
  800003e:	bd80      	pop	{r7, pc}
 
@@ -33,22 +38,27 @@ Disassembly of section .text:
  8000040:	    b580      	push	{r7, lr}
  8000042:	    466f      	mov	r7, sp
  8000044:	/-> f000 f935 	bl	80002b2 <example12>
+			8000044: R_ARM_THM_CALL	example12
  8000048:	\-- e7fc      	b.n	8000044 <main+0x4>
 
-0800004a <_ZN55_$LT$component2..Foo$u20$as$u20$component2..Frobber$GT$4frob17h0caa40aacf5bd97eE>:
+0800004a <_ZN55_$LT$component2..Foo$u20$as$u20$component2..Frobber$GT$4frob17h76d06cdd1413c1aeE>:
  800004a:	       b5f0      	push	{r4, r5, r6, r7, lr}
  800004c:	       af03      	add	r7, sp, #12
  800004e:	       f84d bd04 	str.w	fp, [sp, #-4]!
  8000052:	       b088      	sub	sp, #32
  8000054:	       4604      	mov	r4, r0
  8000056:	       f241 003e 	movw	r0, #4158	; 0x103e
+			8000056: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_2
  800005a:	       f2c0 0000 	movt	r0, #0
+			800005a: R_ARM_THM_MOVT_PREL	.L__unnamed_2
  800005e:	       4615      	mov	r5, r2
  8000060:	       460e      	mov	r6, r1
  8000062:	       f640 61ad 	movw	r1, #3757	; 0xead
+			8000062: R_ARM_THM_MOVW_PREL_NC	_ZN4core3fmt3num3imp52_$LT$impl$u20$core..fmt..Display$u20$for$u20$u32$GT$3fmt17hf7dd6a4e8aa131efE
  8000066:	       4478      	add	r0, pc
  8000068:	       2202      	movs	r2, #2
  800006a:	       f2c0 0100 	movt	r1, #0
+			800006a: R_ARM_THM_MOVT_PREL	_ZN4core3fmt3num3imp52_$LT$impl$u20$core..fmt..Display$u20$for$u20$u32$GT$3fmt17hf7dd6a4e8aa131efE
  800006e:	       e9cd 0202 	strd	r0, r2, [sp, #8]
  8000072:	       2001      	movs	r0, #1
  8000074:	       4479      	add	r1, pc
@@ -60,11 +70,15 @@ Disassembly of section .text:
  8000080:	       4668      	mov	r0, sp
  8000082:	       e9cd 6106 	strd	r6, r1, [sp, #24]
  8000086:	       f000 fa8d 	bl	80005a4 <_ZN20cortex_m_semihosting6export11hstdout_fmt17hfcbeaeddd8276f2eE>
+			8000086: R_ARM_THM_CALL	_ZN20cortex_m_semihosting6export11hstdout_fmt17hfcbeaeddd8276f2eE
  800008a:	       f241 0020 	movw	r0, #4128	; 0x1020
+			800008a: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_3
  800008e:	       210a      	movs	r1, #10
  8000090:	       f2c0 0000 	movt	r0, #0
+			8000090: R_ARM_THM_MOVT_PREL	.L__unnamed_3
  8000094:	       4478      	add	r0, pc
  8000096:	       f7ff ffba 	bl	800000e <print>
+			8000096: R_ARM_THM_CALL	print
  800009a:	       206f      	movs	r0, #111	; 0x6f
  800009c:	       f244 615b 	movw	r1, #18011	; 0x465b
  80000a0:	       71a0      	strb	r0, [r4, #6]
@@ -72,7 +86,7 @@ Disassembly of section .text:
  80000a4:	       80a1      	strh	r1, [r4, #4]
  80000a6:	       4428      	add	r0, r5
  80000a8:	       280a      	cmp	r0, #10
- 80000aa:	   /-- d10a      	bne.n	80000c2 <_ZN55_$LT$component2..Foo$u20$as$u20$component2..Frobber$GT$4frob17h0caa40aacf5bd97eE+0x78>
+ 80000aa:	   /-- d10a      	bne.n	80000c2 <_ZN55_$LT$component2..Foo$u20$as$u20$component2..Frobber$GT$4frob17h76d06cdd1413c1aeE+0x78>
  80000ac:	   |   f642 606f 	movw	r0, #11887	; 0x2e6f
  80000b0:	   |   210b      	movs	r1, #11
  80000b2:	   |   f2c3 0031 	movt	r0, #12337	; 0x3031
@@ -80,7 +94,7 @@ Disassembly of section .text:
  80000ba:	   |   2003      	movs	r0, #3
  80000bc:	   |   6020      	str	r0, [r4, #0]
  80000be:	   |   2008      	movs	r0, #8
- 80000c0:	/--|-- e00d      	b.n	80000de <_ZN55_$LT$component2..Foo$u20$as$u20$component2..Frobber$GT$4frob17h0caa40aacf5bd97eE+0x94>
+ 80000c0:	/--|-- e00d      	b.n	80000de <_ZN55_$LT$component2..Foo$u20$as$u20$component2..Frobber$GT$4frob17h76d06cdd1413c1aeE+0x94>
  80000c2:	|  \-> f646 4065 	movw	r0, #27749	; 0x6c65
  80000c6:	|      210d      	movs	r1, #13
  80000c8:	|      f2c6 5073 	movt	r0, #25971	; 0x6573
@@ -97,20 +111,24 @@ Disassembly of section .text:
  80000e6:	       f85d bb04 	ldr.w	fp, [sp], #4
  80000ea:	       bdf0      	pop	{r4, r5, r6, r7, pc}
 
-080000ec <_ZN55_$LT$component2..Bar$u20$as$u20$component2..Frobber$GT$4frob17h98e5dfcfc2ed7f3aE>:
+080000ec <_ZN55_$LT$component2..Bar$u20$as$u20$component2..Frobber$GT$4frob17heb06fcc18f3b84d8E>:
  80000ec:	    b5f0      	push	{r4, r5, r6, r7, lr}
  80000ee:	    af03      	add	r7, sp, #12
  80000f0:	    f84d bd04 	str.w	fp, [sp, #-4]!
  80000f4:	    b088      	sub	sp, #32
  80000f6:	    4604      	mov	r4, r0
  80000f8:	    f640 70d4 	movw	r0, #4052	; 0xfd4
+			80000f8: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_4
  80000fc:	    f2c0 0000 	movt	r0, #0
+			80000fc: R_ARM_THM_MOVT_PREL	.L__unnamed_4
  8000100:	    4615      	mov	r5, r2
  8000102:	    460e      	mov	r6, r1
  8000104:	    f640 41ff 	movw	r1, #3327	; 0xcff
+			8000104: R_ARM_THM_MOVW_PREL_NC	_ZN4core3fmt3num3imp52_$LT$impl$u20$core..fmt..Display$u20$for$u20$i32$GT$3fmt17hdd7bd15d96f960c3E
  8000108:	    4478      	add	r0, pc
  800010a:	    2202      	movs	r2, #2
  800010c:	    f2c0 0100 	movt	r1, #0
+			800010c: R_ARM_THM_MOVT_PREL	_ZN4core3fmt3num3imp52_$LT$impl$u20$core..fmt..Display$u20$for$u20$i32$GT$3fmt17hdd7bd15d96f960c3E
  8000110:	    e9cd 0202 	strd	r0, r2, [sp, #8]
  8000114:	    2001      	movs	r0, #1
  8000116:	    4479      	add	r1, pc
@@ -122,18 +140,22 @@ Disassembly of section .text:
  8000122:	    4668      	mov	r0, sp
  8000124:	    e9cd 6106 	strd	r6, r1, [sp, #24]
  8000128:	    f000 fa3c 	bl	80005a4 <_ZN20cortex_m_semihosting6export11hstdout_fmt17hfcbeaeddd8276f2eE>
+			8000128: R_ARM_THM_CALL	_ZN20cortex_m_semihosting6export11hstdout_fmt17hfcbeaeddd8276f2eE
  800012c:	    f640 70b6 	movw	r0, #4022	; 0xfb6
+			800012c: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_5
  8000130:	    210a      	movs	r1, #10
  8000132:	    f2c0 0000 	movt	r0, #0
+			8000132: R_ARM_THM_MOVT_PREL	.L__unnamed_5
  8000136:	    4478      	add	r0, pc
  8000138:	    f7ff ff69 	bl	800000e <print>
+			8000138: R_ARM_THM_CALL	print
  800013c:	    6830      	ldr	r0, [r6, #0]
  800013e:	    f244 215b 	movw	r1, #16987	; 0x425b
  8000142:	    f2c7 2161 	movt	r1, #29281	; 0x7261
  8000146:	    4428      	add	r0, r5
  8000148:	    6061      	str	r1, [r4, #4]
  800014a:	    300a      	adds	r0, #10
- 800014c:	/-- d10e      	bne.n	800016c <_ZN55_$LT$component2..Bar$u20$as$u20$component2..Frobber$GT$4frob17h98e5dfcfc2ed7f3aE+0x80>
+ 800014c:	/-- d10e      	bne.n	800016c <_ZN55_$LT$component2..Bar$u20$as$u20$component2..Frobber$GT$4frob17heb06fcc18f3b84d8E+0x80>
  800014e:	|   205d      	movs	r0, #93	; 0x5d
  8000150:	|   7320      	strb	r0, [r4, #12]
  8000152:	|   f642 502e 	movw	r0, #11566	; 0x2d2e
@@ -159,17 +181,21 @@ Disassembly of section .text:
  8000186:	    f85d bb04 	ldr.w	fp, [sp], #4
  800018a:	    bdf0      	pop	{r4, r5, r6, r7, pc}
 
-0800018c <_ZN10component214frob_it_static17h1223580fb40151bbE>:
+0800018c <_ZN10component214frob_it_static17h3f1a3f24f0aa316dE>:
  800018c:	       b5b0      	push	{r4, r5, r7, lr}
  800018e:	       af02      	add	r7, sp, #8
  8000190:	       b08a      	sub	sp, #40	; 0x28
  8000192:	       4604      	mov	r4, r0
- 8000194:	       f640 4073 	movw	r0, #3187	; 0xc73
+ 8000194:	       f640 507f 	movw	r0, #3455	; 0xd7f
+			8000194: R_ARM_THM_MOVW_PREL_NC	_ZN4core3fmt3num3imp52_$LT$impl$u20$core..fmt..Display$u20$for$u20$u32$GT$3fmt17hf7dd6a4e8aa131efE
  8000198:	       f2c0 0000 	movt	r0, #0
+			8000198: R_ARM_THM_MOVT_PREL	_ZN4core3fmt3num3imp52_$LT$impl$u20$core..fmt..Display$u20$for$u20$u32$GT$3fmt17hf7dd6a4e8aa131efE
  800019c:	       4615      	mov	r5, r2
- 800019e:	       f640 7230 	movw	r2, #3888	; 0xf30
+ 800019e:	       f640 62f8 	movw	r2, #3832	; 0xef8
+			800019e: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_2
  80001a2:	       4478      	add	r0, pc
  80001a4:	       f2c0 0200 	movt	r2, #0
+			80001a4: R_ARM_THM_MOVT_PREL	.L__unnamed_2
  80001a8:	       9101      	str	r1, [sp, #4]
  80001aa:	       2102      	movs	r1, #2
  80001ac:	       447a      	add	r2, pc
@@ -185,101 +211,113 @@ Disassembly of section .text:
  80001c2:	       2100      	movs	r1, #0
  80001c4:	       9102      	str	r1, [sp, #8]
  80001c6:	       f000 f9ed 	bl	80005a4 <_ZN20cortex_m_semihosting6export11hstdout_fmt17hfcbeaeddd8276f2eE>
- 80001ca:	       f640 7018 	movw	r0, #3864	; 0xf18
+			80001c6: R_ARM_THM_CALL	_ZN20cortex_m_semihosting6export11hstdout_fmt17hfcbeaeddd8276f2eE
+ 80001ca:	       f640 60e0 	movw	r0, #3808	; 0xee0
+			80001ca: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_3
  80001ce:	       210a      	movs	r1, #10
  80001d0:	       f2c0 0000 	movt	r0, #0
+			80001d0: R_ARM_THM_MOVT_PREL	.L__unnamed_3
  80001d4:	       4478      	add	r0, pc
  80001d6:	       f7ff ff1a 	bl	800000e <print>
- 80001da:	       9801      	ldr	r0, [sp, #4]
- 80001dc:	       f244 215b 	movw	r1, #16987	; 0x425b
- 80001e0:	       f2c7 2161 	movt	r1, #29281	; 0x7261
- 80001e4:	       225d      	movs	r2, #93	; 0x5d
+			80001d6: R_ARM_THM_CALL	print
+ 80001da:	       206f      	movs	r0, #111	; 0x6f
+ 80001dc:	       f244 615b 	movw	r1, #18011	; 0x465b
+ 80001e0:	       71a0      	strb	r0, [r4, #6]
+ 80001e2:	       9801      	ldr	r0, [sp, #4]
+ 80001e4:	       80a1      	strh	r1, [r4, #4]
  80001e6:	       4428      	add	r0, r5
- 80001e8:	       6061      	str	r1, [r4, #4]
- 80001ea:	       300a      	adds	r0, #10
- 80001ec:	   /-- d104      	bne.n	80001f8 <_ZN10component214frob_it_static17h1223580fb40151bbE+0x6c>
- 80001ee:	   |   2009      	movs	r0, #9
- 80001f0:	   |   2130      	movs	r1, #48	; 0x30
+ 80001e8:	       280a      	cmp	r0, #10
+ 80001ea:	   /-- d104      	bne.n	80001f6 <_ZN10component214frob_it_static17h3f1a3f24f0aa316dE+0x6a>
+ 80001ec:	   |   2008      	movs	r0, #8
+ 80001ee:	   |   210b      	movs	r1, #11
+ 80001f0:	   |   2230      	movs	r2, #48	; 0x30
  80001f2:	   |   2331      	movs	r3, #49	; 0x31
- 80001f4:	   |   252d      	movs	r5, #45	; 0x2d
- 80001f6:	/--|-- e005      	b.n	8000204 <_ZN10component214frob_it_static17h1223580fb40151bbE+0x78>
- 80001f8:	|  \-> 7362      	strb	r2, [r4, #13]
- 80001fa:	|      200a      	movs	r0, #10
- 80001fc:	|      2173      	movs	r1, #115	; 0x73
- 80001fe:	|      236c      	movs	r3, #108	; 0x6c
- 8000200:	|      2565      	movs	r5, #101	; 0x65
- 8000202:	|      2265      	movs	r2, #101	; 0x65
- 8000204:	\----> 72e1      	strb	r1, [r4, #11]
- 8000206:	       212e      	movs	r1, #46	; 0x2e
- 8000208:	       7322      	strb	r2, [r4, #12]
- 800020a:	       72a3      	strb	r3, [r4, #10]
- 800020c:	       7265      	strb	r5, [r4, #9]
- 800020e:	       7221      	strb	r1, [r4, #8]
- 8000210:	       6020      	str	r0, [r4, #0]
- 8000212:	       b00a      	add	sp, #40	; 0x28
- 8000214:	       bdb0      	pop	{r4, r5, r7, pc}
+ 80001f4:	/--|-- e007      	b.n	8000206 <_ZN10component214frob_it_static17h3f1a3f24f0aa316dE+0x7a>
+ 80001f6:	|  \-> f246 5073 	movw	r0, #25971	; 0x6573
+ 80001fa:	|      210d      	movs	r1, #13
+ 80001fc:	|      f8a4 000b 	strh.w	r0, [r4, #11]
+ 8000200:	|      200a      	movs	r0, #10
+ 8000202:	|      226c      	movs	r2, #108	; 0x6c
+ 8000204:	|      2365      	movs	r3, #101	; 0x65
+ 8000206:	\----> 72a2      	strb	r2, [r4, #10]
+ 8000208:	       225d      	movs	r2, #93	; 0x5d
+ 800020a:	       7263      	strb	r3, [r4, #9]
+ 800020c:	       5462      	strb	r2, [r4, r1]
+ 800020e:	       f642 616f 	movw	r1, #11887	; 0x2e6f
+ 8000212:	       f8a4 1007 	strh.w	r1, [r4, #7]
+ 8000216:	       6020      	str	r0, [r4, #0]
+ 8000218:	       b00a      	add	sp, #40	; 0x28
+ 800021a:	       bdb0      	pop	{r4, r5, r7, pc}
 
-08000216 <_ZN10component214frob_it_static17h94599052a0401ea9E>:
- 8000216:	       b5b0      	push	{r4, r5, r7, lr}
- 8000218:	       af02      	add	r7, sp, #8
- 800021a:	       b08a      	sub	sp, #40	; 0x28
- 800021c:	       4604      	mov	r4, r0
- 800021e:	       f640 40f5 	movw	r0, #3317	; 0xcf5
- 8000222:	       f2c0 0000 	movt	r0, #0
- 8000226:	       4615      	mov	r5, r2
- 8000228:	       f640 626e 	movw	r2, #3694	; 0xe6e
- 800022c:	       4478      	add	r0, pc
- 800022e:	       f2c0 0200 	movt	r2, #0
- 8000232:	       9101      	str	r1, [sp, #4]
- 8000234:	       2102      	movs	r1, #2
- 8000236:	       447a      	add	r2, pc
- 8000238:	       e9cd 2104 	strd	r2, r1, [sp, #16]
- 800023c:	       2101      	movs	r1, #1
- 800023e:	       9009      	str	r0, [sp, #36]	; 0x24
- 8000240:	       a801      	add	r0, sp, #4
- 8000242:	       9107      	str	r1, [sp, #28]
- 8000244:	       a908      	add	r1, sp, #32
- 8000246:	       9008      	str	r0, [sp, #32]
- 8000248:	       a802      	add	r0, sp, #8
- 800024a:	       9106      	str	r1, [sp, #24]
- 800024c:	       2100      	movs	r1, #0
- 800024e:	       9102      	str	r1, [sp, #8]
- 8000250:	       f000 f9a8 	bl	80005a4 <_ZN20cortex_m_semihosting6export11hstdout_fmt17hfcbeaeddd8276f2eE>
- 8000254:	       f640 6056 	movw	r0, #3670	; 0xe56
- 8000258:	       210a      	movs	r1, #10
- 800025a:	       f2c0 0000 	movt	r0, #0
- 800025e:	       4478      	add	r0, pc
- 8000260:	       f7ff fed5 	bl	800000e <print>
- 8000264:	       206f      	movs	r0, #111	; 0x6f
- 8000266:	       f244 615b 	movw	r1, #18011	; 0x465b
- 800026a:	       71a0      	strb	r0, [r4, #6]
- 800026c:	       9801      	ldr	r0, [sp, #4]
- 800026e:	       80a1      	strh	r1, [r4, #4]
- 8000270:	       4428      	add	r0, r5
- 8000272:	       280a      	cmp	r0, #10
- 8000274:	   /-- d104      	bne.n	8000280 <_ZN10component214frob_it_static17h94599052a0401ea9E+0x6a>
- 8000276:	   |   2008      	movs	r0, #8
- 8000278:	   |   210b      	movs	r1, #11
- 800027a:	   |   2230      	movs	r2, #48	; 0x30
- 800027c:	   |   2331      	movs	r3, #49	; 0x31
- 800027e:	/--|-- e007      	b.n	8000290 <_ZN10component214frob_it_static17h94599052a0401ea9E+0x7a>
- 8000280:	|  \-> f246 5073 	movw	r0, #25971	; 0x6573
- 8000284:	|      210d      	movs	r1, #13
- 8000286:	|      f8a4 000b 	strh.w	r0, [r4, #11]
+0800021c <_ZN10component214frob_it_static17hdb5eabbb6f73df91E>:
+ 800021c:	       b5b0      	push	{r4, r5, r7, lr}
+ 800021e:	       af02      	add	r7, sp, #8
+ 8000220:	       b08a      	sub	sp, #40	; 0x28
+ 8000222:	       4604      	mov	r4, r0
+ 8000224:	       f640 30e3 	movw	r0, #3043	; 0xbe3
+			8000224: R_ARM_THM_MOVW_PREL_NC	_ZN4core3fmt3num3imp52_$LT$impl$u20$core..fmt..Display$u20$for$u20$i32$GT$3fmt17hdd7bd15d96f960c3E
+ 8000228:	       f2c0 0000 	movt	r0, #0
+			8000228: R_ARM_THM_MOVT_PREL	_ZN4core3fmt3num3imp52_$LT$impl$u20$core..fmt..Display$u20$for$u20$i32$GT$3fmt17hdd7bd15d96f960c3E
+ 800022c:	       4615      	mov	r5, r2
+ 800022e:	       f640 62a0 	movw	r2, #3744	; 0xea0
+			800022e: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_4
+ 8000232:	       4478      	add	r0, pc
+ 8000234:	       f2c0 0200 	movt	r2, #0
+			8000234: R_ARM_THM_MOVT_PREL	.L__unnamed_4
+ 8000238:	       9101      	str	r1, [sp, #4]
+ 800023a:	       2102      	movs	r1, #2
+ 800023c:	       447a      	add	r2, pc
+ 800023e:	       e9cd 2104 	strd	r2, r1, [sp, #16]
+ 8000242:	       2101      	movs	r1, #1
+ 8000244:	       9009      	str	r0, [sp, #36]	; 0x24
+ 8000246:	       a801      	add	r0, sp, #4
+ 8000248:	       9107      	str	r1, [sp, #28]
+ 800024a:	       a908      	add	r1, sp, #32
+ 800024c:	       9008      	str	r0, [sp, #32]
+ 800024e:	       a802      	add	r0, sp, #8
+ 8000250:	       9106      	str	r1, [sp, #24]
+ 8000252:	       2100      	movs	r1, #0
+ 8000254:	       9102      	str	r1, [sp, #8]
+ 8000256:	       f000 f9a5 	bl	80005a4 <_ZN20cortex_m_semihosting6export11hstdout_fmt17hfcbeaeddd8276f2eE>
+			8000256: R_ARM_THM_CALL	_ZN20cortex_m_semihosting6export11hstdout_fmt17hfcbeaeddd8276f2eE
+ 800025a:	       f640 6088 	movw	r0, #3720	; 0xe88
+			800025a: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_5
+ 800025e:	       210a      	movs	r1, #10
+ 8000260:	       f2c0 0000 	movt	r0, #0
+			8000260: R_ARM_THM_MOVT_PREL	.L__unnamed_5
+ 8000264:	       4478      	add	r0, pc
+ 8000266:	       f7ff fed2 	bl	800000e <print>
+			8000266: R_ARM_THM_CALL	print
+ 800026a:	       9801      	ldr	r0, [sp, #4]
+ 800026c:	       f244 215b 	movw	r1, #16987	; 0x425b
+ 8000270:	       f2c7 2161 	movt	r1, #29281	; 0x7261
+ 8000274:	       225d      	movs	r2, #93	; 0x5d
+ 8000276:	       4428      	add	r0, r5
+ 8000278:	       6061      	str	r1, [r4, #4]
+ 800027a:	       300a      	adds	r0, #10
+ 800027c:	   /-- d104      	bne.n	8000288 <_ZN10component214frob_it_static17hdb5eabbb6f73df91E+0x6c>
+ 800027e:	   |   2009      	movs	r0, #9
+ 8000280:	   |   2130      	movs	r1, #48	; 0x30
+ 8000282:	   |   2331      	movs	r3, #49	; 0x31
+ 8000284:	   |   252d      	movs	r5, #45	; 0x2d
+ 8000286:	/--|-- e005      	b.n	8000294 <_ZN10component214frob_it_static17hdb5eabbb6f73df91E+0x78>
+ 8000288:	|  \-> 7362      	strb	r2, [r4, #13]
  800028a:	|      200a      	movs	r0, #10
- 800028c:	|      226c      	movs	r2, #108	; 0x6c
- 800028e:	|      2365      	movs	r3, #101	; 0x65
- 8000290:	\----> 72a2      	strb	r2, [r4, #10]
- 8000292:	       225d      	movs	r2, #93	; 0x5d
- 8000294:	       7263      	strb	r3, [r4, #9]
- 8000296:	       5462      	strb	r2, [r4, r1]
- 8000298:	       f642 616f 	movw	r1, #11887	; 0x2e6f
- 800029c:	       f8a4 1007 	strh.w	r1, [r4, #7]
+ 800028c:	|      2173      	movs	r1, #115	; 0x73
+ 800028e:	|      236c      	movs	r3, #108	; 0x6c
+ 8000290:	|      2565      	movs	r5, #101	; 0x65
+ 8000292:	|      2265      	movs	r2, #101	; 0x65
+ 8000294:	\----> 72e1      	strb	r1, [r4, #11]
+ 8000296:	       212e      	movs	r1, #46	; 0x2e
+ 8000298:	       7322      	strb	r2, [r4, #12]
+ 800029a:	       72a3      	strb	r3, [r4, #10]
+ 800029c:	       7265      	strb	r5, [r4, #9]
+ 800029e:	       7221      	strb	r1, [r4, #8]
  80002a0:	       6020      	str	r0, [r4, #0]
  80002a2:	       b00a      	add	sp, #40	; 0x28
  80002a4:	       bdb0      	pop	{r4, r5, r7, pc}
 
-080002a6 <_ZN10component215frob_it_dynamic17h22211adbaf86d08aE>:
+080002a6 <_ZN10component215frob_it_dynamic17h979f1fe8ba05d5d6E>:
  80002a6:	b580      	push	{r7, lr}
  80002a8:	466f      	mov	r7, sp
  80002aa:	4694      	mov	ip, r2
@@ -295,146 +333,194 @@ Disassembly of section .text:
  80002ba:	       2109      	movs	r1, #9
  80002bc:	       4620      	mov	r0, r4
  80002be:	       2201      	movs	r2, #1
- 80002c0:	       f7ff ffa9 	bl	8000216 <_ZN10component214frob_it_static17h94599052a0401ea9E>
+ 80002c0:	       f7ff ff64 	bl	800018c <_ZN10component214frob_it_static17h3f1a3f24f0aa316dE>
+			80002c0: R_ARM_THM_CALL	_ZN10component214frob_it_static17h3f1a3f24f0aa316dE
  80002c4:	       9800      	ldr	r0, [sp, #0]
  80002c6:	       2808      	cmp	r0, #8
  80002c8:	/----- f040 80be 	bne.w	8000448 <example12+0x196>
  80002cc:	|      f640 51f0 	movw	r1, #3568	; 0xdf0
+			80002cc: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_6
  80002d0:	|      1d20      	adds	r0, r4, #4
  80002d2:	|      f2c0 0100 	movt	r1, #0
+			80002d2: R_ARM_THM_MOVT_PREL	.L__unnamed_6
  80002d6:	|      2208      	movs	r2, #8
  80002d8:	|      4479      	add	r1, pc
  80002da:	|      f000 fedc 	bl	8001096 <_ZN17compiler_builtins3mem4bcmp17h8b803fec55a7607aE>
+			80002da: R_ARM_THM_CALL	memcmp
  80002de:	|      2800      	cmp	r0, #0
  80002e0:	+----- f040 80b2 	bne.w	8000448 <example12+0x196>
  80002e4:	|      466c      	mov	r4, sp
  80002e6:	|      210b      	movs	r1, #11
  80002e8:	|      4620      	mov	r0, r4
  80002ea:	|      2202      	movs	r2, #2
- 80002ec:	|      f7ff ff93 	bl	8000216 <_ZN10component214frob_it_static17h94599052a0401ea9E>
+ 80002ec:	|      f7ff ff4e 	bl	800018c <_ZN10component214frob_it_static17h3f1a3f24f0aa316dE>
+			80002ec: R_ARM_THM_CALL	_ZN10component214frob_it_static17h3f1a3f24f0aa316dE
  80002f0:	|      9800      	ldr	r0, [sp, #0]
  80002f2:	|      280a      	cmp	r0, #10
  80002f4:	+----- f040 80a8 	bne.w	8000448 <example12+0x196>
  80002f8:	|      f640 51ba 	movw	r1, #3514	; 0xdba
+			80002f8: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_7
  80002fc:	|      1d20      	adds	r0, r4, #4
  80002fe:	|      f2c0 0100 	movt	r1, #0
+			80002fe: R_ARM_THM_MOVT_PREL	.L__unnamed_7
  8000302:	|      220a      	movs	r2, #10
  8000304:	|      4479      	add	r1, pc
  8000306:	|      f000 fec6 	bl	8001096 <_ZN17compiler_builtins3mem4bcmp17h8b803fec55a7607aE>
+			8000306: R_ARM_THM_CALL	memcmp
  800030a:	|      2800      	cmp	r0, #0
  800030c:	+----- f040 809c 	bne.w	8000448 <example12+0x196>
  8000310:	|      466c      	mov	r4, sp
  8000312:	|      f06f 010a 	mvn.w	r1, #10
  8000316:	|      4620      	mov	r0, r4
  8000318:	|      2201      	movs	r2, #1
- 800031a:	|      f7ff ff37 	bl	800018c <_ZN10component214frob_it_static17h1223580fb40151bbE>
+ 800031a:	|      f7ff ff7f 	bl	800021c <_ZN10component214frob_it_static17hdb5eabbb6f73df91E>
+			800031a: R_ARM_THM_CALL	_ZN10component214frob_it_static17hdb5eabbb6f73df91E
  800031e:	|      9800      	ldr	r0, [sp, #0]
  8000320:	|      2809      	cmp	r0, #9
  8000322:	+----- f040 8091 	bne.w	8000448 <example12+0x196>
  8000326:	|      f640 51ce 	movw	r1, #3534	; 0xdce
+			8000326: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_8
  800032a:	|      1d20      	adds	r0, r4, #4
  800032c:	|      f2c0 0100 	movt	r1, #0
+			800032c: R_ARM_THM_MOVT_PREL	.L__unnamed_8
  8000330:	|      2209      	movs	r2, #9
  8000332:	|      4479      	add	r1, pc
  8000334:	|      f000 feaf 	bl	8001096 <_ZN17compiler_builtins3mem4bcmp17h8b803fec55a7607aE>
+			8000334: R_ARM_THM_CALL	memcmp
  8000338:	|      2800      	cmp	r0, #0
  800033a:	+----- f040 8085 	bne.w	8000448 <example12+0x196>
  800033e:	|      466c      	mov	r4, sp
  8000340:	|      210a      	movs	r1, #10
  8000342:	|      4620      	mov	r0, r4
  8000344:	|      2203      	movs	r2, #3
- 8000346:	|      f7ff ff21 	bl	800018c <_ZN10component214frob_it_static17h1223580fb40151bbE>
+ 8000346:	|      f7ff ff69 	bl	800021c <_ZN10component214frob_it_static17hdb5eabbb6f73df91E>
+			8000346: R_ARM_THM_CALL	_ZN10component214frob_it_static17hdb5eabbb6f73df91E
  800034a:	|      9800      	ldr	r0, [sp, #0]
  800034c:	|      280a      	cmp	r0, #10
  800034e:	+----- d17b      	bne.n	8000448 <example12+0x196>
  8000350:	|      f640 519a 	movw	r1, #3482	; 0xd9a
+			8000350: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_9
  8000354:	|      1d20      	adds	r0, r4, #4
  8000356:	|      f2c0 0100 	movt	r1, #0
+			8000356: R_ARM_THM_MOVT_PREL	.L__unnamed_9
  800035a:	|      220a      	movs	r2, #10
  800035c:	|      4479      	add	r1, pc
  800035e:	|      f000 fe9a 	bl	8001096 <_ZN17compiler_builtins3mem4bcmp17h8b803fec55a7607aE>
+			800035e: R_ARM_THM_CALL	memcmp
  8000362:	|      2800      	cmp	r0, #0
  8000364:	+----- d170      	bne.n	8000448 <example12+0x196>
  8000366:	|      f640 51a0 	movw	r1, #3488	; 0xda0
+			8000366: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_10
  800036a:	|      466c      	mov	r4, sp
  800036c:	|      f2c0 0100 	movt	r1, #0
+			800036c: R_ARM_THM_MOVT_PREL	.L__unnamed_10
  8000370:	|      f64f 42cd 	movw	r2, #64717	; 0xfccd
+			8000370: R_ARM_THM_MOVW_PREL_NC	_ZN55_$LT$component2..Foo$u20$as$u20$component2..Frobber$GT$4frob17h76d06cdd1413c1aeE
  8000374:	|      f6cf 72ff 	movt	r2, #65535	; 0xffff
+			8000374: R_ARM_THM_MOVT_PREL	_ZN55_$LT$component2..Foo$u20$as$u20$component2..Frobber$GT$4frob17h76d06cdd1413c1aeE
  8000378:	|      4479      	add	r1, pc
  800037a:	|      447a      	add	r2, pc
  800037c:	|      4620      	mov	r0, r4
  800037e:	|      2301      	movs	r3, #1
- 8000380:	|      f7ff ff91 	bl	80002a6 <_ZN10component215frob_it_dynamic17h22211adbaf86d08aE>
+ 8000380:	|      f7ff ff91 	bl	80002a6 <_ZN10component215frob_it_dynamic17h979f1fe8ba05d5d6E>
+			8000380: R_ARM_THM_CALL	_ZN10component215frob_it_dynamic17h979f1fe8ba05d5d6E
  8000384:	|      9800      	ldr	r0, [sp, #0]
  8000386:	|      2808      	cmp	r0, #8
  8000388:	+----- d15e      	bne.n	8000448 <example12+0x196>
  800038a:	|      f640 5132 	movw	r1, #3378	; 0xd32
+			800038a: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_6
  800038e:	|      1d20      	adds	r0, r4, #4
  8000390:	|      f2c0 0100 	movt	r1, #0
+			8000390: R_ARM_THM_MOVT_PREL	.L__unnamed_6
  8000394:	|      2208      	movs	r2, #8
  8000396:	|      4479      	add	r1, pc
  8000398:	|      f000 fe7d 	bl	8001096 <_ZN17compiler_builtins3mem4bcmp17h8b803fec55a7607aE>
+			8000398: R_ARM_THM_CALL	memcmp
  800039c:	|      2800      	cmp	r0, #0
  800039e:	+----- d153      	bne.n	8000448 <example12+0x196>
  80003a0:	|      f640 515e 	movw	r1, #3422	; 0xd5e
+			80003a0: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_11
  80003a4:	|      466c      	mov	r4, sp
  80003a6:	|      f2c0 0100 	movt	r1, #0
+			80003a6: R_ARM_THM_MOVT_PREL	.L__unnamed_11
  80003aa:	|      f64f 4293 	movw	r2, #64659	; 0xfc93
+			80003aa: R_ARM_THM_MOVW_PREL_NC	_ZN55_$LT$component2..Foo$u20$as$u20$component2..Frobber$GT$4frob17h76d06cdd1413c1aeE
  80003ae:	|      f6cf 72ff 	movt	r2, #65535	; 0xffff
+			80003ae: R_ARM_THM_MOVT_PREL	_ZN55_$LT$component2..Foo$u20$as$u20$component2..Frobber$GT$4frob17h76d06cdd1413c1aeE
  80003b2:	|      4479      	add	r1, pc
  80003b4:	|      447a      	add	r2, pc
  80003b6:	|      4620      	mov	r0, r4
  80003b8:	|      2302      	movs	r3, #2
- 80003ba:	|      f7ff ff74 	bl	80002a6 <_ZN10component215frob_it_dynamic17h22211adbaf86d08aE>
+ 80003ba:	|      f7ff ff74 	bl	80002a6 <_ZN10component215frob_it_dynamic17h979f1fe8ba05d5d6E>
+			80003ba: R_ARM_THM_CALL	_ZN10component215frob_it_dynamic17h979f1fe8ba05d5d6E
  80003be:	|      9800      	ldr	r0, [sp, #0]
  80003c0:	|      280a      	cmp	r0, #10
  80003c2:	+----- d141      	bne.n	8000448 <example12+0x196>
  80003c4:	|      f640 41ee 	movw	r1, #3310	; 0xcee
+			80003c4: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_7
  80003c8:	|      1d20      	adds	r0, r4, #4
  80003ca:	|      f2c0 0100 	movt	r1, #0
+			80003ca: R_ARM_THM_MOVT_PREL	.L__unnamed_7
  80003ce:	|      220a      	movs	r2, #10
  80003d0:	|      4479      	add	r1, pc
  80003d2:	|      f000 fe60 	bl	8001096 <_ZN17compiler_builtins3mem4bcmp17h8b803fec55a7607aE>
+			80003d2: R_ARM_THM_CALL	memcmp
  80003d6:	+----- bbb8      	cbnz	r0, 8000448 <example12+0x196>
  80003d8:	|      f640 512a 	movw	r1, #3370	; 0xd2a
+			80003d8: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_12
  80003dc:	|      466c      	mov	r4, sp
  80003de:	|      f2c0 0100 	movt	r1, #0
+			80003de: R_ARM_THM_MOVT_PREL	.L__unnamed_12
  80003e2:	|      f64f 42fd 	movw	r2, #64765	; 0xfcfd
+			80003e2: R_ARM_THM_MOVW_PREL_NC	_ZN55_$LT$component2..Bar$u20$as$u20$component2..Frobber$GT$4frob17heb06fcc18f3b84d8E
  80003e6:	|      f6cf 72ff 	movt	r2, #65535	; 0xffff
+			80003e6: R_ARM_THM_MOVT_PREL	_ZN55_$LT$component2..Bar$u20$as$u20$component2..Frobber$GT$4frob17heb06fcc18f3b84d8E
  80003ea:	|      4479      	add	r1, pc
  80003ec:	|      447a      	add	r2, pc
  80003ee:	|      4620      	mov	r0, r4
  80003f0:	|      2301      	movs	r3, #1
- 80003f2:	|      f7ff ff58 	bl	80002a6 <_ZN10component215frob_it_dynamic17h22211adbaf86d08aE>
+ 80003f2:	|      f7ff ff58 	bl	80002a6 <_ZN10component215frob_it_dynamic17h979f1fe8ba05d5d6E>
+			80003f2: R_ARM_THM_CALL	_ZN10component215frob_it_dynamic17h979f1fe8ba05d5d6E
  80003f6:	|      9800      	ldr	r0, [sp, #0]
  80003f8:	|      2809      	cmp	r0, #9
  80003fa:	+----- d125      	bne.n	8000448 <example12+0x196>
  80003fc:	|      f640 41f8 	movw	r1, #3320	; 0xcf8
+			80003fc: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_8
  8000400:	|      1d20      	adds	r0, r4, #4
  8000402:	|      f2c0 0100 	movt	r1, #0
+			8000402: R_ARM_THM_MOVT_PREL	.L__unnamed_8
  8000406:	|      2209      	movs	r2, #9
  8000408:	|      4479      	add	r1, pc
  800040a:	|      f000 fe44 	bl	8001096 <_ZN17compiler_builtins3mem4bcmp17h8b803fec55a7607aE>
+			800040a: R_ARM_THM_CALL	memcmp
  800040e:	+----- b9d8      	cbnz	r0, 8000448 <example12+0x196>
  8000410:	|      f640 41ea 	movw	r1, #3306	; 0xcea
+			8000410: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_13
  8000414:	|      466c      	mov	r4, sp
  8000416:	|      f2c0 0100 	movt	r1, #0
+			8000416: R_ARM_THM_MOVT_PREL	.L__unnamed_13
  800041a:	|      f64f 42c5 	movw	r2, #64709	; 0xfcc5
+			800041a: R_ARM_THM_MOVW_PREL_NC	_ZN55_$LT$component2..Bar$u20$as$u20$component2..Frobber$GT$4frob17heb06fcc18f3b84d8E
  800041e:	|      f6cf 72ff 	movt	r2, #65535	; 0xffff
+			800041e: R_ARM_THM_MOVT_PREL	_ZN55_$LT$component2..Bar$u20$as$u20$component2..Frobber$GT$4frob17heb06fcc18f3b84d8E
  8000422:	|      4479      	add	r1, pc
  8000424:	|      447a      	add	r2, pc
  8000426:	|      4620      	mov	r0, r4
  8000428:	|      2303      	movs	r3, #3
- 800042a:	|      f7ff ff3c 	bl	80002a6 <_ZN10component215frob_it_dynamic17h22211adbaf86d08aE>
+ 800042a:	|      f7ff ff3c 	bl	80002a6 <_ZN10component215frob_it_dynamic17h979f1fe8ba05d5d6E>
+			800042a: R_ARM_THM_CALL	_ZN10component215frob_it_dynamic17h979f1fe8ba05d5d6E
  800042e:	|      9800      	ldr	r0, [sp, #0]
  8000430:	|      280a      	cmp	r0, #10
  8000432:	+----- d109      	bne.n	8000448 <example12+0x196>
  8000434:	|      f640 41b6 	movw	r1, #3254	; 0xcb6
+			8000434: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_9
  8000438:	|      1d20      	adds	r0, r4, #4
  800043a:	|      f2c0 0100 	movt	r1, #0
+			800043a: R_ARM_THM_MOVT_PREL	.L__unnamed_9
  800043e:	|      220a      	movs	r2, #10
  8000440:	|      4479      	add	r1, pc
  8000442:	|      f000 fe28 	bl	8001096 <_ZN17compiler_builtins3mem4bcmp17h8b803fec55a7607aE>
+			8000442: R_ARM_THM_CALL	memcmp
  8000446:	|  /-- b110      	cbz	r0, 800044e <example12+0x19c>
  8000448:	\--|-> 2000      	movs	r0, #0
  800044a:	   |   b00e      	add	sp, #56	; 0x38
@@ -529,7 +615,9 @@ Disassembly of section .text:
  800052c:	b088      	sub	sp, #32
  800052e:	6800      	ldr	r0, [r0, #0]
  8000530:	f640 3ce0 	movw	ip, #3040	; 0xbe0
+			8000530: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_1
  8000534:	f2c0 0c00 	movt	ip, #0
+			8000534: R_ARM_THM_MOVT_PREL	.L__unnamed_1
  8000538:	9001      	str	r0, [sp, #4]
  800053a:	aa02      	add	r2, sp, #8
  800053c:	e891 4178 	ldmia.w	r1, {r3, r4, r5, r6, r8, lr}
@@ -539,6 +627,7 @@ Disassembly of section .text:
  8000548:	a801      	add	r0, sp, #4
  800054a:	4661      	mov	r1, ip
  800054c:	f000 f87f 	bl	800064e <_ZN4core3fmt5write17h19a390c2d0bed8bbE>
+			800054c: R_ARM_THM_CALL	_ZN4core3fmt5write17h19a390c2d0bed8bbE
  8000550:	b008      	add	sp, #32
  8000552:	f85d 8b04 	ldr.w	r8, [sp], #4
  8000556:	bdf0      	pop	{r4, r5, r6, r7, pc}
@@ -589,15 +678,20 @@ Disassembly of section .text:
  80005b2:	       b672      	cpsid	i
  80005b4:	       4682      	mov	sl, r0
  80005b6:	       f000 f839 	bl	800062c <_ZN10bare_metal15CriticalSection3new17h66b3e307384ac6b0E>
+			80005b6: R_ARM_THM_CALL	_ZN10bare_metal15CriticalSection3new17h66b3e307384ac6b0E
  80005ba:	       f240 0200 	movw	r2, #0
+			80005ba: R_ARM_THM_MOVW_BREL_NC	_ZN20cortex_m_semihosting6export7HSTDOUT17ha11d3efe0335e6c5E
  80005be:	       f005 0801 	and.w	r8, r5, #1
  80005c2:	       f2c0 0200 	movt	r2, #0
+			80005c2: R_ARM_THM_MOVT_BREL	_ZN20cortex_m_semihosting6export7HSTDOUT17ha11d3efe0335e6c5E
  80005c6:	       f859 0002 	ldr.w	r0, [r9, r2]
  80005ca:	       2801      	cmp	r0, #1
  80005cc:	   /-- d014      	beq.n	80005f8 <_ZN20cortex_m_semihosting6export11hstdout_fmt17hfcbeaeddd8276f2eE+0x54>
  80005ce:	   |   f640 3042 	movw	r0, #2882	; 0xb42
+			80005ce: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_2
  80005d2:	   |   2103      	movs	r1, #3
  80005d4:	   |   f2c0 0000 	movt	r0, #0
+			80005d4: R_ARM_THM_MOVT_PREL	.L__unnamed_2
  80005d8:	   |   9104      	str	r1, [sp, #16]
  80005da:	   |   4478      	add	r0, pc
  80005dc:	   |   2104      	movs	r1, #4
@@ -612,8 +706,10 @@ Disassembly of section .text:
  80005f2:	|  |   f849 3002 	str.w	r3, [r9, r2]
  80005f6:	|  |   6048      	str	r0, [r1, #4]
  80005f8:	|  \-> f640 3112 	movw	r1, #2834	; 0xb12
+			80005f8: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_1
  80005fc:	|      eb09 0002 	add.w	r0, r9, r2
  8000600:	|      f2c0 0100 	movt	r1, #0
+			8000600: R_ARM_THM_MOVT_PREL	.L__unnamed_1
  8000604:	|      3004      	adds	r0, #4
  8000606:	|      9001      	str	r0, [sp, #4]
  8000608:	|      aa02      	add	r2, sp, #8
@@ -623,6 +719,7 @@ Disassembly of section .text:
  8000612:	|      e880 5078 	stmia.w	r0, {r3, r4, r5, r6, ip, lr}
  8000616:	|      a801      	add	r0, sp, #4
  8000618:	|      f000 f819 	bl	800064e <_ZN4core3fmt5write17h19a390c2d0bed8bbE>
+			8000618: R_ARM_THM_CALL	_ZN4core3fmt5write17h19a390c2d0bed8bbE
  800061c:	\----> f1b8 0f00 	cmp.w	r8, #0
  8000620:	   /-- d100      	bne.n	8000624 <_ZN20cortex_m_semihosting6export11hstdout_fmt17hfcbeaeddd8276f2eE+0x80>
  8000622:	   |   b662      	cpsie	i
@@ -633,10 +730,10 @@ Disassembly of section .text:
 0800062c <_ZN10bare_metal15CriticalSection3new17h66b3e307384ac6b0E>:
  800062c:	4770      	bx	lr
 
-0800062e <_ZN7userlib91_$LT$impl$u20$core..convert..From$LT$userlib..RcLen$GT$$u20$for$u20$$LP$u32$C$usize$RP$$GT$4from17h02b830a50f92d613E>:
+0800062e <_ZN7userlib91_$LT$impl$u20$core..convert..From$LT$userlib..RcLen$GT$$u20$for$u20$$LP$u32$C$usize$RP$$GT$4from17h1e460157d6ea36b0E>:
  800062e:	4770      	bx	lr
 
-08000630 <_ZN7userlib13sys_send_stub17h2444658aabf553a4E>:
+08000630 <_ZN7userlib13sys_send_stub17h888361065a580dfcE>:
  8000630:	e92d 0ff0 	stmdb	sp!, {r4, r5, r6, r7, r8, r9, sl, fp}
  8000634:	e890 07f0 	ldmia.w	r0, {r4, r5, r6, r7, r8, r9, sl}
  8000638:	f04f 0b00 	mov.w	fp, #0
@@ -706,7 +803,9 @@ Disassembly of section .text:
  80006d6:	|  |  |  |     |  |      eb01 02c2 	add.w	r2, r1, r2, lsl #3
  80006da:	|  |  |  |     |  |      6853      	ldr	r3, [r2, #4]
  80006dc:	|  |  |  |     |  |      f64f 7563 	movw	r5, #65379	; 0xff63
+			80006dc: R_ARM_THM_MOVW_PREL_NC	_ZN4core3ops8function6FnOnce9call_once17hf29a6adbaf16d366E
  80006e0:	|  |  |  |     |  |      f6cf 75ff 	movt	r5, #65535	; 0xffff
+			80006e0: R_ARM_THM_MOVT_PREL	_ZN4core3ops8function6FnOnce9call_once17hf29a6adbaf16d366E
  80006e4:	|  |  |  |     |  |      447d      	add	r5, pc
  80006e6:	|  |  |  |     |  |      42ab      	cmp	r3, r5
  80006e8:	|  |  |  |     |  |  /-- d006      	beq.n	80006f8 <_ZN4core3fmt5write17h19a390c2d0bed8bbE+0xaa>
@@ -726,7 +825,9 @@ Disassembly of section .text:
  800070c:	|  |  |  |  |     |      eb01 00c0 	add.w	r0, r1, r0, lsl #3
  8000710:	|  |  |  |  |     |      6842      	ldr	r2, [r0, #4]
  8000712:	|  |  |  |  |     |      f64f 732d 	movw	r3, #65325	; 0xff2d
+			8000712: R_ARM_THM_MOVW_PREL_NC	_ZN4core3ops8function6FnOnce9call_once17hf29a6adbaf16d366E
  8000716:	|  |  |  |  |     |      f6cf 73ff 	movt	r3, #65535	; 0xffff
+			8000716: R_ARM_THM_MOVT_PREL	_ZN4core3ops8function6FnOnce9call_once17hf29a6adbaf16d366E
  800071a:	|  |  |  |  |     |      447b      	add	r3, pc
  800071c:	|  |  |  |  |     |      429a      	cmp	r2, r3
  800071e:	|  |  |  |  |     |  /-- d001      	beq.n	8000724 <_ZN4core3fmt5write17h19a390c2d0bed8bbE+0xd6>
@@ -883,6 +984,7 @@ Disassembly of section .text:
  800089e:	|  |  |  |  |  |  |  |  |  |     |      9a06      	ldr	r2, [sp, #24]
  80008a0:	|  |  |  |  |  |  |  |  |  |     |      4620      	mov	r0, r4
  80008a2:	|  |  |  |  |  |  |  |  |  |     |      f000 f909 	bl	8000ab8 <_ZN4core3fmt9Formatter12pad_integral12write_prefix17h9893618a3bfbcabbE>
+			80008a2: R_ARM_THM_CALL	_ZN4core3fmt9Formatter12pad_integral12write_prefix17h9893618a3bfbcabbE
  80008a6:	|  |  |  |  |  |  |  |  |  |  /--|----- b3a8      	cbz	r0, 8000914 <_ZN4core3fmt9Formatter12pad_integral17h5f473887ffb34b0fE+0x12e>
  80008a8:	|  |  |  |  |  |  |  |  |  |  |  |      f04f 0801 	mov.w	r8, #1
  80008ac:	|  |  |  |  |  |  |  |  |  |  |  |  /-- e02d      	b.n	800090a <_ZN4core3fmt9Formatter12pad_integral17h5f473887ffb34b0fE+0x124>
@@ -894,6 +996,7 @@ Disassembly of section .text:
  80008bc:	|  |  |  |  |  |  |  |  |     |  |  |   46a2      	mov	sl, r4
  80008be:	|  |  |  |  |  |  |  |  |     |  |  |   4674      	mov	r4, lr
  80008c0:	|  |  |  |  |  |  |  |  |     |  |  |   f000 f91d 	bl	8000afe <_ZN4core3str5count14do_count_chars17h44204b1f6175f776E>
+			80008c0: R_ARM_THM_CALL	_ZN4core3str5count14do_count_chars17h44204b1f6175f776E
  80008c4:	|  |  |  |  |  |  |  |  |     |  |  |   4643      	mov	r3, r8
  80008c6:	|  |  |  |  |  |  |  |  |     |  |  |   46a6      	mov	lr, r4
  80008c8:	|  |  |  |  |  |  |  |  |     |  |  |   4654      	mov	r4, sl
@@ -920,6 +1023,7 @@ Disassembly of section .text:
  80008fe:	|  |  |  |  |  |  |  |  |     |     |   9a06      	ldr	r2, [sp, #24]
  8000900:	|  |  |  |  |  |  |  |  |     |     |   4629      	mov	r1, r5
  8000902:	|  |  |  |  |  |  |  |  |     |     |   f000 f8d9 	bl	8000ab8 <_ZN4core3fmt9Formatter12pad_integral12write_prefix17h9893618a3bfbcabbE>
+			8000902: R_ARM_THM_CALL	_ZN4core3fmt9Formatter12pad_integral12write_prefix17h9893618a3bfbcabbE
  8000906:	|  |  |  |  |  |  |  |  |     |     |   2800      	cmp	r0, #0
  8000908:	|  |  |  |  |  |  |  |  |     |  /--|-- d070      	beq.n	80009ec <_ZN4core3fmt9Formatter12pad_integral17h5f473887ffb34b0fE+0x206>
  800090a:	|  |  |  |  |  |  |  |  |     |  |  \-> 4640      	mov	r0, r8
@@ -995,6 +1099,7 @@ Disassembly of section .text:
  80009cc:	|  |  |                          |      9600      	str	r6, [sp, #0]
  80009ce:	|  |  |                          |      4620      	mov	r0, r4
  80009d0:	|  |  |                          |      f000 f872 	bl	8000ab8 <_ZN4core3fmt9Formatter12pad_integral12write_prefix17h9893618a3bfbcabbE>
+			80009d0: R_ARM_THM_CALL	_ZN4core3fmt9Formatter12pad_integral12write_prefix17h9893618a3bfbcabbE
  80009d4:	|  |  |                          |      2800      	cmp	r0, #0
  80009d6:	|  |  |                 /--------|----- d14f      	bne.n	8000a78 <_ZN4core3fmt9Formatter12pad_integral17h5f473887ffb34b0fE+0x292>
  80009d8:	|  |  |                 |        |      68eb      	ldr	r3, [r5, #12]
@@ -1043,6 +1148,7 @@ Disassembly of section .text:
  8000a3a:	                        |  |            9a06      	ldr	r2, [sp, #24]
  8000a3c:	                        |  |            465b      	mov	r3, fp
  8000a3e:	                        |  |            f000 f83b 	bl	8000ab8 <_ZN4core3fmt9Formatter12pad_integral12write_prefix17h9893618a3bfbcabbE>
+			8000a3e: R_ARM_THM_CALL	_ZN4core3fmt9Formatter12pad_integral12write_prefix17h9893618a3bfbcabbE
  8000a42:	                        +--|----------- b9c8      	cbnz	r0, 8000a78 <_ZN4core3fmt9Formatter12pad_integral17h5f473887ffb34b0fE+0x292>
  8000a44:	                        |  |            f8da 300c 	ldr.w	r3, [sl, #12]
  8000a48:	                        |  |            4640      	mov	r0, r8
@@ -1402,7 +1508,9 @@ Disassembly of section .text:
  8000e2e:	                   bf48      	it	mi
  8000e30:	                   4265      	negmi	r5, r4
  8000e32:	                   f240 21fc 	movw	r1, #764	; 0x2fc
+			8000e32: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_81
  8000e36:	                   f2c0 0100 	movt	r1, #0
+			8000e36: R_ARM_THM_MOVT_PREL	.L__unnamed_81
  8000e3a:	                   429d      	cmp	r5, r3
  8000e3c:	                   4479      	add	r1, pc
  8000e3e:	/----------------- d341      	bcc.n	8000ec4 <_ZN4core3fmt3num3imp52_$LT$impl$u20$core..fmt..Display$u20$for$u20$i32$GT$3fmt17hdd7bd15d96f960c3E+0xac>
@@ -1469,8 +1577,10 @@ Disassembly of section .text:
  8000ef4:	      |            3030      	adds	r0, #48	; 0x30
  8000ef6:	      |            54c8      	strb	r0, [r1, r3]
  8000ef8:	      \----------> f240 2228 	movw	r2, #552	; 0x228
+			8000ef8: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_13
  8000efc:	                   f1c3 0027 	rsb	r0, r3, #39	; 0x27
  8000f00:	                   f2c0 0200 	movt	r2, #0
+			8000f00: R_ARM_THM_MOVT_PREL	.L__unnamed_13
  8000f04:	                   f1a7 013f 	sub.w	r1, r7, #63	; 0x3f
  8000f08:	                   4419      	add	r1, r3
  8000f0a:	                   e9cd 1000 	strd	r1, r0, [sp]
@@ -1480,6 +1590,7 @@ Disassembly of section .text:
  8000f14:	                   4660      	mov	r0, ip
  8000f16:	                   2300      	movs	r3, #0
  8000f18:	                   f7ff fc65 	bl	80007e6 <_ZN4core3fmt9Formatter12pad_integral17h5f473887ffb34b0fE>
+			8000f18: R_ARM_THM_CALL	_ZN4core3fmt9Formatter12pad_integral17h5f473887ffb34b0fE
  8000f1c:	                   b00e      	add	sp, #56	; 0x38
  8000f1e:	                   e8bd 0d00 	ldmia.w	sp!, {r8, sl, fp}
  8000f22:	                   bdf0      	pop	{r4, r5, r6, r7, pc}
@@ -1491,7 +1602,9 @@ Disassembly of section .text:
  8000f2c:	                   b08e      	sub	sp, #56	; 0x38
  8000f2e:	                   6804      	ldr	r4, [r0, #0]
  8000f30:	                   f240 10fc 	movw	r0, #508	; 0x1fc
+			8000f30: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_81
  8000f34:	                   f2c0 0000 	movt	r0, #0
+			8000f34: R_ARM_THM_MOVT_PREL	.L__unnamed_81
  8000f38:	                   f242 7310 	movw	r3, #10000	; 0x2710
  8000f3c:	                   4478      	add	r0, pc
  8000f3e:	                   460d      	mov	r5, r1
@@ -1560,8 +1673,10 @@ Disassembly of section .text:
  8000ff8:	      |            f1a7 013f 	sub.w	r1, r7, #63	; 0x3f
  8000ffc:	      |            54c8      	strb	r0, [r1, r3]
  8000ffe:	      \----------> f240 1228 	movw	r2, #296	; 0x128
+			8000ffe: R_ARM_THM_MOVW_PREL_NC	.L__unnamed_13
  8001002:	                   f1a7 013f 	sub.w	r1, r7, #63	; 0x3f
  8001006:	                   f2c0 0200 	movt	r2, #0
+			8001006: R_ARM_THM_MOVT_PREL	.L__unnamed_13
  800100a:	                   f1c3 0027 	rsb	r0, r3, #39	; 0x27
  800100e:	                   4419      	add	r1, r3
  8001010:	                   447a      	add	r2, pc
@@ -1570,6 +1685,7 @@ Disassembly of section .text:
  8001018:	                   2101      	movs	r1, #1
  800101a:	                   2300      	movs	r3, #0
  800101c:	                   f7ff fbe3 	bl	80007e6 <_ZN4core3fmt9Formatter12pad_integral17h5f473887ffb34b0fE>
+			800101c: R_ARM_THM_CALL	_ZN4core3fmt9Formatter12pad_integral17h5f473887ffb34b0fE
  8001020:	                   b00e      	add	sp, #56	; 0x38
  8001022:	                   e8bd 0d00 	ldmia.w	sp!, {r8, sl, fp}
  8001026:	                   bdf0      	pop	{r4, r5, r6, r7, pc}
@@ -1619,4 +1735,5 @@ Disassembly of section .text:
 
 08001096 <_ZN17compiler_builtins3mem4bcmp17h8b803fec55a7607aE>:
  8001096:	f7ff bfc7 	b.w	8001028 <_ZN17compiler_builtins3mem6memcmp17h2c4c3af3abcfeac7E>
+			8001096: R_ARM_THM_JUMP24	_ZN17compiler_builtins3mem6memcmp17h2c4c3af3abcfeac7E
  800109a:	dede      	udf	#222	; 0xde

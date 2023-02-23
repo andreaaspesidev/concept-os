@@ -1,0 +1,10 @@
+[package]
+name = "tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+toml = "0.5.9"
+serde = {version = "1.0.137", features=["derive"]}
+clap = {version = "3.1.18", features = ["derive"]}
+relocator = {path = "../"}

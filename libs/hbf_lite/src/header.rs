@@ -331,7 +331,7 @@ pub struct HbfHeaderRelocation {
 }
 
 impl<'a> HbfHeaderRelocation {
-    pub fn offset(&self) -> u32 {
+    pub fn value(&self) -> u32 {
         let p = core::ptr::addr_of!(self.address_offset);
         unsafe { p.read_unaligned() }
     }
@@ -350,7 +350,7 @@ impl<'a> HbfHeaderRelocation {
 impl Debug for HbfHeaderRelocation {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.debug_struct("Hbf Relocation")
-            .field("Offset", &format_args!("{:#010x}", &self.offset()))
+            .field("Value", &format_args!("{:#010x}", &self.value()))
             .finish()
     }
 }

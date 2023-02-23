@@ -28,6 +28,7 @@ pub fn generate_hbf(
         &elf_result.text_section, 
         (&elf_result.rodata_section).as_ref(), 
         elf_result.rel_entrypoint, 
+        relocs.text.as_ref(),
         relocs.rodata.as_ref(), 
         relocs.data.as_ref()
     );
@@ -185,7 +186,7 @@ mod test {
         }
         // [[relocations]]
         // TODO: more extensive check
-        let total_relocs: usize = relocs.rodata.unwrap_or_else(|| vec![]).len() + relocs.data.unwrap_or_else(|| vec![]).len();
+        let total_relocs: usize = relocs.text.unwrap_or_else(|| vec![]).len() + relocs.rodata.unwrap_or_else(|| vec![]).len() + relocs.data.unwrap_or_else(|| vec![]).len();
         assert_eq!(total_relocs, hbf_parsed.header_base().num_relocations() as usize);
         // [[dependencies]]
         assert_eq!(component_config.dependencies.is_some(), hbf_parsed.header_base().num_dependencies() > 0);

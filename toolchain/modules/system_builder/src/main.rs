@@ -80,7 +80,7 @@ fn build_system(app_config_path: String, output_path: String, verbose: bool) {
             &board_config,
             &component_name,
         );
-        elf_edit.add_component(&hbf_path);
+        elf_edit.add_component(&hbf_path, verbose);
     }
     // Generate ELF
     visualize_stats::visualize(elf_edit.finish(), &app_root);
@@ -272,8 +272,6 @@ fn main() {
 */
 #[cfg(test)]
 mod test {
-    use std::path::PathBuf;
-
     use crate::build_system;
 
     #[test]
