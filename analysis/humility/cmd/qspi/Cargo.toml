@@ -1,0 +1,17 @@
+[package]
+name = "humility-cmd-qspi"
+version = "0.1.0"
+edition = "2021"
+description = "QSPI status, reading and writing"
+
+[dependencies]
+humility = { workspace = true }
+humility-cmd = { workspace = true }
+cmd-hiffy = { workspace = true }
+hif = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+parse_int = { workspace = true }
+indicatif = { workspace = true }
+log = { workspace = true }
+sha2 = { workspace = true }

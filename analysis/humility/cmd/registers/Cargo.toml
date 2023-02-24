@@ -1,0 +1,13 @@
+[package]
+name = "humility-cmd-registers"
+version = "0.1.0"
+edition = "2021"
+description = "print Hubris registers"
+
+[dependencies]
+humility = { workspace = true }
+humility-cortex = { workspace = true }
+humility-cmd = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+num-traits = { workspace = true }

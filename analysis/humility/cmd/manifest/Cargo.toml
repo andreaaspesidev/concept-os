@@ -1,0 +1,11 @@
+[package]
+name = "humility-cmd-manifest"
+version = "0.1.0"
+edition = "2021"
+description = "print archive manifest"
+
+[dependencies]
+humility = { workspace = true }
+humility-cmd = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }

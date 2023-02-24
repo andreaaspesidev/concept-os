@@ -1,0 +1,12 @@
+[package]
+name = "humility-cmd-stmsecure"
+version = "0.1.0"
+edition = "2021"
+description = "change secure region settings on the stm32h7"
+
+[dependencies]
+humility = { workspace = true }
+humility-cmd = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+parse_int = { workspace = true }

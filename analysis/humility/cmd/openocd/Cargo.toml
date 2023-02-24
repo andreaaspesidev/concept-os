@@ -1,0 +1,14 @@
+[package]
+name = "humility-cmd-openocd"
+version = "0.1.0"
+edition = "2021"
+description = "Run OpenOCD for the given archive"
+
+[dependencies]
+humility = { workspace = true }
+humility-cmd = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+ctrlc = { workspace = true }
+regex = { workspace = true }
+tempfile = { workspace = true }

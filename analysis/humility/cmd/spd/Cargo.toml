@@ -1,0 +1,16 @@
+[package]
+name = "humility-cmd-spd"
+version = "0.1.0"
+edition = "2021"
+description = "scan for and read SPD devices"
+
+[dependencies]
+humility = { workspace = true }
+humility-cmd = { workspace = true }
+hif = { workspace = true }
+spd = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+jep106 = { workspace = true }
+parse_int = { workspace = true }
+log = { workspace = true }

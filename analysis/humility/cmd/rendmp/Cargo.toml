@@ -1,0 +1,18 @@
+[package]
+name = "humility-cmd-rendmp"
+version = "0.1.0"
+edition = "2021"
+description = "Renesas digital muliphase controller operations"
+
+[dependencies]
+humility = { workspace = true }
+humility-cmd = { workspace = true }
+hif = { workspace = true }
+pmbus = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+indicatif = { workspace = true }
+log = { workspace = true }
+parse_int = { workspace = true }
+num-traits = { workspace = true }
+num-derive = { workspace = true }

@@ -1,0 +1,13 @@
+[package]
+name = "humility-cmd-readmem"
+version = "0.1.0"
+edition = "2021"
+description = "read and display memory region"
+
+[dependencies]
+humility = { workspace = true }
+humility-cmd = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+parse_int = { workspace = true }
+parse-size = { workspace = true }

@@ -1,0 +1,17 @@
+[package]
+name = "humility-cmd-pmbus"
+version = "0.1.0"
+edition = "2021"
+description = "scan for and read PMBus devices"
+
+[dependencies]
+humility = { workspace = true }
+humility-cmd = { workspace = true }
+hif = { workspace = true }
+pmbus = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+colored = { workspace = true }
+indexmap = { workspace = true }
+log = { workspace = true }
+parse_int = { workspace = true }

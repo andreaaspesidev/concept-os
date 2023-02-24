@@ -1,0 +1,339 @@
+[package]
+name = "humility"
+
+#
+# If you are about to update the Humility version (and well you should!) note
+# that there are a few tests that implicitly depend on it.  Fortunately,
+# trycmd makes it easy to update all of these at once; after changing the
+# version, utter:
+#
+#   TRYCMD_TEST="tests/cmd/*trycmd" TRYCMD=overwrite cargo test
+#
+# That will fail, but the files that result in the test failure should be
+# overwritten with the new result -- and `git diff` should show something
+# reasonable.  A subsequent test run should succeed:
+#
+#   TRYCMD_TEST="tests/cmd/*trycmd" cargo test
+#
+# Be sure to check in and push all of the files that change.  Happy versioning!
+#
+version = "0.9.30"
+authors = ["Bryan Cantrill <bryan@oxide.computer>"]
+edition = "2018"
+license = "MPL-2.0"
+
+[workspace]
+members = [
+    "humility-core",
+    "humility-cmd",
+    "humility-arch-cortex",
+    "cmd/apptable",
+    "cmd/auxflash",
+    "cmd/bankerase",
+    "cmd/console-proxy",
+    "cmd/dashboard",
+    "cmd/debugmailbox",
+    "cmd/diagnose",
+    "cmd/doc",
+    "cmd/dump",
+    "cmd/tofino-eeprom",
+    "cmd/etm",
+    "cmd/exec",
+    "cmd/extract",
+    "cmd/flash",
+    "cmd/gdb",
+    "cmd/gpio",
+    "cmd/hash",
+    "cmd/hiffy",
+    "cmd/rpc",
+    "cmd/i2c",
+    "cmd/ibc",
+    "cmd/itm",
+    "cmd/jefe",
+    "cmd/lpc55gpio",
+    "cmd/lpc55-pfr",
+    "cmd/manifest",
+    "cmd/map",
+    "cmd/monorail",
+    "cmd/net",
+    "cmd/openocd",
+    "cmd/pmbus",
+    "cmd/power",
+    "cmd/probe",
+    "cmd/qspi",
+    "cmd/readmem",
+    "cmd/readvar",
+    "cmd/registers",
+    "cmd/reset",
+    "cmd/rencm",
+    "cmd/rendmp",
+    "cmd/repl",
+    "cmd/ringbuf",
+    "cmd/sensors",
+    "cmd/spctrl",
+    "cmd/spd",
+    "cmd/spi",
+    "cmd/stackmargin",
+    "cmd/stmsecure",
+    "cmd/tasks",
+    "cmd/test",
+    "cmd/trace",
+    "cmd/update",
+    "cmd/validate",
+    "cmd/vpd",
+    "xtask",
+]
+
+[workspace.dependencies]
+# `git`-based deps
+hif = { git = "https://github.com/oxidecomputer/hif" }
+humpty = { git = "https://github.com/oxidecomputer/humpty" }
+idol = {git = "https://github.com/oxidecomputer/idolatry.git"}
+idt8a3xxxx = { git = "https://github.com/oxidecomputer/idt8a3xxxx" }
+lpc55_areas = { git = "https://github.com/oxidecomputer/lpc55_support", rev = "a07e8d39caf27dd83c314e121755d481a3f52263" }
+pmbus = { git = "https://github.com/oxidecomputer/pmbus" }
+spd = { git = "https://github.com/oxidecomputer/spd" }
+serialport = { git = "https://github.com/jgallagher/serialport-rs", branch = "illumos-support" }
+tlvc = { git = "https://github.com/oxidecomputer/tlvc" }
+tlvc-text = {git = "https://github.com/oxidecomputer/tlvc"}
+vsc7448-info = { git = "https://github.com/oxidecomputer/vsc7448.git" }
+vsc7448-types = { git = "https://github.com/oxidecomputer/vsc7448.git" }
+
+#
+# We depend on the oxide-stable branch of Oxide's fork of probe-rs to assure
+# that we can float necessary patches on probe-rs.
+#
+probe-rs = { git = "https://github.com/oxidecomputer/probe-rs.git", branch = "oxide-v0.12.0" }
+
+#
+# We need the fix for https://github.com/capstone-rust/capstone-rs/issues/84,
+# which upstream seems uninterested in fixing.
+#
+capstone = {git = "https://github.com/oxidecomputer/capstone-rs.git"}
+
+# Local `path`-based deps
+humility = { path = "./humility-core", package = "humility-core" }
+humility-cortex = { path = "./humility-arch-cortex" }
+humility-cmd = { path = "./humility-cmd" }
+humility_load_derive = { path = "./load_derive" }
+cmd-apptable = { path = "./cmd/apptable", package = "humility-cmd-apptable" }
+cmd-auxflash = { path = "./cmd/auxflash", package = "humility-cmd-auxflash" }
+cmd-bankerase = { path = "./cmd/bankerase", package = "humility-cmd-bankerase" }
+cmd-console-proxy = { path = "./cmd/console-proxy", package = "humility-cmd-console-proxy" }
+cmd-dashboard = { path = "./cmd/dashboard", package = "humility-cmd-dashboard" }
+cmd-diagnose = { path = "./cmd/diagnose", package = "humility-cmd-diagnose" }
+cmd-debugmailbox = { path = "./cmd/debugmailbox", package = "humility-cmd-debugmailbox" }
+cmd-doc = { path = "./cmd/doc", package = "humility-cmd-doc" }
+cmd-dump = { path = "./cmd/dump", package = "humility-cmd-dump" }
+cmd-tofino-eeprom = { path = "./cmd/tofino-eeprom", package = "humility-cmd-tofino-eeprom" }
+cmd-etm = { path = "./cmd/etm", package = "humility-cmd-etm" }
+cmd-exec = { path = "./cmd/exec", package = "humility-cmd-exec" }
+cmd-extract = { path = "./cmd/extract", package = "humility-cmd-extract" }
+cmd-flash = { path = "./cmd/flash", package = "humility-cmd-flash" }
+cmd-gdb = { path = "./cmd/gdb", package = "humility-cmd-gdb" }
+cmd-gpio = { path = "./cmd/gpio", package = "humility-cmd-gpio" }
+cmd-hash = { path = "./cmd/hash", package = "humility-cmd-hash" }
+cmd-hiffy = { path = "./cmd/hiffy", package = "humility-cmd-hiffy" }
+cmd-i2c = { path = "./cmd/i2c", package = "humility-cmd-i2c" }
+cmd-ibc = { path = "./cmd/ibc", package = "humility-cmd-ibc" }
+cmd-isp = { path = "./cmd/isp", package = "humility-cmd-isp" }
+cmd-itm = { path = "./cmd/itm", package = "humility-cmd-itm" }
+cmd-jefe = { path = "./cmd/jefe", package = "humility-cmd-jefe" }
+cmd-lpc55gpio = { path = "./cmd/lpc55gpio", package = "humility-cmd-lpc55gpio" }
+cmd-lpc55-pfr = { path = "./cmd/lpc55-pfr", package = "humility-cmd-lpc55-pfr" }
+cmd-manifest = { path = "./cmd/manifest", package = "humility-cmd-manifest" }
+cmd-map = { path = "./cmd/map", package = "humility-cmd-map" }
+cmd-monorail = { path = "./cmd/monorail", package = "humility-cmd-monorail" }
+cmd-net = { path = "./cmd/net", package = "humility-cmd-net" }
+cmd-openocd = { path = "./cmd/openocd", package = "humility-cmd-openocd" }
+cmd-pmbus = { path = "./cmd/pmbus", package = "humility-cmd-pmbus" }
+cmd-power = { path = "./cmd/power", package = "humility-cmd-power" }
+cmd-powershelf = { path = "./cmd/powershelf", package = "humility-cmd-powershelf" }
+cmd-probe = { path = "./cmd/probe", package = "humility-cmd-probe" }
+cmd-qspi = { path = "./cmd/qspi", package = "humility-cmd-qspi" }
+cmd-readmem = { path = "./cmd/readmem", package = "humility-cmd-readmem" }
+cmd-readvar = { path = "./cmd/readvar", package = "humility-cmd-readvar" }
+cmd-registers = { path = "./cmd/registers", package = "humility-cmd-registers" }
+cmd-reset = { path = "./cmd/reset", package = "humility-cmd-reset" }
+cmd-rencm = { path = "./cmd/rencm", package = "humility-cmd-rencm" }
+cmd-rendmp = { path = "./cmd/rendmp", package = "humility-cmd-rendmp" }
+cmd-ringbuf = { path = "./cmd/ringbuf", package = "humility-cmd-ringbuf" }
+cmd-rpc = { path = "./cmd/rpc", package = "humility-cmd-rpc" }
+cmd-sbrmi = { path = "./cmd/sbrmi", package = "humility-cmd-sbrmi" }
+cmd-sensors = { path = "./cmd/sensors", package = "humility-cmd-sensors" }
+cmd-spctrl = { path = "./cmd/spctrl", package = "humility-cmd-spctrl" }
+cmd-spd = { path = "./cmd/spd", package = "humility-cmd-spd" }
+cmd-spi = { path = "./cmd/spi", package = "humility-cmd-spi" }
+cmd-stackmargin = { path = "./cmd/stackmargin", package = "humility-cmd-stackmargin" }
+cmd-stmsecure = { path = "./cmd/stmsecure", package = "humility-cmd-stmsecure" }
+cmd-tasks = { path = "./cmd/tasks", package = "humility-cmd-tasks" }
+cmd-test = { path = "./cmd/test", package = "humility-cmd-test" }
+cmd-trace = { path = "./cmd/trace", package = "humility-cmd-trace" }
+cmd-update = { path = "./cmd/update", package = "humility-cmd-update" }
+cmd-validate = { path = "./cmd/validate", package = "humility-cmd-validate" }
+cmd-vpd = { path = "./cmd/vpd", package = "humility-cmd-vpd" }
+
+# crates.io deps
+anyhow = { version = "1.0.44", features = ["backtrace"] }
+atty = "0.2"
+bitfield = "0.13.2"
+byteorder = "1.3.4"
+cargo_metadata = "0.12.0"
+clap = { version = "3.0.12", features = ["derive", "env"] }
+colored = "2.0.0"
+crc-any = "2.3.5"
+crossbeam-channel = "0.5.6"
+crossterm = "0.20.0"
+csv = "1.1.3"
+ctrlc = "3.1.5"
+env_logger = "0.9.0"
+fallible-iterator = "0.2.0"
+gimli = "0.22.0"
+goblin = "0.2"
+hubpack = "0.1.1"
+ihex = "3.0"
+indexmap = { version = "1.7", features = ["serde-1"] }
+indicatif = "0.15"
+itertools = "0.10.1"
+jep106 = "0.2"
+lazy_static = "1.4.0"
+libc = "0.2"
+log = {version = "0.4.8", features = ["std"]}
+lzss = "0.8"
+multimap = "0.8.1"
+num-derive = "0.3"
+num-traits = "0.2"
+parse_int = "0.4.0"
+parse-size = { version = "1.0", features = ["std"]}
+paste = "0.1"
+path-slash = "0.1.4"
+postcard = "0.7.0"
+proc-macro2 = "1.0"
+quote = "1.0"
+raw-cpuid = "10.6.0"
+reedline = "0.11.0"
+regex = "1.5.5"
+ron = "0.7"
+rusb = "0.8.1"
+rustc-demangle = "0.1.21"
+scroll = "0.10"
+serde = { version = "1.0.126", features = ["derive"] }
+serde_json = "1.0"
+serde-xml-rs = "0.5.1"
+sha2 = "0.10.1"
+splitty = "0.1.0"
+srec = "0.2"
+strum = "0.22"
+strum_macros = "0.22"
+syn = "1.0"
+tempfile = "3.3"
+termimad = "0.21"
+termios = "0.3" # not usable on windows!
+toml = "0.5"
+trycmd = "0.13.2"
+tui = { version = "0.16", default-features = false }
+winapi = "0.3.9"
+zerocopy = "0.6.1"
+zip = "0.5"
+
+[profile.release]
+debug = true
+
+[profile.ci]
+inherits = "release"
+debug = false
+
+[build-dependencies]
+cargo_metadata = { workspace = true }
+anyhow = { workspace = true }
+
+[dependencies]
+pmbus = { workspace = true }
+hif = { workspace = true }
+spd = { workspace = true }
+humility = { workspace = true }
+humility-cortex = { workspace = true }
+humility-cmd = { workspace = true }
+cmd-apptable = { workspace = true }
+cmd-auxflash = { workspace = true }
+cmd-bankerase = { workspace = true }
+cmd-console-proxy = { workspace = true }
+cmd-dashboard = { workspace = true }
+cmd-diagnose = { workspace = true }
+cmd-debugmailbox = { workspace = true }
+cmd-doc = { workspace = true }
+cmd-dump = { workspace = true }
+cmd-tofino-eeprom = { workspace = true }
+cmd-etm = { workspace = true }
+cmd-exec = { workspace = true }
+cmd-extract = { workspace = true }
+cmd-flash = { workspace = true }
+cmd-gdb = { workspace = true }
+cmd-gpio = { workspace = true }
+cmd-hash = { workspace = true }
+cmd-hiffy = { workspace = true }
+cmd-i2c = { workspace = true }
+cmd-ibc = { workspace = true }
+cmd-isp = { workspace = true }
+cmd-itm = { workspace = true }
+cmd-jefe = { workspace = true }
+cmd-lpc55gpio = { workspace = true }
+cmd-lpc55-pfr = { workspace = true }
+cmd-manifest = { workspace = true }
+cmd-map = { workspace = true }
+cmd-monorail = { workspace = true }
+cmd-net = { workspace = true }
+cmd-openocd = { workspace = true }
+cmd-pmbus = { workspace = true }
+cmd-power = { workspace = true }
+cmd-powershelf = { workspace = true }
+cmd-probe = { workspace = true }
+cmd-qspi = { workspace = true }
+cmd-readmem = { workspace = true }
+cmd-readvar = { workspace = true }
+cmd-registers = { workspace = true }
+cmd-reset = { workspace = true }
+cmd-rencm = { workspace = true }
+cmd-rendmp = { workspace = true }
+cmd-ringbuf = { workspace = true }
+cmd-rpc = { workspace = true }
+cmd-sbrmi = { workspace = true }
+cmd-sensors = { workspace = true }
+cmd-spctrl = { workspace = true }
+cmd-spd = { workspace = true }
+cmd-spi = { workspace = true }
+cmd-stackmargin = { workspace = true }
+cmd-stmsecure = { workspace = true }
+cmd-tasks = { workspace = true }
+cmd-test = { workspace = true }
+cmd-trace = { workspace = true }
+cmd-update = { workspace = true }
+cmd-validate = { workspace = true }
+cmd-vpd = { workspace = true }
+
+fallible-iterator = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+bitfield = { workspace = true }
+clap = { workspace = true }
+csv = { workspace = true }
+serde = { workspace = true }
+parse_int = { workspace = true }
+multimap = { workspace = true }
+num-traits = { workspace = true }
+num-derive = { workspace = true }
+jep106 = { workspace = true }
+toml = { workspace = true }
+anyhow = { workspace = true }
+scroll = { workspace = true }
+indicatif = { workspace = true }
+colored = { workspace = true }
+indexmap = { workspace = true }
+reedline = { workspace = true }
+
+[patch.crates-io]
+libusb1-sys = { git = "https://github.com/oxidecomputer/rusb", branch = "probe-rs-0.12-libusb-v1.0.26" }
+hidapi = { git = "https://github.com/oxidecomputer/hidapi-rs", branch = "oxide-stable" }
+
+[dev-dependencies]
+trycmd = { workspace = true }

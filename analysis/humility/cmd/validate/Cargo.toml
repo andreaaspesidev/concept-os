@@ -1,0 +1,17 @@
+[package]
+name = "humility-cmd-validate"
+version = "0.1.0"
+edition = "2021"
+description = "validate presence and operation of devices"
+
+[dependencies]
+humility = { workspace = true }
+humility-cmd = { workspace = true }
+hif = { workspace = true }
+clap = { workspace = true }
+colored = { workspace = true }
+anyhow = { workspace = true }
+parse_int = { workspace = true }
+indexmap = { workspace = true }
+idol = { workspace = true }
+log = { workspace = true }

@@ -1,0 +1,12 @@
+[package]
+name = "humility-cmd-test"
+version = "0.1.0"
+edition = "2021"
+description = "run Hubristest suite and parse results"
+
+[dependencies]
+humility = { workspace = true }
+humility-cortex = { workspace = true }
+humility-cmd = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }

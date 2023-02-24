@@ -1,0 +1,13 @@
+[package]
+name = "humility-cmd-lpc55gpio"
+version = "0.1.0"
+edition = "2021"
+description = "LPC55 GPIO pin manipulation"
+
+[dependencies]
+humility = { workspace = true }
+humility-cmd = { workspace = true }
+hif = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+parse_int = { workspace = true }

@@ -1,0 +1,17 @@
+[package]
+name = "humility-cmd-doc"
+version = "0.1.0"
+edition = "2021"
+description = "print command documentation"
+
+[build-dependencies]
+cargo_metadata = { workspace = true }
+anyhow = { workspace = true }
+
+[dependencies]
+humility = { workspace = true }
+humility-cmd = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+termimad = { workspace = true }
+lazy_static = { workspace = true }

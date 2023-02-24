@@ -1,0 +1,15 @@
+[package]
+name = "humility-cortex"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+humility = { workspace = true }
+anyhow = { workspace = true }
+bitfield = { workspace = true }
+multimap = { workspace = true }
+paste = { workspace = true }
+num-traits = { workspace = true }
+num-derive = { workspace = true }
+jep106 = { workspace = true }
+log = { workspace = true }
