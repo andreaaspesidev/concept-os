@@ -1,0 +1,13 @@
+[package]
+name = "build-net"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+vlan = []
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+
+build-util.path = "../util"

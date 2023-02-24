@@ -1,0 +1,37 @@
+// Jefe IPC API
+
+Interface(
+    name: "Jefe",
+    ops: {
+        "get_state": (
+            reply: Simple("u32"),
+            idempotent: true,
+        ),
+        "set_state": (
+            args: {
+                "state": "u32",
+            },
+            reply: Simple("()"),
+            idempotent: true,
+        ),
+        "request_reset": (
+            reply: Simple("()"),
+            idempotent: true,
+        ),
+        "get_reset_reason": (
+            encoding: Ssmarshal,
+            doc: "Get the reason for the most recent reset",
+            reply: Simple("ResetReason"),
+            idempotent: true,
+        ),
+        "set_reset_reason": (
+            encoding: Ssmarshal,
+            doc: "Set the reason for the most recent reset",
+            args: {
+                "reason": "ResetReason",
+            },
+            reply: Simple("()"),
+            idempotent: true,
+        ),
+    },
+)

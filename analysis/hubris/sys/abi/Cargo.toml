@@ -1,0 +1,15 @@
+[package]
+name = "abi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zerocopy = { workspace = true }
+bitflags = { workspace = true }
+byteorder = { workspace = true }
+serde = { workspace = true }
+phash = { path = "../../lib/phash" }
+
+[lib]
+test = false
+bench = false

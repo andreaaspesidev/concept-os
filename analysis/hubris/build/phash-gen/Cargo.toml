@@ -1,0 +1,10 @@
+[package]
+name = "phash-gen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+phash = { path = "../../lib/phash" }

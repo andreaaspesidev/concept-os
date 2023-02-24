@@ -1,0 +1,17 @@
+[package]
+name = "rcc-api"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+stm32f303re = []
+stm32l432kc = []
+stm32l476rg = []
+
+[dependencies]
+userlib = {path = "../../sys/userlib"}
+cortex-m = { workspace = true, features = ["inline-asm"] }
+zerocopy = {workspace = true}
+num-traits = { workspace = true }
+cfg-if = {workspace = true}
+

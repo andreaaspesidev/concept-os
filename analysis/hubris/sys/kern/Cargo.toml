@@ -1,0 +1,37 @@
+[package]
+name = "kern"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitflags = { workspace = true }
+byteorder = { workspace = true }
+cfg-if = { workspace = true }
+cortex-m = { workspace = true }
+serde = { workspace = true }
+ssmarshal = { workspace = true }
+zerocopy = { workspace = true }
+
+abi = { path = "../abi" }
+armv8-m-mpu = { path = "../../lib/armv8-m-mpu" }
+phash = { path = "../../lib/phash" }
+unwrap-lite = { path = "../../lib/unwrap-lite" }
+
+[build-dependencies]
+anyhow = { workspace = true }
+indexmap = { workspace = true }
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+ron = { workspace = true }
+serde = { workspace = true }
+syn = { workspace = true }
+
+abi = { path = "../abi" }
+build-kconfig = { path = "../../build/kconfig" }
+build-util = { path = "../../build/util" }
+call_rustfmt = { path = "../../build/call_rustfmt" }
+phash-gen = { path = "../../build/phash-gen" }
+
+[lib]
+test = false
+bench = false

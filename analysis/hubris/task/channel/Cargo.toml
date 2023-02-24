@@ -1,0 +1,44 @@
+[package]
+name = "channel"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+log-itm = ["userlib/log-itm"]
+log-semihosting = ["cortex-m-semihosting", "userlib/log-semihosting"]
+stm32f303re = ["rcc-api/stm32f303re", "dep:stm32f303re"]
+stm32l432kc = ["rcc-api/stm32l432kc", "dep:stm32l432kc"]
+stm32l476rg = ["rcc-api/stm32l476rg", "dep:stm32l476rg"]
+
+[dependencies]
+channel-api = {path = "../channel-api"}
+userlib = {path = "../../sys/userlib"}
+cortex-m = { workspace = true, features = ["inline-asm"] }
+cfg-if = {workspace = true}
+cortex-m-semihosting =  { workspace = true, optional=true}
+# Component dependencies
+rcc-api = {path = "../rcc-api"}
+
+# Device-specific dependencies.
+# Each board supported will have its section below
+[dependencies.stm32f303re]
+path = "../../lib/stm32f303re"
+optional = true
+
+[dependencies.stm32l432kc]
+path = "../../lib/stm32l432kc"
+optional = true
+
+[dependencies.stm32l476rg]
+path = "../../lib/stm32l476rg"
+optional = true
+
+[build-dependencies]
+build-util = {path = "../../build/util"}
+
+# This section is here to discourage RLS/rust-analyzer from doing test builds,
+# since test builds don't work for cross compilation.
+[[bin]]
+name = "channel"
+test = false
+bench = false

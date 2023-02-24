@@ -1,0 +1,20 @@
+[package]
+name = "build-i2c"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+build-util = {path = "../util"}
+anyhow = { workspace = true }
+cargo_metadata = { workspace = true }
+cfg-if = { workspace = true }
+convert_case = { workspace = true }
+indexmap = { workspace = true }
+multimap = { workspace = true }
+serde = { workspace = true }
+
+[features]
+h743 = []
+h753 = []
+h7b3 = []
+g031 = []

@@ -1,0 +1,180 @@
+// Monorail management network RPC interface
+
+Interface(
+    name: "Monorail",
+    ops: {
+        "get_port_status": (
+            doc: "Reads the state of a port",
+            args: {
+                "port": "u8",
+            },
+            reply: Result(
+                ok: "PortStatus",
+                err: CLike("MonorailError"),
+            ),
+            encoding: Ssmarshal,
+        ),
+        "get_port_counters": (
+            doc: "Reads the packet counters for a port",
+            args: {
+                "port": "u8",
+            },
+            reply: Result(
+                ok: "PortCounters",
+                err: CLike("MonorailError"),
+            ),
+            encoding: Ssmarshal,
+        ),
+        "reset_port_counters": (
+            doc: "Reads the packet counters for a port",
+            args: {
+                "port": "u8",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("MonorailError"),
+            ),
+            encoding: Ssmarshal,
+        ),
+        "get_phy_status": (
+            doc: "Reads the state of the phy associated with a port",
+            args: {
+                "port": "u8",
+            },
+            reply: Result(
+                ok: "PhyStatus",
+                err: CLike("MonorailError"),
+            ),
+            encoding: Ssmarshal,
+        ),
+        "read_phy_reg": (
+            doc: "Read a register from the PHY associated with a particular port",
+            args: {
+                "port": "u8",
+                "page": "u16",
+                "reg": "u8",
+            },
+            reply: Result(
+                ok: "u16",
+                err: CLike("MonorailError"),
+            ),
+        ),
+        "write_phy_reg": (
+            doc: "Read a register from the PHY associated with a particular port",
+            args: {
+                "port": "u8",
+                "page": "u16",
+                "reg": "u8",
+                "value": "u16",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("MonorailError"),
+            ),
+        ),
+        "read_vsc7448_reg": (
+            doc: "Read a register from the VSC7448",
+            args: {
+                "addr": "u32",
+            },
+            reply: Result(
+                ok: "u32",
+                err: CLike("MonorailError"),
+            ),
+        ),
+        "write_vsc7448_reg": (
+            doc: "Write a VSC7448 register",
+            args: {
+                "addr": "u32",
+                "value": "u32",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("MonorailError"),
+            ),
+        ),
+        "read_vsc8504_sd6g_patch": (
+            doc: "Reads the undocumented VSC8504 SERDES6G patch area",
+            reply: Result(
+                ok: "TeslaSerdes6gPatch",
+                err: CLike("MonorailError"),
+            ),
+        ),
+        "read_vsc8504_sd6g_ob_config": (
+            doc: "Reads the VSC8504 SERDES6G output config",
+            reply: Result(
+                ok: "TeslaSerdes6gObConfig",
+                err: CLike("MonorailError"),
+            ),
+        ),
+        "write_vsc8504_sd6g_ob_config": (
+            doc: "Writes to the VSC8504 SERDES6G output config",
+            args: {
+                "ob_post0": "u8",
+                "ob_post1": "u8",
+                "ob_prec": "u8",
+                "ob_sr_h": "bool",
+                "ob_sr": "u8",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("MonorailError"),
+            ),
+        ),
+        "read_vsc8562_sd6g_ob_cfg": (
+            doc: "Reads from the VSC8504 SERDES6G output config",
+            reply: Result(
+                ok: "Sd6gObCfg",
+                err: CLike("MonorailError"),
+            ),
+        ),
+        "write_vsc8562_sd6g_ob_cfg": (
+            doc: "Writes to the VSC8504 SERDES6G output config",
+            args: {
+                "ob_ena1v_mode": "u8",
+                "ob_pol": "u8",
+                "ob_post0": "u8",
+                "ob_post1": "u8",
+                "ob_sr_h": "u8",
+                "ob_resistor_ctr": "u8",
+                "ob_sr": "u8",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("MonorailError"),
+            ),
+        ),
+        "read_vsc8562_sd6g_ob_cfg1": (
+            doc: "Reads from the VSC8504 SERDES6G output config",
+            reply: Result(
+                ok: "Sd6gObCfg1",
+                err: CLike("MonorailError"),
+            ),
+        ),
+        "write_vsc8562_sd6g_ob_cfg1": (
+            doc: "Writes to the VSC8504 SERDES6G output config",
+            args: {
+                "ob_ena_cas": "u8",
+                "ob_lev": "u8",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("MonorailError"),
+            ),
+        ),
+        "read_vsc7448_mac_count": (
+            doc: "Returns the number of entries in the VSC7448 MAC table",
+            reply: Result(
+                ok: "usize",
+                err: CLike("MonorailError"),
+            ),
+        ),
+        "read_vsc7448_next_mac": (
+            doc: "Reads the next MAC address from the VSC7448 MAC table",
+            reply: Result(
+                ok: "MacTableEntry",
+                err: CLike("MonorailError"),
+            ),
+        ),
+    },
+)

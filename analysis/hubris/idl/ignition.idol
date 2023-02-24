@@ -1,0 +1,111 @@
+// Ignition Server IPC interface
+
+Interface(
+    name: "Ignition",
+    ops: {
+        "port_count": (
+            doc: "Return the number of ports in the system",
+            args: {},
+            reply: Result(
+                ok: "u8",
+                err: CLike("IgnitionError"),
+            ),
+        ),
+        "presence_summary": (
+            doc: "A bit vector indicating whether or not a Target is present on the given port",
+            args: {},
+            reply: Result(
+                ok: "u64",
+                err: CLike("IgnitionError"),
+            ),
+        ),
+        "port_state": (
+            doc: "Return the state for the given controller port",
+            args: {
+                "port": "u8",
+            },
+            reply: Result(
+                ok: "PortState",
+                err: CLike("IgnitionError"),
+            ),
+        ),
+        "counters": (
+            doc: "Return the counters for the given controller port",
+            args: {
+                "port": "u8",
+            },
+            reply: Result(
+                ok: "Counters",
+                err: CLike("IgnitionError"),
+            ),
+        ),
+        "transceiver_events": (
+            doc: "Return the transceiver events for the given controller port and transceiver",
+            args: {
+                "port": "u8",
+                "txr": (
+                    type: "TransceiverSelect",
+                    recv: FromPrimitive("u8"),
+                ),
+            },
+            reply: Result(
+                ok: "u8",
+                err: CLike("IgnitionError"),
+            ),
+        ),
+        "clear_transceiver_events": (
+            doc: "Clear the link events for the given controller port and transceiver",
+            args: {
+                "port": "u8",
+                "txr": (
+                    type: "TransceiverSelect",
+                    recv: FromPrimitive("u8"),
+                ),
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("IgnitionError"),
+            ),
+        ),
+         "link_events": (
+            doc: "Return all transceiver events for the given port",
+            args: {
+                "port": "u8",
+            },
+            reply: Result(
+                ok: "[u8; 3]",
+                err: CLike("IgnitionError"),
+            ),
+        ),
+        "send_request": (
+            doc: "Send a request to the Target for the given controller port",
+            args: {
+                "port": "u8",
+                "request": (
+                    type: "Request",
+                    recv: FromPrimitive("u8"),
+                )
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("IgnitionError"),
+            ),
+        ),
+        "all_port_state": (
+            doc: "Return the state for the given controller ports as indicated by the ports bit vector",
+            args: {},
+            reply: Result(
+                ok: "[PortState; 40]",
+                err: CLike("IgnitionError"),
+            ),
+        ),
+        "all_link_events": (
+            doc: "Return the transceiver events for all ports",
+            args: {},
+            reply: Result(
+                ok: "[[u8; 3]; 40]",
+                err: CLike("IgnitionError"),
+            ),
+        ),
+    }
+)

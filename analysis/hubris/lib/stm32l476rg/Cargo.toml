@@ -1,0 +1,17 @@
+[package]
+name = "stm32l476rg"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+rt = ["cortex-m-rt/device"]
+
+[dependencies]
+static_assertions = {workspace = true}
+bare-metal = {workspace = true}
+cortex-m = {workspace = true}
+vcell = {workspace = true}
+
+[dependencies.cortex-m-rt]
+workspace = true
+optional = true
