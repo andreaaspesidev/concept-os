@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use rcc_api::RCCError;
 use channel_api::*;
+use rcc_api::RCCError;
 use userlib::{hl::Caller, *};
 
 #[cfg(target_board = "stm32f303re")]
@@ -14,35 +14,76 @@ use stm32l432kc::device;
 #[cfg(target_board = "stm32l476rg")]
 use stm32l476rg::device;
 
-// Baudrate used during communication
-const BAUDRATE: u32 = 115_200;
-const TIMEOUT_MASK: u32 = 0b1000_0000_0000_0000;
-
 task_slot!(RCC, rcc);
 
+// Baudrate used during communication
+const BAUDRATE: u32 = 115_200;
+const TIMEOUT_MASK: u32 = 1 << 31;
+
+// Configuration of this module
+cfg_if::cfg_if! {
+    if #[cfg(feature = "multi-support")] {
+        const MAX_TRANSMITTERS: usize = 2; // Number of components allowed to trasmit simult.
+        const MAX_RECEIVERS: usize = 2;    // Number of components allowed to wait for data simult.
+        use heapless::Vec;
+    }
+}
 
 // Driver state
-struct Transmitter {
-    caller: hl::Caller<()>,
-    borrow_num: usize,
-    len: usize,
-    pos: usize,
-}
-struct Receiver {
-    caller: hl::Caller<()>,
-    borrow_num: usize,
-    len: usize,
-    pos: usize,
-}
-
-struct DriverState {
-    pub receiver_state: ReceiverState,
-    pub pending_transmitter: Option<Transmitter>,
-}
-
-struct ReceiverState {
-    pub pending_receiver: Option<Receiver>,
-    pub current_read_pos: usize,
+cfg_if::cfg_if! {
+    if #[cfg(feature = "multi-support")] {
+        struct Transmitter {
+            caller: hl::Caller<()>,
+            id: u16,
+            borrow_num: usize,
+            len: usize,
+            pos: usize,
+        }
+        struct Receiver {
+            caller: hl::Caller<()>,
+            id: u16,
+            borrow_num: usize,
+            len: usize,
+            pos: usize,
+            deadline: Option<u64>
+        }
+        struct ReceiverState {
+            pub receivers: Vec<Receiver, MAX_RECEIVERS>,
+            pub header_data_buff: [u8; 4],
+            pub header_data_buff_pos: usize,
+            pub current_read_pos: usize,
+            pub last_channel_id: Option<u16>,
+            pub last_packet_len: u16,
+        }
+        struct TransmitterState {
+            pub transmitters: Vec<Transmitter, MAX_TRANSMITTERS>,
+        }
+        struct DriverState {
+            pub receiver_state: ReceiverState,
+            pub transmitter_state: TransmitterState,
+        }
+    } else {
+        struct Transmitter {
+            caller: hl::Caller<()>,
+            borrow_num: usize,
+            len: usize,
+            pos: usize,
+        }
+        struct Receiver {
+            caller: hl::Caller<()>,
+            borrow_num: usize,
+            len: usize,
+            pos: usize
+        }
+        struct ReceiverState {
+            pub pending_receiver: Option<Receiver>,
+            pub current_read_pos: usize,
+        }
+        struct DriverState {
+            pub receiver_state: ReceiverState,
+            pub pending_transmitter: Option<Transmitter>,
+        }
+    }
 }
 
 #[export_name = "main"]
@@ -66,6 +107,21 @@ fn main() -> ! {
     sys_irq_control(notifications::DMA_IRQ_MASK, true);
 
     // Construct driver state
+    #[cfg(feature = "multi-support")]
+    let mut state = DriverState {
+        receiver_state: ReceiverState {
+            receivers: Vec::new(),
+            current_read_pos: 1,
+            last_channel_id: None,
+            last_packet_len: 0,
+            header_data_buff: [0x00; 4],
+            header_data_buff_pos: 0,
+        },
+        transmitter_state: TransmitterState {
+            transmitters: Vec::new(),
+        },
+    };
+    #[cfg(not(feature = "multi-support"))]
     let mut state = DriverState {
         receiver_state: ReceiverState {
             pending_receiver: None,
@@ -76,22 +132,31 @@ fn main() -> ! {
 
     // Main loop
     sys_log!("[UARTv1] Online!");
-    let mut recv_buff: [u8; 8] = [0x00; 8];
+    let mut recv_buff: [u8; 12] = [0x00; 12];
     let mut frame_recovery: bool = true;
     loop {
         hl::recv(
             &mut recv_buff,
-            notifications::USART_IRQ_MASK | notifications::DMA_IRQ_MASK | TIMEOUT_MASK,
+            notifications::USART_IRQ_MASK
+                | notifications::DMA_IRQ_MASK
+                | TIMEOUT_MASK,
             &mut state,
             |state_ref, bits| {
                 // Timer IRQ
                 if bits & TIMEOUT_MASK != 0 {
                     // Timeout for read expired
+                    #[cfg(feature = "multi-support")]
+                    cancel_expired(state_ref);
+
+                    #[cfg(not(feature = "multi-support"))]
                     if state_ref.receiver_state.pending_receiver.is_some() {
-                        core::mem::replace(&mut state_ref.receiver_state.pending_receiver, None)
-                            .unwrap()
-                            .caller
-                            .reply_fail(ChannelError::ReadTimeOut);
+                        core::mem::replace(
+                            &mut state_ref.receiver_state.pending_receiver,
+                            None,
+                        )
+                        .unwrap()
+                        .caller
+                        .reply_fail(ChannelError::ReadTimeOut);
                     }
                 }
                 // UART IRQ
@@ -105,11 +170,7 @@ fn main() -> ! {
                     // Transmit the old way
                     if usart_isr.txe().bit_is_set() {
                         // TX register empty. Do we need to send something?
-                        step_transmit(
-                            &usart,
-                            &mut state_ref.pending_transmitter,
-                            &mut state_ref.receiver_state.pending_receiver,
-                        );
+                        step_transmit(&usart, state_ref);
                     }
 
                     if usart_isr.idle().bit_is_set() {
@@ -117,7 +178,10 @@ fn main() -> ! {
                         // -> get the number of bytes still to be read of DMA
                         #[cfg(target_board = "stm32f303re")]
                         let remaining_rx = dma1.ch6.ndtr.read().bits() as usize;
-                        #[cfg(any(target_board = "stm32l432kc",target_board = "stm32l476rg"))]
+                        #[cfg(any(
+                            target_board = "stm32l432kc",
+                            target_board = "stm32l476rg"
+                        ))]
                         let remaining_rx = dma1.cndtr6.read().bits() as usize;
 
                         if remaining_rx > 0 && remaining_rx < RX_BUFFER_SIZE {
@@ -136,8 +200,7 @@ fn main() -> ! {
                     // Frame error
                     if usart_isr.fe().bit_is_set() {
                         if !frame_recovery {
-                            sys_log!("UART Frame Error");
-                            panic!();
+                            panic!("UART Frame Error");
                         }
                         // For this time, just reset the error.
                         // This is needed as for some reason it happens to fire
@@ -152,8 +215,7 @@ fn main() -> ! {
                     // otherwise it's impossibile.
                     if usart_isr.ore().bit_is_set() {
                         // Something happened
-                        sys_log!("UART Overrun");
-                        panic!();
+                        panic!("UART Overrun");
                     }
 
                     // Enable again interrupts
@@ -185,8 +247,7 @@ fn main() -> ! {
                         );
                     } else if isr.teif6().bit_is_set() {
                         // Error
-                        sys_log!("Got error on DMA");
-                        panic!();
+                        panic!("Got error on DMA");
                     }
 
                     // Enable again interrupt
@@ -195,43 +256,95 @@ fn main() -> ! {
             },
             |state_ref, op, msg| match op {
                 Operation::WriteBlock => {
-                    // Validate lease count and buffer sizes first.
-                    let ((), caller) = msg.fixed_with_leases(1).ok_or(ChannelError::BadArgument)?;
-
-                    // Deny incoming writes if we're already running one.
-                    if state_ref.pending_transmitter.is_some() {
-                        return Err(ChannelError::ChannelBusy);
+                    cfg_if::cfg_if! {
+                        if #[cfg(feature = "multi-support")] {
+                            // Validate lease count and buffer sizes first.
+                            let (msg, caller) = msg.fixed_with_leases::<WriteBlockRequest, ()>(1).ok_or(ChannelError::BadArgument)?;
+                            // Deny incoming writes if we're already running one.
+                            if state_ref.transmitter_state.transmitters.is_full() {
+                                return Err(ChannelError::ChannelBusy);
+                            }
+                            let channel_id = msg.channel_id as u16;
+                            // Check the channel id is unique
+                            for t in &state_ref.transmitter_state.transmitters {
+                                if t.id == channel_id {
+                                    return Err(ChannelError::BadArgument);
+                                }
+                            }
+                        } else {
+                            // Validate lease count and buffer sizes first.
+                            let ((), caller) = msg.fixed_with_leases(1).ok_or(ChannelError::BadArgument)?;
+                            // Deny incoming writes if we're already running one.
+                            if state_ref.pending_transmitter.is_some() {
+                                return Err(ChannelError::ChannelBusy);
+                            }
+                        }
                     }
 
                     // Check borrow
                     let borrow = caller.borrow(0);
-                    let info = borrow.info().ok_or(ChannelError::BadArgument)?;
-                    if !info.attributes.contains(LeaseAttributes::READ) || info.len == 0 {
+                    let info =
+                        borrow.info().ok_or(ChannelError::BadArgument)?;
+                    if !info.attributes.contains(LeaseAttributes::READ)
+                        || info.len == 0
+                    {
                         return Err(ChannelError::BadArgument);
                     }
 
                     // Perform setup
+                    #[cfg(feature = "multi-support")]
+                    setup_transmit(
+                        state_ref, usart, caller, info.len, 0, channel_id,
+                    )?;
+                    #[cfg(not(feature = "multi-support"))]
                     setup_transmit(state_ref, usart, caller, info.len, 0)?;
 
                     // We'll do the rest as interrupts arrive.
                     Ok(())
                 }
                 Operation::ReadBlock => {
-                    // Validate lease count and buffer sizes first.
-                    let ((), caller) = msg.fixed_with_leases(1).ok_or(ChannelError::BadArgument)?;
-
-                    // Deny incoming reads if we're already running too many.
-                    if state_ref.receiver_state.pending_receiver.is_some() {
-                        return Err(ChannelError::ChannelBusy);
+                    cfg_if::cfg_if! {
+                        if #[cfg(feature = "multi-support")] {
+                            // Validate lease count and buffer sizes first.
+                            let (msg, caller) = msg.fixed_with_leases::<ReadBlockRequest, ()>(1).ok_or(ChannelError::BadArgument)?;
+                            // Deny incoming writes if we're already running one.
+                            if state_ref.receiver_state.receivers.is_full() {
+                                return Err(ChannelError::ChannelBusy);
+                            }
+                            let channel_id = msg.channel_id as u16;
+                            // Check the channel id is unique
+                            for r in &state_ref.receiver_state.receivers {
+                                if r.id == channel_id {
+                                    return Err(ChannelError::BadArgument);
+                                }
+                            }
+                        } else {
+                            // Validate lease count and buffer sizes first.
+                            let ((), caller) = msg.fixed_with_leases(1).ok_or(ChannelError::BadArgument)?;
+                            // Deny incoming reads if we're already running too many.
+                            if state_ref.receiver_state.pending_receiver.is_some() {
+                                return Err(ChannelError::ChannelBusy);
+                            }
+                        }
                     }
+
                     // Check borrow
                     let borrow = caller.borrow(0);
-                    let info = borrow.info().ok_or(ChannelError::BadArgument)?;
-                    if !info.attributes.contains(LeaseAttributes::WRITE) || info.len == 0 {
+                    let info =
+                        borrow.info().ok_or(ChannelError::BadArgument)?;
+                    if !info.attributes.contains(LeaseAttributes::WRITE)
+                        || info.len == 0
+                    {
                         return Err(ChannelError::BadArgument);
                     }
 
                     // Perform setup
+                    #[cfg(feature = "multi-support")]
+                    setup_read(
+                        state_ref, usart, dma1, caller, info.len, 0, None,
+                        channel_id,
+                    )?;
+                    #[cfg(not(feature = "multi-support"))]
                     setup_read(state_ref, usart, dma1, caller, info.len, 0)?;
 
                     // We'll do the rest as interrupts arrive.
@@ -243,18 +356,50 @@ fn main() -> ! {
                         .fixed_with_leases::<ReadBlockTimedRequest, ()>(1)
                         .ok_or(ChannelError::BadArgument)?;
 
-                    // Deny incoming reads if we're already running too many.
-                    if state_ref.receiver_state.pending_receiver.is_some() {
-                        return Err(ChannelError::ChannelBusy);
+                    cfg_if::cfg_if! {
+                        if #[cfg(feature = "multi-support")] {
+                             // Deny incoming reads if we're already running too many.
+                            if state_ref.receiver_state.receivers.is_full() {
+                                return Err(ChannelError::ChannelBusy);
+                            }
+                            let channel_id = msg.channel_id as u16;
+                            // Check the channel id is unique
+                            for r in &state_ref.receiver_state.receivers {
+                                if r.id == channel_id {
+                                    return Err(ChannelError::BadArgument);
+                                }
+                            }
+                        } else {
+                            // Deny incoming reads if we're already running too many.
+                            if state_ref.receiver_state.pending_receiver.is_some() {
+                                return Err(ChannelError::ChannelBusy);
+                            }
+                        }
                     }
+
                     // Check borrow
                     let borrow = caller.borrow(0);
-                    let info = borrow.info().ok_or(ChannelError::BadArgument)?;
-                    if !info.attributes.contains(LeaseAttributes::WRITE) || info.len == 0 {
+                    let info =
+                        borrow.info().ok_or(ChannelError::BadArgument)?;
+                    if !info.attributes.contains(LeaseAttributes::WRITE)
+                        || info.len == 0
+                    {
                         return Err(ChannelError::BadArgument);
                     }
 
                     // Setup
+                    #[cfg(feature = "multi-support")]
+                    setup_timed_read(
+                        state_ref,
+                        usart,
+                        dma1,
+                        caller,
+                        info.len,
+                        0,
+                        msg.timeout_ticks,
+                        channel_id,
+                    )?;
+                    #[cfg(not(feature = "multi-support"))]
                     setup_timed_read(
                         state_ref,
                         usart,
@@ -275,11 +420,34 @@ fn main() -> ! {
                         .ok_or(ChannelError::BadArgument)?;
 
                     // Check both requisites before proceding
-                    if state_ref.receiver_state.pending_receiver.is_some() {
-                        return Err(ChannelError::ChannelBusy);
-                    }
-                    if state_ref.pending_transmitter.is_some() {
-                        return Err(ChannelError::ChannelBusy);
+                    cfg_if::cfg_if! {
+                        if #[cfg(feature = "multi-support")] {
+                            let channel_id = msg.channel_id as u16;
+                            if state_ref.receiver_state.receivers.is_full() {
+                                return Err(ChannelError::ChannelBusy);
+                            }
+                            if state_ref.transmitter_state.transmitters.is_full() {
+                                return Err(ChannelError::ChannelBusy);
+                            }
+                            // Check the channel id is unique
+                            for r in &state_ref.receiver_state.receivers {
+                                if r.id == channel_id {
+                                    return Err(ChannelError::BadArgument);
+                                }
+                            }
+                            for t in &state_ref.transmitter_state.transmitters {
+                                if t.id == channel_id {
+                                    return Err(ChannelError::BadArgument);
+                                }
+                            }
+                        } else {
+                            if state_ref.receiver_state.pending_receiver.is_some() {
+                                return Err(ChannelError::ChannelBusy);
+                            }
+                            if state_ref.pending_transmitter.is_some() {
+                                return Err(ChannelError::ChannelBusy);
+                            }
+                        }
                     }
                     // Check timeout
                     if msg.timeout_ticks == 0 {
@@ -289,29 +457,51 @@ fn main() -> ! {
                     // [0] Data out
                     // [1] Data in
                     let borrow_out = caller.borrow(0);
-                    let info_out = borrow_out.info().ok_or(ChannelError::BadArgument)?;
-                    if !info_out.attributes.contains(LeaseAttributes::READ) || info_out.len == 0 {
+                    let info_out =
+                        borrow_out.info().ok_or(ChannelError::BadArgument)?;
+                    if !info_out.attributes.contains(LeaseAttributes::READ)
+                        || info_out.len == 0
+                    {
                         return Err(ChannelError::BadArgument);
                     }
                     let borrow_in = caller.borrow(1);
-                    let info_in = borrow_in.info().ok_or(ChannelError::BadArgument)?;
-                    if !info_in.attributes.contains(LeaseAttributes::WRITE) || info_in.len == 0 {
+                    let info_in =
+                        borrow_in.info().ok_or(ChannelError::BadArgument)?;
+                    if !info_in.attributes.contains(LeaseAttributes::WRITE)
+                        || info_in.len == 0
+                    {
                         return Err(ChannelError::BadArgument);
                     }
 
                     // First, setup the reception part
-                    setup_timed_read(
-                        state_ref,
-                        usart,
-                        dma1,
-                        caller.clone(),
-                        info_in.len,
-                        1,
-                        msg.timeout_ticks,
-                    )?;
-                    // Then, prepare a transmission
-                    setup_transmit(state_ref, usart, caller.clone(), info_out.len, 0)?;
-
+                    cfg_if::cfg_if! {
+                        if #[cfg(feature = "multi-support")] {
+                            setup_timed_read(
+                                state_ref,
+                                usart,
+                                dma1,
+                                caller.clone(),
+                                info_in.len,
+                                1,
+                                msg.timeout_ticks,
+                                channel_id
+                            )?;
+                            // Then, prepare a transmission
+                            setup_transmit(state_ref, usart, caller.clone(), info_out.len, 0, channel_id)?;
+                        } else {
+                            setup_timed_read(
+                                state_ref,
+                                usart,
+                                dma1,
+                                caller.clone(),
+                                info_in.len,
+                                1,
+                                msg.timeout_ticks,
+                            )?;
+                            // Then, prepare a transmission
+                            setup_transmit(state_ref, usart, caller.clone(), info_out.len, 0)?;
+                        }
+                    }
                     // We'll do the rest as interrupts arrive.
                     Ok(())
                 }
@@ -320,6 +510,92 @@ fn main() -> ! {
     }
 }
 
+#[cfg(feature = "multi-support")]
+fn cancel_expired(state_ref: &mut DriverState) {
+    // Get the current time
+    let current = sys_get_timer().now;
+    let receivers = &mut state_ref.receiver_state.receivers;
+    let mut next_deadline: Option<u64> = None;
+    // Iterate over all the receivers, by keeping only the not-expired ones
+    receivers.retain(|receiver| {
+        if let Some(d_time) = receiver.deadline {
+            if d_time <= current {
+                // This receiver faulted
+                receiver
+                    .caller
+                    .clone()
+                    .reply_fail(ChannelError::ReadTimeOut);
+                // Do not retain the element
+                return false;
+            } else {
+                // Remember to update the deadline
+                next_deadline = Some(match next_deadline {
+                    Some(d) => core::cmp::min(d, d_time),
+                    None => d_time,
+                });
+            }
+        }
+        return true;
+    });
+    // If we have a new deadline, apply it
+    if let Some(d) = next_deadline {
+        sys_set_timer(Some(d), TIMEOUT_MASK);
+    }
+}
+
+#[cfg(feature = "multi-support")]
+fn update_deadline(receiver_state: &mut ReceiverState) {
+    let mut next_deadline: Option<u64> = None;
+    let receivers = &receiver_state.receivers;
+    for receiver in receivers {
+        if let Some(d_time) = receiver.deadline {
+            next_deadline = Some(match next_deadline {
+                Some(d) => core::cmp::min(d, d_time),
+                None => d_time,
+            });
+        }
+    }
+    // Apply the deadline, or cancel the timer if it's no more required
+    sys_set_timer(next_deadline, TIMEOUT_MASK);
+}
+
+#[cfg(feature = "multi-support")]
+fn setup_timed_read(
+    state_ref: &mut DriverState,
+    usart: &device::usart1::RegisterBlock,
+    dma1: &device::dma1::RegisterBlock,
+    caller: Caller<()>,
+    rx_len: usize,
+    borrow_num: usize,
+    timeout_ticks: u32,
+    channel_id: u16,
+) -> Result<(), ChannelError> {
+    let timer_state = sys_get_timer();
+    let deadline = timer_state.now + timeout_ticks as u64 + 1;
+    // Setup read
+    setup_read(
+        state_ref,
+        usart,
+        dma1,
+        caller,
+        rx_len,
+        borrow_num,
+        Some(deadline),
+        channel_id,
+    )?;
+    // If we already got a deadline, check whether this one happens before
+    if let Some(c_deadline) = timer_state.deadline {
+        if deadline < c_deadline {
+            // Change with this deadline
+            sys_set_timer(Some(deadline), TIMEOUT_MASK);
+        }
+    } else {
+        // No deadline, setup this one
+        sys_set_timer(Some(deadline), TIMEOUT_MASK);
+    }
+    Ok(())
+}
+#[cfg(not(feature = "multi-support"))]
 fn setup_timed_read(
     state_ref: &mut DriverState,
     usart: &device::usart1::RegisterBlock,
@@ -329,12 +605,44 @@ fn setup_timed_read(
     borrow_num: usize,
     timeout_ticks: u32,
 ) -> Result<(), ChannelError> {
+    let timer_state = sys_get_timer();
+    let deadline = timer_state.now + timeout_ticks as u64 + 1;
     setup_read(state_ref, usart, dma1, caller, rx_len, borrow_num)?;
-    let deadline = sys_get_timer().now + timeout_ticks as u64 + 1;
     sys_set_timer(Some(deadline), TIMEOUT_MASK);
     Ok(())
 }
 
+#[cfg(feature = "multi-support")]
+fn setup_read(
+    state_ref: &mut DriverState,
+    usart: &device::usart1::RegisterBlock,
+    dma1: &device::dma1::RegisterBlock,
+    caller: Caller<()>,
+    rx_len: usize,
+    borrow_num: usize,
+    deadline: Option<u64>,
+    channel_id: u16,
+) -> Result<(), ChannelError> {
+    // Prepare for a transfer
+    state_ref
+        .receiver_state
+        .receivers
+        .push(Receiver {
+            id: channel_id,
+            caller: caller,
+            pos: 0,
+            len: rx_len,
+            borrow_num: borrow_num,
+            deadline: deadline,
+        })
+        .unwrap_lite();
+
+    // Enable reception
+    dma_receive_to_idle(dma1, usart);
+
+    Ok(())
+}
+#[cfg(not(feature = "multi-support"))]
 fn setup_read(
     state_ref: &mut DriverState,
     usart: &device::usart1::RegisterBlock,
@@ -357,6 +665,33 @@ fn setup_read(
     Ok(())
 }
 
+#[cfg(feature = "multi-support")]
+fn setup_transmit(
+    state_ref: &mut DriverState,
+    usart: &device::usart1::RegisterBlock,
+    caller: Caller<()>,
+    tx_len: usize,
+    borrow_num: usize,
+    channel_id: u16,
+) -> Result<(), ChannelError> {
+    // Prepare for a transfer
+    state_ref
+        .transmitter_state
+        .transmitters
+        .push(Transmitter {
+            id: channel_id,
+            caller: caller,
+            pos: 0,
+            len: tx_len,
+            borrow_num: borrow_num,
+        })
+        .unwrap_lite();
+
+    // Enable transmit interrupts
+    usart.cr1.modify(|_, w| w.txeie().enabled());
+    Ok(())
+}
+#[cfg(not(feature = "multi-support"))]
 fn setup_transmit(
     state_ref: &mut DriverState,
     usart: &device::usart1::RegisterBlock,
@@ -400,7 +735,7 @@ fn setup_usart(usart: &device::usart1::RegisterBlock) -> Result<(), RCCError> {
             .brr
             .write(|w| w.brr().bits((CLOCK_HZ / BAUDRATE) as u16));
     }
-    #[cfg(any(target_board = "stm32l432kc",target_board = "stm32l476rg"))]
+    #[cfg(any(target_board = "stm32l432kc", target_board = "stm32l476rg"))]
     {
         const CLOCK_HZ: u32 = 80_000_000; // PLCK1
         usart
@@ -415,7 +750,7 @@ fn setup_usart(usart: &device::usart1::RegisterBlock) -> Result<(), RCCError> {
     Ok(())
 }
 
-#[cfg(any(target_board = "stm32f303re",target_board = "stm32l476rg"))]
+#[cfg(any(target_board = "stm32f303re", target_board = "stm32l476rg"))]
 /// Write USART2 on GPIOA (pin 2,3)
 fn setup_gpio() -> Result<(), RCCError> {
     // TODO: the fact that we interact with GPIOA directly here is an expedient
@@ -471,7 +806,11 @@ static mut RX_BUFFER: [u8; RX_BUFFER_SIZE] = [0xAA; RX_BUFFER_SIZE];
  * USART2_TX -> DMA1 - Channel7
  * (pag 272/1141)
  */
-#[cfg(any(target_board = "stm32f303re", target_board = "stm32l432kc", target_board = "stm32l476rg"))]
+#[cfg(any(
+    target_board = "stm32f303re",
+    target_board = "stm32l432kc",
+    target_board = "stm32l476rg"
+))]
 fn setup_dma(
     dma1: &device::dma1::RegisterBlock,
     usart: &device::usart1::RegisterBlock,
@@ -490,7 +829,10 @@ fn setup_dma(
     Ok(())
 }
 #[cfg(target_board = "stm32f303re")]
-fn configure_dma_rx(dma1: &device::dma1::RegisterBlock, usart: &device::usart1::RegisterBlock) {
+fn configure_dma_rx(
+    dma1: &device::dma1::RegisterBlock,
+    usart: &device::usart1::RegisterBlock,
+) {
     // Disable the channel (tbs)
     dma1.ch6.cr.modify(|_, w| w.en().clear_bit());
     // Clear all interrupts
@@ -528,8 +870,11 @@ fn configure_dma_rx(dma1: &device::dma1::RegisterBlock, usart: &device::usart1::
     dma1.ch6.cr.modify(|_, w| w.en().set_bit());
 }
 
-#[cfg(any(target_board = "stm32l432kc",target_board = "stm32l476rg"))]
-fn configure_dma_rx(dma1: &device::dma1::RegisterBlock, usart: &device::usart1::RegisterBlock) {
+#[cfg(any(target_board = "stm32l432kc", target_board = "stm32l476rg"))]
+fn configure_dma_rx(
+    dma1: &device::dma1::RegisterBlock,
+    usart: &device::usart1::RegisterBlock,
+) {
     // Disable the channel (tbs)
     dma1.ccr6.modify(|_, w| w.en().clear_bit());
     // Clear all interrupts
@@ -537,7 +882,7 @@ fn configure_dma_rx(dma1: &device::dma1::RegisterBlock, usart: &device::usart1::
 
     // Select USART2_RX for Channel 6
     // See: RM0394/pag.299 (L432),  RM0351/pag.339 (L476)
-    dma1.cselr.modify(|_,w| w.c6s().bits(0b0010));
+    dma1.cselr.modify(|_, w| w.c6s().bits(0b0010));
 
     // Set periph. address (RDR register)
     dma1.cpar6
@@ -568,7 +913,10 @@ fn configure_dma_rx(dma1: &device::dma1::RegisterBlock, usart: &device::usart1::
     dma1.ccr6.modify(|_, w| w.en().set_bit());
 }
 
-fn dma_receive_to_idle(_: &device::dma1::RegisterBlock, usart: &device::usart1::RegisterBlock) {
+fn dma_receive_to_idle(
+    _: &device::dma1::RegisterBlock,
+    usart: &device::usart1::RegisterBlock,
+) {
     if usart.cr3.read().dmar().bit_is_set() {
         return; // Already active
     }
@@ -616,10 +964,10 @@ fn dma_receive_callback(
             let received_bytes = available_up_to - rec_state.current_read_pos;
             // New data on the top to read, simple case
             rx_update_caller(
-                &mut rec_state.pending_receiver,
+                rec_state,
                 unsafe {
-                    &RX_BUFFER
-                        [rec_state.current_read_pos..rec_state.current_read_pos + received_bytes]
+                    &RX_BUFFER[rec_state.current_read_pos
+                        ..rec_state.current_read_pos + received_bytes]
                 },
                 dma1,
                 usart,
@@ -629,7 +977,7 @@ fn dma_receive_callback(
             let received_bytes = RX_BUFFER_SIZE - rec_state.current_read_pos;
             if received_bytes > 0 {
                 rx_update_caller(
-                    &mut rec_state.pending_receiver,
+                    rec_state,
                     unsafe {
                         &RX_BUFFER[rec_state.current_read_pos
                             ..rec_state.current_read_pos + received_bytes]
@@ -641,7 +989,7 @@ fn dma_receive_callback(
             if available_up_to > 0 {
                 // Bottom part available
                 rx_update_caller(
-                    &mut rec_state.pending_receiver,
+                    rec_state,
                     unsafe { &RX_BUFFER[0..available_up_to] },
                     dma1,
                     usart,
@@ -653,8 +1001,106 @@ fn dma_receive_callback(
     }
 }
 
+#[cfg(feature = "multi-support")]
 fn rx_update_caller(
-    receiver: &mut Option<Receiver>,
+    receiver_state: &mut ReceiverState,
+    mut data: &[u8],
+    _dma1: &device::dma1::RegisterBlock,
+    _usart: &device::usart1::RegisterBlock,
+) {
+    while data.len() > 0 {
+        // Check if we know the origin of this message
+        if receiver_state.last_channel_id.is_none() {
+            // Fill the header struct
+            let missing_header_len = core::cmp::min(
+                receiver_state.header_data_buff.len()
+                    - receiver_state.header_data_buff_pos,
+                data.len(),
+            );
+            for i in 0..missing_header_len {
+                receiver_state.header_data_buff
+                    [receiver_state.header_data_buff_pos + i] = data[i];
+            }
+            receiver_state.header_data_buff_pos += missing_header_len;
+            data = &data[missing_header_len..]; // Skip these bytes
+            if receiver_state.header_data_buff_pos
+                < receiver_state.header_data_buff.len()
+            {
+                return;
+            }
+            // Now we got enough data, use the buffer!
+            let mut c_id_bytes: [u8; 2] = [0x00; 2];
+            c_id_bytes.copy_from_slice(&receiver_state.header_data_buff[0..2]);
+            let mut c_len_bytes: [u8; 2] = [0x00; 2];
+            c_len_bytes.copy_from_slice(&receiver_state.header_data_buff[2..4]);
+            receiver_state.last_channel_id =
+                Some(u16::from_be_bytes(c_id_bytes));
+            receiver_state.last_packet_len = u16::from_be_bytes(c_len_bytes);
+            receiver_state.header_data_buff_pos = 0;
+            continue; // Redo the check, as data.len() could be 0 now
+        }
+        // At this point, we have for sure the channel id.
+        let c_id = receiver_state.last_channel_id.unwrap();
+        let mut update_deadlines: bool = false;
+        let mut consumed_bytes: usize = 0;
+        // Compute the bytes we have available in this round
+        let available_bytes =
+            core::cmp::min(data.len(), receiver_state.last_packet_len as usize);
+        // Update the count
+        receiver_state.last_packet_len -= available_bytes as u16;
+        if receiver_state.last_packet_len == 0 {
+            receiver_state.last_channel_id = None;
+        }
+        // Send this data to components
+        receiver_state.receivers.retain_mut(|rx| {
+            if rx.id == c_id {
+                // We got our task, write the data
+                let need_bytes =
+                    core::cmp::min(rx.len - rx.pos, available_bytes);
+                // Try write data
+                if rx
+                    .caller
+                    .borrow(rx.borrow_num)
+                    .write_fully_at(rx.pos, &data[0..need_bytes])
+                    .is_some()
+                {
+                    rx.pos += need_bytes;
+                    data = &data[need_bytes..];
+                    consumed_bytes += need_bytes;
+
+                    if rx.pos == rx.len {
+                        // Success
+                        rx.caller.clone().reply(());
+                        update_deadlines = true;
+                        return false;
+                    }
+                    return true;
+                } else {
+                    data = &data[need_bytes..];
+                    consumed_bytes += need_bytes;
+
+                    rx.caller.clone().reply_fail(ChannelError::BadArgument);
+                    update_deadlines = true;
+                    return false;
+                }
+            }
+            // Otherwise this is not the component we are looking for
+            return true;
+        });
+        // If we have not found the component, consume the packet data in any case
+        // in order not to lose the header tracking.
+        if consumed_bytes < available_bytes {
+            data = &data[(available_bytes - consumed_bytes)..];
+        }
+        if update_deadlines {
+            update_deadline(receiver_state);
+        }
+    }
+}
+
+#[cfg(not(feature = "multi-support"))]
+fn rx_update_caller(
+    receiver_state: &mut ReceiverState,
     data: &[u8],
     dma1: &device::dma1::RegisterBlock,
     usart: &device::usart1::RegisterBlock,
@@ -671,6 +1117,8 @@ fn rx_update_caller(
         // Return the caller
         core::mem::replace(receiver, None).unwrap().caller
     }
+
+    let receiver = &mut receiver_state.pending_receiver;
 
     // Get the receiver, or ignore
     let rx = if let Some(rx) = receiver {
@@ -694,14 +1142,101 @@ fn rx_update_caller(
             end_reception(dma1, usart, receiver).reply(());
         }
     } else {
-        end_reception(dma1, usart, receiver).reply_fail(ChannelError::BadArgument);
+        end_reception(dma1, usart, receiver)
+            .reply_fail(ChannelError::BadArgument);
     }
 }
 
+#[cfg(feature = "multi-support")]
 fn step_transmit(
     usart: &device::usart1::RegisterBlock,
-    transmitter: &mut Option<Transmitter>,
-    receiver: &mut Option<Receiver>,
+    state_ref: &mut DriverState,
+) {
+    // Clearer than just using replace:
+    fn end_transmission(
+        usart: &device::usart1::RegisterBlock,
+        transmitter_state: &mut TransmitterState,
+    ) -> hl::Caller<()> {
+        // Disable transmit interrupt
+        usart.cr1.modify(|_, w| w.txeie().disabled());
+        // Clear transmitter and return the caller field
+        transmitter_state.transmitters.swap_remove(0).caller
+    }
+
+    // Get a transmitter, or ignore
+    let tx = if let Some(tx) =
+        state_ref.transmitter_state.transmitters.first_mut()
+    {
+        tx
+    } else {
+        return;
+    };
+
+    // We have the preamble to be sent out first
+    if tx.pos < 2 {
+        let c_id_bytes = tx.id.to_be_bytes();
+        // Stuff byte into transmitter.
+        #[cfg(any(
+            target_board = "stm32f303re",
+            target_board = "stm32l432kc",
+            target_board = "stm32l476rg"
+        ))]
+        usart
+            .tdr
+            .write(|w| w.tdr().bits(u16::from(c_id_bytes[tx.pos])));
+        tx.pos += 1;
+        return;
+    } else if tx.pos < 4 {
+        let c_len_bytes = (tx.len as u16).to_be_bytes();
+        // Stuff byte into transmitter.
+        #[cfg(any(
+            target_board = "stm32f303re",
+            target_board = "stm32l432kc",
+            target_board = "stm32l476rg"
+        ))]
+        usart
+            .tdr
+            .write(|w| w.tdr().bits(u16::from(c_len_bytes[tx.pos - 2])));
+        tx.pos += 1;
+        return;
+    }
+    // Now we can actually send out data
+    if let Some(byte) =
+        tx.caller.borrow(tx.borrow_num).read_at::<u8>(tx.pos - 4)
+    {
+        // Stuff byte into transmitter.
+        #[cfg(any(
+            target_board = "stm32f303re",
+            target_board = "stm32l432kc",
+            target_board = "stm32l476rg"
+        ))]
+        usart.tdr.write(|w| w.tdr().bits(u16::from(byte)));
+
+        tx.pos += 1;
+        if tx.pos - 4 == tx.len {
+            let caller =
+                end_transmission(usart, &mut state_ref.transmitter_state);
+            if !is_transmit_mode(&caller, &state_ref.receiver_state) {
+                // Otherwise tell the caller the operation is finished
+                caller.reply(());
+            }
+        }
+    } else {
+        let caller = end_transmission(usart, &mut state_ref.transmitter_state);
+        if is_transmit_mode(&caller, &state_ref.receiver_state) {
+            // Cancel also the read operation
+            state_ref.receiver_state.receivers.retain(|rx| {
+                return rx.caller.task_id() != caller.task_id();
+            });
+        }
+        caller.reply_fail(ChannelError::BadArgument);
+    }
+}
+
+#[cfg(not(feature = "multi-support"))]
+fn step_transmit(
+    usart: &device::usart1::RegisterBlock,
+    state_ref: &mut DriverState,
 ) {
     // Clearer than just using replace:
     fn end_transmission(
@@ -714,6 +1249,9 @@ fn step_transmit(
         core::mem::replace(transmitter, None).unwrap().caller
     }
 
+    let transmitter = &mut state_ref.pending_transmitter;
+    let receiver = &mut state_ref.receiver_state.pending_receiver;
+
     // Get the transmitter, or ignore
     let tx = if let Some(tx) = transmitter {
         tx
@@ -723,7 +1261,11 @@ fn step_transmit(
 
     if let Some(byte) = tx.caller.borrow(tx.borrow_num).read_at::<u8>(tx.pos) {
         // Stuff byte into transmitter.
-        #[cfg(any(target_board = "stm32f303re",target_board = "stm32l432kc",target_board = "stm32l476rg"))]
+        #[cfg(any(
+            target_board = "stm32f303re",
+            target_board = "stm32l432kc",
+            target_board = "stm32l476rg"
+        ))]
         usart.tdr.write(|w| w.tdr().bits(u16::from(byte)));
 
         tx.pos += 1;
@@ -744,6 +1286,19 @@ fn step_transmit(
     }
 }
 
+#[cfg(feature = "multi-support")]
+fn is_transmit_mode(
+    caller: &Caller<()>,
+    receiver_state: &ReceiverState,
+) -> bool {
+    for rx in &receiver_state.receivers {
+        if caller.task_id() == rx.caller.task_id() {
+            return true;
+        }
+    }
+    return false;
+}
+#[cfg(not(feature = "multi-support"))]
 fn is_transmit_mode(caller: &Caller<()>, receiver: &Option<Receiver>) -> bool {
     if receiver.is_some() {
         if caller.task_id() == receiver.as_ref().unwrap().caller.task_id() {

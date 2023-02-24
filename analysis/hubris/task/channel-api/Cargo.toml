@@ -3,6 +3,9 @@ name = "channel-api"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+multi-support = []
+
 [dependencies]
 userlib = {path = "../../sys/userlib"}
 cortex-m = { workspace = true, features = ["inline-asm"] }

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
+multi-support = ["dep:heapless", "channel-api/multi-support"]
 log-itm = ["userlib/log-itm"]
 log-semihosting = ["cortex-m-semihosting", "userlib/log-semihosting"]
 stm32f303re = ["rcc-api/stm32f303re", "dep:stm32f303re"]
@@ -16,6 +17,7 @@ userlib = {path = "../../sys/userlib"}
 cortex-m = { workspace = true, features = ["inline-asm"] }
 cfg-if = {workspace = true}
 cortex-m-semihosting =  { workspace = true, optional=true}
+heapless = {workspace = true, optional = true}
 # Component dependencies
 rcc-api = {path = "../rcc-api"}
 

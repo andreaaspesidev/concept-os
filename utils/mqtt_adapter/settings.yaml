@@ -5,7 +5,7 @@ logger:
   level: "DEBUG"         # log level: DEBUG, INFO, SUCCESS, WARNING, ERROR
 
 serial:
-  port_name: /dev/rfcomm0
+  port_name: /dev/ttyACM0 # /dev/rfcomm0
   baudrate: 115200
 
 mqtt:
@@ -13,7 +13,7 @@ mqtt:
   server_port: 1883
   username: "mqtt"
   password: "mqtt"
-  root_topic: "bthermo"
+  root_topic: "cOS"
 
 multiplex:
   enable: true
