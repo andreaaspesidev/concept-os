@@ -11,10 +11,6 @@ clean:
 build-f303re:
 	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32f303re -f log-itm
 
-build-verbose-f303re:
-	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32f303re -f log-itm -v
-
-
 disassemble: build
 	arm-none-eabi-readelf -l build/image.elf > build/headers.disass
 	arm-none-eabi-objdump -h build/image.elf > build/sections.disass

@@ -1,5 +1,5 @@
 use crate::consts::*;
-use crate::messages::{MessageError};
+use crate::messages::MessageError;
 use hbf_lite::BufferReader;
 use storage_api::*;
 use uart_channel_api::*;
@@ -39,19 +39,49 @@ impl<'a> BufferReader<'a> for FlashReader {
 /**
  * Channel functions
  */
+#[cfg(feature = "multi-support")]
+pub fn channel_write_single(channel: &mut UartChannel, value: u8) -> Result<(), MessageError> {
+    let buffer: [u8; 1] = [value; 1];
+    Ok(channel
+        .write_block(CHANNEL_ID, &buffer)
+        .map_err(|_| MessageError::ChannelError)?)
+}
+#[cfg(not(feature = "multi-support"))]
 pub fn channel_write_single(channel: &mut UartChannel, value: u8) -> Result<(), MessageError> {
     let buffer: [u8; 1] = [value; 1];
     Ok(channel
         .write_block(&buffer)
         .map_err(|_| MessageError::ChannelError)?)
 }
-
+#[cfg(feature = "multi-support")]
+pub fn channel_write(channel: &mut UartChannel, buff: &[u8]) -> Result<(), MessageError> {
+    Ok(channel
+        .write_block(CHANNEL_ID, &buff)
+        .map_err(|_| MessageError::ChannelError)?)
+}
+#[cfg(not(feature = "multi-support"))]
 pub fn channel_write(channel: &mut UartChannel, buff: &[u8]) -> Result<(), MessageError> {
     Ok(channel
         .write_block(&buff)
         .map_err(|_| MessageError::ChannelError)?)
 }
-
+#[cfg(feature = "multi-support")]
+pub fn channel_ask(
+    channel: &mut UartChannel,
+    cmd: u8,
+    buffer: &mut [u8],
+) -> Result<(), MessageError> {
+    let buffer_out: [u8; 1] = [cmd; 1];
+    Ok(channel
+        .transmit_timed(CHANNEL_ID, &buffer_out, buffer, READ_TIMEOUT_TICKS)
+        .map_err(|e| {
+            if e == ChannelError::ReadTimeOut {
+                return MessageError::TimeoutError;
+            }
+            return MessageError::ChannelError;
+        })?)
+}
+#[cfg(not(feature = "multi-support"))]
 pub fn channel_ask(
     channel: &mut UartChannel,
     cmd: u8,

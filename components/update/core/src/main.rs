@@ -18,6 +18,9 @@ use update::component_add_update;
 use info::system_info;
 use utils::channel_write_single;
 
+#[cfg(feature = "multi-support")]
+use crate::consts::CHANNEL_ID;
+
 #[export_name = "main"]
 fn main() -> ! {
     // Wait for state to give time to the old version to terminate cleanly
@@ -38,7 +41,12 @@ fn main() -> ! {
         // Create a buffer where to store the message
         let mut hello_buffer: [u8; HelloMessage::get_size()] = [0x00; HelloMessage::get_size()];
         // Read message
-        if usart.read_block(&mut hello_buffer).is_ok() {
+        #[cfg(feature = "multi-support")]
+        let read_result = usart.read_block(CHANNEL_ID, &mut hello_buffer);
+        #[cfg(not(feature = "multi-support"))]
+        let read_result = usart.read_block(&mut hello_buffer);
+
+        if read_result.is_ok() {
             // Validate message
             sys_log!("[UPDATE] Got hello message");
             let parsed = HelloMessage::from(&hello_buffer);
@@ -46,7 +54,12 @@ fn main() -> ! {
                 let msg = parsed.unwrap_lite();
                 // Respond to the message
                 let response = HelloResponseMessage::new(msg.get_operation());
-                if usart.write_block(&response.get_raw()).is_ok() {
+                #[cfg(feature = "multi-support")]
+                let wrire_result = usart.write_block(CHANNEL_ID, &response.get_raw());
+                #[cfg(not(feature = "multi-support"))]
+                let wrire_result = usart.write_block(&response.get_raw());
+
+                if wrire_result.is_ok() {
                     sys_log!("[UPDATE] Wrote hello response");
                     // Process this message
                     let result = hello_arrived(&msg, &mut usart);
