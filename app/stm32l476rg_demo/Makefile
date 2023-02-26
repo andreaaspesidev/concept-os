@@ -6,13 +6,13 @@ build:
 	../../toolchain/modules/system_builder/system_builder --app-config $(current_dir)/App.toml --output-path $(current_dir)/App
 
 flash:
-	../../toolchain/modules/update_cli/update-cli-uart flash-system --app-config $(current_dir)/App.toml --image-path $(current_dir)/App.ihex
+	../../toolchain/modules/update_tool/update-tool-uart flash-system --app-config $(current_dir)/App.toml --image-path $(current_dir)/App.ihex
 
 debug:
-	../../toolchain/modules/update_cli/update-cli-uart debug --app-config $(current_dir)/App.toml
+	../../toolchain/modules/update_tool/update-tool-uart debug --app-config $(current_dir)/App.toml
 
 gdb:
-	../../toolchain/modules/update_cli/update-cli-uart gdb --app-config $(current_dir)/App.toml
+	../../toolchain/modules/update_tool/update-tool-uart gdb --app-config $(current_dir)/App.toml
 
 disassemble:
 	arm-none-eabi-readelf -l build/kernel.elf > build/headers.disass
