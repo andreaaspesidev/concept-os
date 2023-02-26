@@ -31,7 +31,8 @@ start = true
 name = "channel"
 features = ["stm32f303re", "log-itm", "multi-support"]
 priority = 1
-max-sizes = {flash = 16384, ram = 2048}
+max-sizes = {flash = 16384, ram = 4096}
+stacksize = 2048
 uses = ["usart2", "gpioa", "dma1"]
 start = true
 notifications = ["usart-irq", "dma-irq"]

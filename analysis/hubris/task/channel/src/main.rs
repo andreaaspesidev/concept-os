@@ -38,6 +38,7 @@ cfg_if::cfg_if! {
             borrow_num: usize,
             len: usize,
             pos: usize,
+            crc: u8
         }
         struct Receiver {
             caller: hl::Caller<()>,
@@ -51,9 +52,12 @@ cfg_if::cfg_if! {
             pub receivers: Vec<Receiver, MAX_RECEIVERS>,
             pub header_data_buff: [u8; 4],
             pub header_data_buff_pos: usize,
+            pub preamble_cnt: usize,
+            pub crc8: u8,
             pub current_read_pos: usize,
             pub last_channel_id: Option<u16>,
             pub last_packet_len: u16,
+            pub received_bytes: u16
         }
         struct TransmitterState {
             pub transmitters: Vec<Transmitter, MAX_TRANSMITTERS>,
@@ -116,6 +120,9 @@ fn main() -> ! {
             last_packet_len: 0,
             header_data_buff: [0x00; 4],
             header_data_buff_pos: 0,
+            preamble_cnt: 0,
+            crc8: 0,
+            received_bytes: 0,
         },
         transmitter_state: TransmitterState {
             transmitters: Vec::new(),
@@ -684,6 +691,7 @@ fn setup_transmit(
             pos: 0,
             len: tx_len,
             borrow_num: borrow_num,
+            crc: 0,
         })
         .unwrap_lite();
 
@@ -1002,6 +1010,11 @@ fn dma_receive_callback(
 }
 
 #[cfg(feature = "multi-support")]
+const PREAMBLE_BYTE: u8 = 0b10101010;
+#[cfg(feature = "multi-support")]
+const PREAMBLE_LEN: usize = 4;
+
+#[cfg(feature = "multi-support")]
 fn rx_update_caller(
     receiver_state: &mut ReceiverState,
     mut data: &[u8],
@@ -1011,7 +1024,33 @@ fn rx_update_caller(
     while data.len() > 0 {
         // Check if we know the origin of this message
         if receiver_state.last_channel_id.is_none() {
-            // Fill the header struct
+            if receiver_state.preamble_cnt != PREAMBLE_LEN {
+                // Search for the preamble of a packet
+                // As it may come in (at least) two different calls, we need to keep track of such bytes
+                while data[0] == PREAMBLE_BYTE {
+                    // Advance in data
+                    data = &data[1..];
+                    // Mark as arrived
+                    receiver_state.preamble_cnt += 1;
+                    if receiver_state.preamble_cnt == PREAMBLE_LEN {
+                        break;
+                    }
+                    // If no more data, then wait next data
+                    if data.len() == 0 {
+                        return;
+                    }
+                }
+                // We can get here in two cases: we found all the preamble bytes,
+                // or we mistaken a byte for a preamble byte
+                if receiver_state.preamble_cnt != PREAMBLE_LEN {
+                    // Discard the byte
+                    data = &data[1..];
+                    // Restart from the beginning
+                    receiver_state.preamble_cnt = 0;
+                    continue; // Retry on the remaining data
+                }
+            }
+            // Now we are sure we have all the bytes, so read the header
             let missing_header_len = core::cmp::min(
                 receiver_state.header_data_buff.len()
                     - receiver_state.header_data_buff_pos,
@@ -1026,6 +1065,7 @@ fn rx_update_caller(
             if receiver_state.header_data_buff_pos
                 < receiver_state.header_data_buff.len()
             {
+                // Wait more data
                 return;
             }
             // Now we got enough data, use the buffer!
@@ -1035,28 +1075,82 @@ fn rx_update_caller(
             c_len_bytes.copy_from_slice(&receiver_state.header_data_buff[2..4]);
             receiver_state.last_channel_id =
                 Some(u16::from_be_bytes(c_id_bytes));
-            receiver_state.last_packet_len = u16::from_be_bytes(c_len_bytes);
+            receiver_state.last_packet_len =
+                u16::from_be_bytes(c_len_bytes) + 1; // +1 for the CRC-8
             receiver_state.header_data_buff_pos = 0;
+            receiver_state.received_bytes = 0;
             continue; // Redo the check, as data.len() could be 0 now
         }
         // At this point, we have for sure the channel id.
         let c_id = receiver_state.last_channel_id.unwrap();
         let mut update_deadlines: bool = false;
         let mut consumed_bytes: usize = 0;
-        // Compute the bytes we have available in this round
-        let available_bytes =
-            core::cmp::min(data.len(), receiver_state.last_packet_len as usize);
-        // Update the count
-        receiver_state.last_packet_len -= available_bytes as u16;
-        if receiver_state.last_packet_len == 0 {
+        // Compute the bytes we are missing from the packet
+        let to_be_received = (receiver_state.last_packet_len
+            - receiver_state.received_bytes)
+            as usize;
+        // Only some of these are available in this round
+        let available_bytes = core::cmp::min(data.len(), to_be_received);
+        let last_packet_slice: bool;
+        let mut packet_failed: bool = false; // In case we have a CRC failure
+                                             // Check if we have the CRC in range
+        if to_be_received - available_bytes == 0 {
+            // Finish computing the CRC on the bytes
+            if available_bytes > 1 {
+                for i in 0..(available_bytes - 1) {
+                    crc8_update(&mut receiver_state.crc8, data[i]);
+                }
+            }
+            // Validate crc
+            sys_log!("av: {}", available_bytes);
+            let crc8 = data[available_bytes - 1];
+            if crc8 != receiver_state.crc8 {
+                // Failed validation, discard data
+                packet_failed = true;
+                data = &data[available_bytes..];
+                // Reset the variables to search for a new preamble
+                receiver_state.last_channel_id = None;
+                receiver_state.preamble_cnt = 0;
+            }
+            last_packet_slice = true;
+            // Reset the variables to search for a new preamble
             receiver_state.last_channel_id = None;
+            receiver_state.preamble_cnt = 0;
+        } else {
+            // Compute crc
+            for i in 0..available_bytes {
+                crc8_update(&mut receiver_state.crc8, data[i]);
+            }
+            last_packet_slice = false;
         }
         // Send this data to components
         receiver_state.receivers.retain_mut(|rx| {
             if rx.id == c_id {
-                // We got our task, write the data
-                let need_bytes =
-                    core::cmp::min(rx.len - rx.pos, available_bytes);
+                // We got our task, write the data as we cannot store it
+                let need_bytes = core::cmp::min(
+                    rx.len - rx.pos,
+                    match last_packet_slice {
+                        true => available_bytes - 1,
+                        false => available_bytes,
+                    },
+                );
+                // If failed, we have to remove the length from the buffer of the component
+                // Currently, it's possible that a component finishes before the end of the packet,
+                // in this case, we ignore the event and hope that component have an higher layer CRC.
+                if packet_failed {
+                    // All we can do here is try to remove data from the current listener.
+                    // We might need multiple packets to fill the buffer. In this case, we have to check
+                    // how many bytes of this packet we have already written to this component.
+                    let discard_many = core::cmp::min(
+                        rx.pos,
+                        receiver_state.received_bytes as usize,
+                    );
+                    // -1 on receiver_state.received_bytes is not needed, received_bytes is incremented
+                    // only after this loop, so it accounts only for bytes consumed up to the prev. round.
+                    rx.pos -= discard_many;
+                    // Skip this round
+                    return true;
+                }
                 // Try write data
                 if rx
                     .caller
@@ -1090,8 +1184,18 @@ fn rx_update_caller(
         // If we have not found the component, consume the packet data in any case
         // in order not to lose the header tracking.
         if consumed_bytes < available_bytes {
-            data = &data[(available_bytes - consumed_bytes)..];
+            match last_packet_slice {
+                false => {
+                    data = &data[(available_bytes - consumed_bytes)..];
+                }
+                true => {
+                    data = &data[(available_bytes - consumed_bytes - 1)..];
+                }
+            }
         }
+        // Increment the counter of the consumed bytes
+        receiver_state.received_bytes += available_bytes as u16;
+        // Update deadlines
         if update_deadlines {
             update_deadline(receiver_state);
         }
@@ -1173,37 +1277,76 @@ fn step_transmit(
     };
 
     // We have the preamble to be sent out first
-    if tx.pos < 2 {
-        let c_id_bytes = tx.id.to_be_bytes();
+    if tx.pos < PREAMBLE_LEN {
         // Stuff byte into transmitter.
         #[cfg(any(
             target_board = "stm32f303re",
             target_board = "stm32l432kc",
             target_board = "stm32l476rg"
         ))]
-        usart
-            .tdr
-            .write(|w| w.tdr().bits(u16::from(c_id_bytes[tx.pos])));
+        usart.tdr.write(|w| w.tdr().bits(u16::from(PREAMBLE_BYTE)));
         tx.pos += 1;
         return;
-    } else if tx.pos < 4 {
-        let c_len_bytes = (tx.len as u16).to_be_bytes();
+    } else if tx.pos < PREAMBLE_LEN + 2 {
+        let c_id_bytes = tx.id.to_be_bytes();
+        let byte = c_id_bytes[tx.pos - PREAMBLE_LEN];
         // Stuff byte into transmitter.
         #[cfg(any(
             target_board = "stm32f303re",
             target_board = "stm32l432kc",
             target_board = "stm32l476rg"
         ))]
-        usart
-            .tdr
-            .write(|w| w.tdr().bits(u16::from(c_len_bytes[tx.pos - 2])));
+        usart.tdr.write(|w| {
+            w.tdr().bits(u16::from(byte))
+        });
+        // Update CRC
+        crc8_update(&mut tx.crc, byte);
         tx.pos += 1;
+        return;
+    } else if tx.pos < PREAMBLE_LEN + 4 {
+        let c_len_bytes = (tx.len as u16).to_be_bytes();
+        let byte = c_len_bytes[tx.pos - 2 - PREAMBLE_LEN];
+        // Stuff byte into transmitter.
+        #[cfg(any(
+            target_board = "stm32f303re",
+            target_board = "stm32l432kc",
+            target_board = "stm32l476rg"
+        ))]
+        usart.tdr.write(|w| {
+            w.tdr()
+                .bits(u16::from(byte))
+        });
+        // Update CRC
+        crc8_update(&mut tx.crc, byte);
+        tx.pos += 1;
+        return;
+    } else if tx.pos - 4 - PREAMBLE_LEN == tx.len {
+        // Send out the CRC
+        #[cfg(any(
+            target_board = "stm32f303re",
+            target_board = "stm32l432kc",
+            target_board = "stm32l476rg"
+        ))]
+        usart.tdr.write(|w| w.tdr().bits(u16::from(tx.crc)));
+        tx.pos += 1;
+        return;
+    } else if tx.pos - 4 - PREAMBLE_LEN > tx.len {
+        // Finish transmission
+        let caller = end_transmission(usart, &mut state_ref.transmitter_state);
+        if !is_transmit_mode(&caller, &state_ref.receiver_state) {
+            // Otherwise tell the caller the operation is finished
+            caller.reply(());
+        }
         return;
     }
     // Now we can actually send out data
-    if let Some(byte) =
-        tx.caller.borrow(tx.borrow_num).read_at::<u8>(tx.pos - 4)
+    if let Some(byte) = tx
+        .caller
+        .borrow(tx.borrow_num)
+        .read_at::<u8>(tx.pos - 4 - PREAMBLE_LEN)
     {
+        // Update CRC
+        crc8_update(&mut tx.crc, byte);
         // Stuff byte into transmitter.
         #[cfg(any(
             target_board = "stm32f303re",
@@ -1211,16 +1354,7 @@ fn step_transmit(
             target_board = "stm32l476rg"
         ))]
         usart.tdr.write(|w| w.tdr().bits(u16::from(byte)));
-
         tx.pos += 1;
-        if tx.pos - 4 == tx.len {
-            let caller =
-                end_transmission(usart, &mut state_ref.transmitter_state);
-            if !is_transmit_mode(&caller, &state_ref.receiver_state) {
-                // Otherwise tell the caller the operation is finished
-                caller.reply(());
-            }
-        }
     } else {
         let caller = end_transmission(usart, &mut state_ref.transmitter_state);
         if is_transmit_mode(&caller, &state_ref.receiver_state) {
@@ -1306,6 +1440,21 @@ fn is_transmit_mode(caller: &Caller<()>, receiver: &Option<Receiver>) -> bool {
         }
     }
     return false;
+}
+
+/// Optimized Dallas (now Maxim) iButton 8-bit CRC calculation.
+/// Polynomial: x^8 + x^5 + x^4 + 1 (0x8C)
+/// Initial value: 0x0
+pub fn crc8_update(crc: &mut u8, byte: u8) {
+    let mut tmp = (*crc) ^ byte;
+    for _ in 0..8u8 {
+        if tmp & 0x01 == 1 {
+            tmp = (tmp >> 1) ^ 0x8C;
+        } else {
+            tmp >>= 1;
+        }
+    }
+    *crc = tmp;
 }
 
 include!(concat!(env!("OUT_DIR"), "/notifications.rs"));
