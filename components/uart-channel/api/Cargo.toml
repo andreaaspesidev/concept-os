@@ -3,6 +3,9 @@ name = "uart-channel-api"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+multi-support = []
+
 [dependencies]
 userlib = {path = "../../../sys/userlib"}
 cortex-m = { version = "0.7", features = ["inline-asm"] }

@@ -19,7 +19,7 @@ features = ["log-semihosting"]
 [components.storage]
 features = ["log-semihosting"]
 
-[components.uart-channel-usb]
+[components.uart-channel]
 features = ["log-semihosting"]
 
 [components.update]

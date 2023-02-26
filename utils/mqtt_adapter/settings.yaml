@@ -14,6 +14,3 @@ mqtt:
   username: "mqtt"
   password: "mqtt"
   root_topic: "cOS"
-
-multiplex:
-  enable: true

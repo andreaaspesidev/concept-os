@@ -48,6 +48,13 @@ pub enum Operation {
     TransmitTimed = 4,
 }
 
+#[cfg(feature = "multi-support")]
+#[derive(FromBytes, AsBytes)]
+#[repr(C)]
+pub struct WriteBlockRequest {
+    pub channel_id: u32,
+}
+#[cfg(not(feature = "multi-support"))]
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
 pub struct WriteBlockRequest {}
@@ -58,6 +65,13 @@ impl hl::Call for WriteBlockRequest {
     type Err = ChannelError;
 }
 
+#[cfg(feature = "multi-support")]
+#[derive(FromBytes, AsBytes)]
+#[repr(C)]
+pub struct ReadBlockRequest {
+    pub channel_id: u32,
+}
+#[cfg(not(feature = "multi-support"))]
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
 pub struct ReadBlockRequest {}
@@ -69,11 +83,20 @@ impl hl::Call for ReadBlockRequest {
 }
 
 // ReadBlockTimed
+#[cfg(feature = "multi-support")]
+#[derive(FromBytes, AsBytes)]
+#[repr(C)]
+pub struct ReadBlockTimedRequest {
+    pub timeout_ticks: u32,
+    pub channel_id: u32,
+}
+#[cfg(not(feature = "multi-support"))]
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
 pub struct ReadBlockTimedRequest {
     pub timeout_ticks: u32,
 }
+
 impl hl::Call for ReadBlockTimedRequest {
     const OP: u16 = Operation::ReadBlockTimed as u16;
     type Response = ();
@@ -81,11 +104,20 @@ impl hl::Call for ReadBlockTimedRequest {
 }
 
 // TransmitTimed
+#[cfg(feature = "multi-support")]
+#[derive(FromBytes, AsBytes)]
+#[repr(C)]
+pub struct TransmitTimedRequest {
+    pub timeout_ticks: u32,
+    pub channel_id: u32,
+}
+#[cfg(not(feature = "multi-support"))]
 #[derive(FromBytes, AsBytes)]
 #[repr(C)]
 pub struct TransmitTimedRequest {
     pub timeout_ticks: u32,
 }
+
 impl hl::Call for TransmitTimedRequest {
     const OP: u16 = Operation::TransmitTimed as u16;
     type Response = ();
@@ -104,12 +136,83 @@ impl UartChannel {
             0: Cell::new(UART_CHANNEL_ID),
         }
     }
+}
 
+#[cfg(feature = "multi-support")]
+impl UartChannel {
+    pub fn write_block(
+        &mut self,
+        channel_id: u16,
+        data: &[u8],
+    ) -> Result<(), ChannelError> {
+        hl::send_with_retry(
+            &self.0,
+            &WriteBlockRequest { channel_id: channel_id as u32 },
+            &[Lease::read_only(data)],
+        )
+    }
+    pub fn read_block(
+        &mut self,
+        channel_id: u16,
+        data: &mut [u8],
+    ) -> Result<(), ChannelError> {
+        hl::send_with_retry(
+            &self.0,
+            &ReadBlockRequest { channel_id: channel_id as u32 },
+            &[Lease::write_only(data)],
+        )
+    }
+    pub fn read_block_timed(
+        &mut self,
+        channel_id: u16,
+        data: &mut [u8],
+        timeout_ticks: u32,
+    ) -> Result<(), ChannelError> {
+        hl::send_with_retry(
+            &self.0,
+            &ReadBlockTimedRequest {
+                channel_id: channel_id as u32,
+                timeout_ticks: timeout_ticks,
+            },
+            &[Lease::write_only(data)],
+        )
+    }
+    /// New method that allow transmitting data while first setting up the system for reception.
+    /// This is especially useful when dealing with quick responses, that could be missed for
+    /// unlucky context switches that delay the setup of the standard reception buffer
+    pub fn transmit_timed(
+        &mut self,
+        channel_id: u16,
+        data_out: &[u8],
+        data_in: &mut [u8],
+        timeout_ticks: u32,
+    ) -> Result<(), ChannelError> {
+        hl::send_with_retry(
+            &self.0,
+            &TransmitTimedRequest {
+                channel_id: channel_id as u32,
+                timeout_ticks: timeout_ticks,
+            },
+            &[Lease::read_only(data_out), Lease::write_only(data_in)],
+        )
+    }
+}
+
+#[cfg(not(feature = "multi-support"))]
+impl UartChannel {
     pub fn write_block(&mut self, data: &[u8]) -> Result<(), ChannelError> {
-        hl::send_with_retry(&self.0, &WriteBlockRequest {}, &[Lease::read_only(data)])
+        hl::send_with_retry(
+            &self.0,
+            &WriteBlockRequest {},
+            &[Lease::read_only(data)],
+        )
     }
     pub fn read_block(&mut self, data: &mut [u8]) -> Result<(), ChannelError> {
-        hl::send_with_retry(&self.0, &ReadBlockRequest {}, &[Lease::write_only(data)])
+        hl::send_with_retry(
+            &self.0,
+            &ReadBlockRequest {},
+            &[Lease::write_only(data)],
+        )
     }
     pub fn read_block_timed(
         &mut self,

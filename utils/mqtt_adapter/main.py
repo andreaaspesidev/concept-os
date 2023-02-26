@@ -14,7 +14,6 @@ from libraries.mqtt.mqtt_connector import MQTTConnector
 
 
 async def mqtt_loop(
-    multiplex_enable: bool,
     mqtt_client: MQTTConnector,
     mqtt_out_queue: aio.Queue,
     serial_out_queue: aio.Queue,
@@ -22,23 +21,16 @@ async def mqtt_loop(
 ):
     # Setup message handler
     async def _on_mqtt_data(topic: str, payload: bytes) -> None:
-        # If simple case, then just redirect payload to serial output
-        if not multiplex_enable:
-            serial_out_queue.put_nowait({
-                'data': payload
-            })
-            return
-
-        # Read the component id from the topic
+        # Read the channel id from the topic
         match = re.match(f'{mqtt_root}/([^\/]+)\/in', topic)
         if match is None:
             logger.warning("Wrong topic structure")
             return
         try:
-            component_id = int(match.group(1))
+            channel_id = int(match.group(1))
             # Add the payload to the output queue
             serial_out_queue.put_nowait({
-                'id': component_id,
+                'id': channel_id,
                 'data': payload
             })
         except ValueError:
@@ -50,10 +42,7 @@ async def mqtt_loop(
     logger.info("MQTT online")
     while True:
         pkt = await mqtt_out_queue.get()
-        # If simple case, just use a single topic
-        topic = f"{mqtt_root}/out"
-        if multiplex_enable:
-            topic = f"{mqtt_root}/{pkt['id']}/out"
+        topic = f"{mqtt_root}/{pkt['id']}/out"
         # Launch publish
         if not mqtt_client.publish(
             topic=topic,
@@ -64,8 +53,27 @@ async def mqtt_loop(
             logger.warning("Cannot publish packet to MQTT")
 
 
+#   Packet format
+#   +----------+------------+---------------+----------+--------+
+#   | Preamble | Channel ID | Packet Length |   Data   | CRC-8  |
+#   +----------+------------+---------------+----------+--------+
+#   | 4 bytes  | 2 bytes    | 2 bytes       | pl_bytes | 1 byte |
+#   +----------+------------+---------------+----------+--------+
+#
+
+# Optimized Dallas (now Maxim) iButton 8-bit CRC calculation.
+# Polynomial: x^8 + x^5 + x^4 + 1 (0x8C)
+# Initial value: 0x0
+def crc8_update(crc, byte) -> int:
+    tmp = crc ^ byte
+    for _ in range(0,8):
+        if tmp & 0x01 == 1:
+            tmp = (tmp >> 1) ^ 0x8C
+        else:
+            tmp >>= 1
+    return tmp
+
 async def serial_loop(
-    multiplex_enable: bool,
     serial_port: AIOSerial,
     serial_out_queue: aio.Queue,
     mqtt_out_queue: aio.Queue
@@ -73,52 +81,65 @@ async def serial_loop(
     # Decoder task
     async def _decoder() -> None:
         in_buffer = bytearray()
-        last_component_id = None
+        last_channel_id = None
         last_pkt_len = 0
+        preamble_cnt = 0
+        crc8 = 0
         try:
             logger.info("Serial decoder online")
             while True:
                 byte = await serial_port.read()
                 in_buffer.extend(byte)
-
-                # If no multiplex, then just read data length
-                if not multiplex_enable:
-                    if last_pkt_len == 0:
-                        if len(in_buffer) < 2:
-                            continue
-                        last_pkt_len = int.from_bytes(
-                            in_buffer[0:2], byteorder='big')    
-                        # Skip this data
-                        in_buffer = in_buffer[2:]
-                    if len(in_buffer) == last_pkt_len:
-                        mqtt_out_queue.put_nowait({
-                            'data': in_buffer[:]
-                        })
-                        last_pkt_len = 0
-                        in_buffer = bytearray()
-                    continue
-
                 # Check if we are already reading a packet
-                if last_component_id is None:
+                if last_channel_id is None:
+                    # Wait for a preamble, discarding the bytes
+                    if preamble_cnt != 4:
+                        # Check if this byte is a preamble byte
+                        if in_buffer[0] == 0xAA:
+                            in_buffer = in_buffer[1:]
+                            preamble_cnt += 1
+                            continue # Wait for next byte
+                        else:
+                            # Mistaken sth else for the preamble, restart
+                            in_buffer = in_buffer[1:]
+                            preamble_cnt = 0
+                            continue
+                    
                     # Wait until we have a full header
                     # (2 * 16bits: 4 bytes)
                     if len(in_buffer) < 4:
                         continue
                     # Read the header
-                    last_component_id = int.from_bytes(
+                    last_channel_id = int.from_bytes(
                         in_buffer[0:2], byteorder='big')
                     last_pkt_len = int.from_bytes(
                         in_buffer[2:4], byteorder='big')
+                    crc8 = 0
+                    # Update crc with the header
+                    for i in range(0,4):
+                        crc8 = crc8_update(crc8,in_buffer[i])
                     # Skip this data
                     in_buffer = in_buffer[4:]
-                # Decode a packet
-                if len(in_buffer) == last_pkt_len:
+                
+                # Decode a packet, first update crc
+                if len(in_buffer) == last_pkt_len + 1:
+                    # Check crc, otherwise discard everything and wait for a new preamble
+                    if in_buffer[last_pkt_len] != crc8:
+                        preamble_cnt = 0    # Wait for next preamble
+                        last_channel_id = None 
+                        logger.warning("Discarding package for wrong CRC")
+                        continue
+                    # Otherwise push data
                     mqtt_out_queue.put_nowait({
-                        'id': last_component_id,
-                        'data': in_buffer[:]
+                        'id': last_channel_id,
+                        'data': in_buffer[:-1]
                     })
+                    # Empty everything
                     in_buffer = bytearray()
-                    last_component_id = None
+                    preamble_cnt = 0    # Wait for next preamble
+                    last_channel_id = None
+                elif len(in_buffer) > 0:
+                    crc8 = crc8_update(crc8,in_buffer[0])
 
         except AIOSerialException:
             logger.error("Error in serial port reading!")
@@ -129,18 +150,26 @@ async def serial_loop(
         logger.info("Serial encoder online")
         while True:
             pkt = await serial_out_queue.get()
-            # Simple case, no mux
-            if not multiplex_enable:
-                await serial_port.write(pkt['data'])
-                continue
-
-            # Write header first
+            # Write preamble + header
+            c_preamble = b"\xAA"*4
+            crc8 = 0
             c_id = int(pkt['id']).to_bytes(2, byteorder='big')
             c_len = int(len(pkt['data'])).to_bytes(2, byteorder='big')
+            # Compute CRC
+            for i in range(0,2):
+                crc8 = crc8_update(crc8,c_id[i])
+            for i in range(0,2):
+                crc8 = crc8_update(crc8,c_len[i])
+            for i in range(0,len(pkt['data'])):
+                crc8 = crc8_update(crc8,pkt['data'][i])
+            # Write preamble + header
+            await serial_port.write(c_preamble)
             await serial_port.write(c_id)
             await serial_port.write(c_len)
             # Then write data
             await serial_port.write(pkt['data'])
+            # Then write crc8
+            await serial_port.write(crc8.to_bytes(1, byteorder='big'))
     # Start tasks
     aio.create_task(_encoder())
     aio.create_task(_decoder())
@@ -191,16 +220,7 @@ async def init(settings: Settings):
         logger.error("Cannot connect to MQTT")
         sys.exit(-1)
 
-    # Read mode from settings
-    multiplex_enable = settings.get('multiplex/enable', False)
-
     # Now that everything is online, perform the subscriptions
-    if not multiplex_enable:
-        # Subscribe also to the single one
-        if not await mqtt_client.subscribe(mqtt_root + "/in", qos=2):
-            logger.error("Cannot subscribe to MQTT")
-            sys.exit(-1)
-    # If multiplex is not enabled, all will be mapped to /in
     if not await mqtt_client.subscribe(mqtt_root + "/+/in", qos=2):
         logger.error("Cannot subscribe to MQTT")
         sys.exit(-1)
@@ -211,14 +231,12 @@ async def init(settings: Settings):
 
     # Begin checking MQTT and Serial traffic
     aio.create_task(mqtt_loop(
-        multiplex_enable=multiplex_enable, 
         mqtt_client=mqtt_client,
         mqtt_out_queue=mqtt_out_queue,
         serial_out_queue=serial_out_queue,
         mqtt_root=mqtt_root))
 
     aio.create_task(serial_loop(
-        multiplex_enable=multiplex_enable, 
         serial_port=serial,
         serial_out_queue=serial_out_queue,
         mqtt_out_queue=mqtt_out_queue))

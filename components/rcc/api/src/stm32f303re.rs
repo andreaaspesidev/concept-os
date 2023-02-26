@@ -43,6 +43,7 @@ pub fn clock_mapping(p: Peripheral) -> Result<(Bus, u32), RCCError> {
         Peripheral::GPIOE => Ok((Bus::AHB1, 21)),
         Peripheral::GPIOF => Ok((Bus::AHB1, 22)),
         Peripheral::GPIOG => Ok((Bus::AHB1, 23)),
+        _ => Err(RCCError::BadArgument)
     }
 }
 

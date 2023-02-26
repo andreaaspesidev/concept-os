@@ -1,4 +1,4 @@
-COMPONENT_NAME:=uart-channel-usb
+COMPONENT_NAME:=uart-channel
 current_dir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 root_dir := $(shell dirname $(realpath ../../.))
 

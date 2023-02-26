@@ -1,7 +1,7 @@
-name = "stm32l476rg_demo"
-board = "stm32l476rg"
+name = "stm32f303re_mqtt"
+board = "stm32f303re"
 kernel_ram = 6656
-clock_speed = 80000000
+clock_speed = 72000000
 strip_panics = true
 
 [components.idle]
@@ -20,7 +20,7 @@ features = ["log-itm"]
 features = ["log-itm"]
 
 [components.uart-channel]
-features = ["log-itm"]
+features = ["log-itm", "multi-support"]
 
 [components.update]
 features = ["log-itm"]

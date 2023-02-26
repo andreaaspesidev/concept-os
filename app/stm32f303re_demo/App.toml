@@ -19,7 +19,7 @@ features = ["log-itm"]
 [components.storage]
 features = ["log-itm"]
 
-[components.uart-channel-usb]
+[components.uart-channel]
 features = ["log-itm"]
 
 [components.update]

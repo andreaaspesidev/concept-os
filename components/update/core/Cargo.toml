@@ -20,7 +20,7 @@ static_assertions = "1.1.0"
 cortex-m-semihosting =  { version = "0.5.0", optional=true}
 # Component dependencies
 storage-api = {path = "../../storage/api"}
-uart-channel-api = {path = "../../uart-channel-usb/api"}
+uart-channel-api = {path = "../../uart-channel/api"}
 
 # This section is here to discourage RLS/rust-analyzer from doing test builds,
 # since test builds don't work for cross compilation.
