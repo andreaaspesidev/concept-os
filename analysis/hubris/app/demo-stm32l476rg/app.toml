@@ -1,0 +1,85 @@
+name = "demo-stm32l476rg"
+target = "thumbv7em-none-eabihf"
+board = "stm32l476rg"
+chip = "../../chips/stm32l476rg"
+stacksize = 896
+
+[kernel]
+name = "demo-stm32l476rg"
+requires = {flash = 22000, ram = 3072}
+#
+# For the kernel (and for any task that logs), we are required to enable
+# either "itm" (denoting logging/panicking via ARM's Instrumentation Trace
+# Macrocell) or "semihosting" (denoting logging/panicking via ARM
+# semihosting).  We are biased to ITM because semihosting is excruciatingly
+# slow (it is breakpoint based) and has an undesirable failure mode if logging
+# output is generated and debugger is not attached (namely, the target stops).
+# If one does choose to change this to semihosting for purposes of
+# development, be sure to also change it in every task of interest.
+#
+features = ["itm"]
+
+[tasks.rcc]
+name = "rcc"
+features = ["stm32l476rg"]
+priority = 0
+max-sizes = {flash = 1024, ram = 1024}
+uses = ["rcc"]
+start = true
+
+[tasks.channel]
+name = "channel"
+features = ["stm32l476rg", "log-itm"]
+priority = 1
+max-sizes = {flash = 16384, ram = 4096}
+stacksize = 2048
+uses = ["usart2", "gpioa", "dma1"]
+start = true
+notifications = ["usart-irq", "dma-irq"]
+interrupts = {"usart2.irq" = "usart-irq", "dma1.irq6" = "dma-irq"}
+task-slots = ["rcc"]
+
+[tasks.update]
+name = "update"
+features = ["log-itm"]
+priority = 3
+max-sizes = {flash = 16384, ram = 2048}
+stacksize = 1024
+start = true
+uses = ["flash_interface", "bank2", "iwdg"]
+notifications = ["flash-irq"]
+interrupts = {"flash_interface.irq" = "flash-irq"}
+task-slots = ["channel"]
+
+[tasks.random]
+name = "random_version"
+features = ["v1"]
+priority = 4
+max-sizes = {flash = 1024, ram = 1024}
+start = true
+
+
+#[tasks.uart_echo1]
+#name = "uart_echo_multi"
+#features = ["channel1"]
+#priority = 2
+#max-sizes = {flash = 4096, ram = 2048}
+#stacksize = 1024
+#start = true
+#task-slots = ["channel"]
+
+#[tasks.uart_echo2]
+#name = "uart_echo_multi"
+#features = ["channel2"]
+#priority = 2
+#max-sizes = {flash = 4096, ram = 2048}
+#stacksize = 1024
+#start = true
+#task-slots = ["channel"]
+
+[tasks.idle]
+name = "task-idle"
+priority = 5
+max-sizes = {flash = 128, ram = 256}
+stacksize = 256
+start = true

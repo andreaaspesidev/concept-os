@@ -172,7 +172,7 @@ pub fn config(
             flash
         }
 
-        "stm32f303re" | "stm32f4-discovery" | "nucleo-h743zi2"
+        "stm32l476rg" | "stm32f303re" | "stm32f4-discovery" | "nucleo-h743zi2"
         | "nucleo-h753zi" | "stm32h7b3i-dk" | "gemini-bu-1" | "gimletlet-1"
         | "gimletlet-2" | "gimlet-a" | "gimlet-b" | "gimlet-c" | "psc-a"
         | "psc-b" | "sidecar-a" | "sidecar-b" | "stm32g031-nucleo"
@@ -209,6 +209,7 @@ pub fn chip_name(board: &str) -> anyhow::Result<&'static str> {
         }
         "rot-carrier-1" | "gimlet-rot-b" => "LPC55S28JBD100",
         "stm32f303re" => "STM32F303RETx",
+        "stm32l476rg" => "STM32L476RGTx",
         "stm32f4-discovery" => "STM32F407VGTx",
         "nucleo-h743zi2" => "STM32H743ZITx",
         "nucleo-h753zi" => "STM32H753ZITx",

@@ -2966,6 +2966,7 @@ impl HubrisArchive {
                             regex::Regex::new(r"find target/stm32f4").unwrap();
                         let g0 =
                             regex::Regex::new(r"find target/stm32g0").unwrap();
+                        let l4 = regex::Regex::new(r"find target/stm32l4").unwrap();
 
                         let mut c: Option<String> = None;
 
@@ -2984,6 +2985,10 @@ impl HubrisArchive {
                             }
                             if g0.is_match(s) {
                                 c = Some("STM32G030C6Tx".to_string());
+                                break;
+                            }
+                            if l4.is_match(s) {
+                                c = Some("STM32L476RGTx".to_string());
                                 break;
                             }
                         }

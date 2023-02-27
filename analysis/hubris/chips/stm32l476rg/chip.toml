@@ -1,0 +1,80 @@
+[usart2]
+address = 0x40004400
+size = 1024
+interrupts = { irq = 38 }
+
+[usart3]
+address = 0x40004800
+size = 1024
+interrupts = { irq = 39 }
+
+[rcc]
+address = 0x40021000
+size = 1024
+
+[gpioa]
+address = 0x48000000
+size = 1024
+
+[gpiob]
+address = 0x48000400
+size = 1024
+
+[gpioc]
+address = 0x48000800
+size = 1024
+
+[gpiod]
+address = 0x48000C00
+size = 1024
+
+[gpioe]
+address = 0x48001000
+size = 1024
+
+[gpiof]
+address = 0x48001400
+size = 1024
+
+[gpiog]
+address = 0x48001800
+size = 1024
+
+[gpioh]
+address = 0x48001C00
+size = 1024
+
+[dma1]
+address = 0x40020000
+size = 1024
+interrupts = {irq1 = 11, irq2 = 12, irq3 = 13, irq4 = 14, irq5 = 15, irq6 = 16, irq = 17}
+
+[flash_interface]
+address = 0x40022000
+size = 1024
+interrupts = { irq = 4 }
+
+[bank2]
+address = 0x08080000
+size = 524288
+
+[tim1]
+address = 0x40012C00
+size = 1024
+
+[tim2]
+address = 0x40000000
+size = 1024
+
+[tim3]
+address = 0x40000400
+size = 1024
+
+[i2c1]
+address = 0x40005400
+size = 1024
+interrupts = { irq_ev = 31, irq_er = 32 }
+
+[iwdg]
+address = 0x40003000
+size = 1024

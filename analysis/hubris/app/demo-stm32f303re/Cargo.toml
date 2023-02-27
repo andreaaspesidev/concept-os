@@ -18,7 +18,6 @@ panic-semihosting = { workspace = true, optional = true }
 [dependencies.stm32f3]
 features = ["stm32f303", "rt"]
 workspace = true
-optional = true
 
 [dependencies.kern]
 path = "../../sys/kern"

@@ -17,7 +17,7 @@ requires = {flash = 20000, ram = 3072}
 # If one does choose to change this to semihosting for purposes of
 # development, be sure to also change it in every task of interest.
 #
-features = ["itm", "stm32f3"]
+features = ["itm"]
 
 [tasks.rcc]
 name = "rcc"
