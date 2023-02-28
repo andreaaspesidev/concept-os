@@ -9,6 +9,7 @@ board_stm32l476rg = []
 [dependencies]
 userlib = {path = "../../../sys/userlib", features=["log-itm"]}
 zerocopy = "0.6.1"
+cortex-m = { version = "0.7", features = ["inline-asm"] }
 # Component dependencies
 uart-channel-api = {path = "../../uart-channel/api", features=["multi-support"]}
 bthermo-api = {path = "../../bthermo/api"}

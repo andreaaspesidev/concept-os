@@ -30,7 +30,7 @@ const STORAGE_ANALYZE_MASK: u32 = 1;
 
 #[export_name = "main"]
 fn main() -> ! {
-    sys_log!("[STORAGE] Hello!");
+    sys_log!("[STORAGE] Hello v1!");
     // Activate task
     kipc::activate_task();
     // Always analyze storage on start-up

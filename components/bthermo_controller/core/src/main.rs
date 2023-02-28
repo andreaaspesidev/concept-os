@@ -28,6 +28,8 @@ fn main() -> ! {
     // Listen for commands packet on serial
     let mut serial = uart_channel_api::UartChannel::new();
 
+    sys_log!("bThermo Controller v1");
+
     // Main loop
     let mut in_buffer: [u8; 1] = [0; 1];
     loop {
