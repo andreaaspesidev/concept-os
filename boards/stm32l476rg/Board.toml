@@ -48,6 +48,26 @@ attributes = [
     'DEVICE'
 ]
 
+# GPIOB
+[peripheral.gpiob]
+base_address = '0x48000400'
+size = '0x0400' # 1024
+attributes = [
+    'READ',
+    'WRITE',
+    'DEVICE'
+]
+
+# I2C1
+[peripheral.i2c1]
+base_address = '0x40005400'
+size = '0x0400' # 1024
+attributes = [
+    'READ',
+    'WRITE',
+    'DEVICE'
+]
+
 # DMA1
 [peripheral.dma1]
 base_address = '0x40020000'

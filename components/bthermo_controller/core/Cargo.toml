@@ -1,0 +1,27 @@
+[package]
+name = "bthermo-controller"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+board_stm32l476rg = []
+
+[dependencies]
+userlib = {path = "../../../sys/userlib", features=["log-itm"]}
+zerocopy = "0.6.1"
+# Component dependencies
+uart-channel-api = {path = "../../uart-channel/api", features=["multi-support"]}
+bthermo-api = {path = "../../bthermo/api"}
+
+# This section is here to discourage RLS/rust-analyzer from doing test builds,
+# since test builds don't work for cross compilation.
+[[bin]]
+name = "bthermo-controller"
+test = false
+bench = false
+
+[profile.release]
+codegen-units = 1 # better optimizations
+debug = 2 # symbols are nice and they don't increase the size on Flash
+lto = true # better optimizations
+opt-level = "z" # smaller optimizations

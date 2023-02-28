@@ -1,6 +1,0 @@
-[component]
-id = 16
-version = 1
-priority = 10
-flags = ['START_AT_BOOT']
-min_ram = 1024

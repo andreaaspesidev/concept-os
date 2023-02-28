@@ -1,0 +1,13 @@
+[component]
+id = 10
+version = 1
+priority = 5
+flags = ['START_AT_BOOT']
+min_ram = 4096
+peripherals = ['gpiob','i2c1']
+
+# RCC
+[[dependencies]]
+component_id = 2
+min_version = 1
+max_version = 1

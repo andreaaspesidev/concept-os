@@ -1,0 +1,26 @@
+name = "bthermo"
+board = "stm32l476rg"
+kernel_ram = 6656
+clock_speed = 80000000
+strip_panics = true
+
+[components.idle]
+features = ["log-itm"]
+
+[components.bthermo]
+features = []
+
+[components.bthermo_controller]
+features = []
+
+[components.rcc]
+features = ["log-itm"]
+
+[components.storage]
+features = ["log-itm"]
+
+[components.uart-channel]
+features = ["log-itm", "multi-support"]
+
+[components.update]
+features = ["log-itm"]
