@@ -8,7 +8,7 @@
 // Make sure we actually link in userlib, despite not using any of it explicitly
 // - we need it for our _start routine.
 
-use userlib::task_slot;
+use userlib::{task_slot, sys_log};
 extern crate userlib;
 
 task_slot!(CHANNEL, channel);
@@ -24,10 +24,11 @@ fn main() -> ! {
     let channel_id: u16 = 2;
 
     loop {
-        // Wait for a byte
-        let mut data: [u8; 1] = [0x00; 1];
+        // Wait for 3 bytes
+        let mut data: [u8; 3] = [0x00; 3];
 
         channel.read_block(channel_id, &mut data).unwrap();
+        sys_log!("Got data, now reply!");
         // Write back
         channel.write_block(channel_id, &mut data).unwrap();
     }

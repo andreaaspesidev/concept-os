@@ -1021,18 +1021,28 @@ fn rx_update_caller(
     _dma1: &device::dma1::RegisterBlock,
     _usart: &device::usart1::RegisterBlock,
 ) {
+    // We want to receive packets in the format
+    //   +----------+------------+---------------+----------+--------+
+    //   | Preamble | Channel ID | Packet Length |   Data   | CRC-8  |
+    //   +----------+------------+---------------+----------+--------+
+    //   | 4 bytes  | 2 bytes    | 2 bytes       | pl_bytes | 1 byte |
+    //   +----------+------------+---------------+----------+--------+
     while data.len() > 0 {
-        // Check if we know the origin of this message
+        // Check whether we are currently receiving a packet
         if receiver_state.last_channel_id.is_none() {
+            // In case we are waiting for a new packet, check whether we already
+            // received the preamble.
             if receiver_state.preamble_cnt != PREAMBLE_LEN {
                 // Search for the preamble of a packet
-                // As it may come in (at least) two different calls, we need to keep track of such bytes
+                // As it may come in (at least) two different calls,
+                // we need to keep track of such bytes
                 while data[0] == PREAMBLE_BYTE {
                     // Advance in data
                     data = &data[1..];
                     // Mark as arrived
                     receiver_state.preamble_cnt += 1;
                     if receiver_state.preamble_cnt == PREAMBLE_LEN {
+                        // Got it!
                         break;
                     }
                     // If no more data, then wait next data
@@ -1050,83 +1060,136 @@ fn rx_update_caller(
                     continue; // Retry on the remaining data
                 }
             }
-            // Now we are sure we have all the bytes, so read the header
+            // If we get here, then we received at least the preamble.
+            // Now it's time to receive the header (Channel ID + Packet Length)
+            // Compute how many bytes are still missing
             let missing_header_len = core::cmp::min(
                 receiver_state.header_data_buff.len()
                     - receiver_state.header_data_buff_pos,
                 data.len(),
             );
+            // Copy the missing bytes in the buffer.
+            // We need this buffer as such header could arrive fragmented in two
+            // different calls.
             for i in 0..missing_header_len {
                 receiver_state.header_data_buff
                     [receiver_state.header_data_buff_pos + i] = data[i];
             }
             receiver_state.header_data_buff_pos += missing_header_len;
             data = &data[missing_header_len..]; // Skip these bytes
+
+            // Check whether we got the whole header
             if receiver_state.header_data_buff_pos
                 < receiver_state.header_data_buff.len()
             {
-                // Wait more data
+                // Surely here data.len() == 0, so wait for more data
                 return;
             }
-            // Now we got enough data, use the buffer!
-            let mut c_id_bytes: [u8; 2] = [0x00; 2];
-            c_id_bytes.copy_from_slice(&receiver_state.header_data_buff[0..2]);
-            let mut c_len_bytes: [u8; 2] = [0x00; 2];
-            c_len_bytes.copy_from_slice(&receiver_state.header_data_buff[2..4]);
-            receiver_state.last_channel_id =
-                Some(u16::from_be_bytes(c_id_bytes));
-            receiver_state.last_packet_len =
-                u16::from_be_bytes(c_len_bytes) + 1; // +1 for the CRC-8
+
+            // It's now time to decode such header
+            receiver_state.last_channel_id = Some(u16::from_be_bytes(
+                receiver_state.header_data_buff[0..2]
+                    .try_into()
+                    .unwrap_lite(),
+            ));
+            receiver_state.last_packet_len = u16::from_be_bytes(
+                receiver_state.header_data_buff[2..4]
+                    .try_into()
+                    .unwrap_lite(),
+            ) + 1; // +1 for the CRC-8
+
+            // Initialize structure fields for this packet
             receiver_state.header_data_buff_pos = 0;
             receiver_state.received_bytes = 0;
+            receiver_state.crc8 = 0;
+
+            // Start computing CRC on header
+            for i in 0..4 {
+                crc8_update(
+                    &mut receiver_state.crc8,
+                    receiver_state.header_data_buff[i],
+                );
+            }
             continue; // Redo the check, as data.len() could be 0 now
         }
-        // At this point, we have for sure the channel id.
-        let c_id = receiver_state.last_channel_id.unwrap();
-        let mut update_deadlines: bool = false;
-        let mut consumed_bytes: usize = 0;
-        // Compute the bytes we are missing from the packet
+        // At this point, we are receiving the data bytes associated with the packet
+        // Let's initialize some variables
+        let c_id = receiver_state.last_channel_id.unwrap_lite(); // Channel ID
+        let mut update_deadlines: bool = false; // Whether we removed some component
+        let mut consumed_bytes: usize = 0; // Number of bytes of the packet given to the component
+        let last_packet_slice: bool; // Marked when the crc of the packet is in view
+        let mut packet_failed: bool = false; // In case we have a CRC failure
+
+        // Compute the bytes we still need to receive for this packet (included CRC field)
         let to_be_received = (receiver_state.last_packet_len
             - receiver_state.received_bytes)
             as usize;
-        // Only some of these are available in this round
+
+        // Only some of these are available in this round, so let's compute those
         let available_bytes = core::cmp::min(data.len(), to_be_received);
-        let last_packet_slice: bool;
-        let mut packet_failed: bool = false; // In case we have a CRC failure
-                                             // Check if we have the CRC in range
+
+        // Check if we have the CRC in range.
+        // In this case, we are ready to close the packet
         if to_be_received - available_bytes == 0 {
-            // Finish computing the CRC on the bytes
+            // Finish computing the CRC on the bytes,
+            // in case we have more than just the CRC field
             if available_bytes > 1 {
                 for i in 0..(available_bytes - 1) {
                     crc8_update(&mut receiver_state.crc8, data[i]);
                 }
             }
-            // Validate crc
-            sys_log!("av: {}", available_bytes);
+            // The CRC will always be the last byte of the available ones
+            // for this packet.
             let crc8 = data[available_bytes - 1];
+
+            // Check whether the packet is valid
             if crc8 != receiver_state.crc8 {
-                // Failed validation, discard data
+                // Failed validation!
+                // This slice of the packet is discarded and marked as consumed.
                 packet_failed = true;
                 data = &data[available_bytes..];
-                // Reset the variables to search for a new preamble
-                receiver_state.last_channel_id = None;
-                receiver_state.preamble_cnt = 0;
+                consumed_bytes += available_bytes;
             }
+            // In any case, mark this is the last slice of the packet
             last_packet_slice = true;
-            // Reset the variables to search for a new preamble
+            // Search for a new preamble
             receiver_state.last_channel_id = None;
             receiver_state.preamble_cnt = 0;
         } else {
-            // Compute crc
+            // We do not see the end of the packet in this slice,
+            // just receive it and compute the CRC on all the data
             for i in 0..available_bytes {
                 crc8_update(&mut receiver_state.crc8, data[i]);
             }
             last_packet_slice = false;
         }
-        // Send this data to components
+        // Send this data to components, eventually removing them
+        // from the listeners if they completed reception or they fail.
         receiver_state.receivers.retain_mut(|rx| {
             if rx.id == c_id {
-                // We got our task, write the data as we cannot store it
+                // Manage basic recovery for simple packet.
+                if packet_failed {
+                    // Let's reason on the possible outcomes:
+                    // -> Part of the packet was already consumed by a prev. call of this component.
+                    //    In this case, let's hope it has an higher level CRC.
+                    // -> All data of this packet was copied to an active receiver.
+                    //    We might have copied data here the prev. round. Just decrement the received bytes
+                    //    in rx.pos, exploiting the fact received_bytes is incremented only after this loop
+                    //    so it represents the bytes consumed up to the prev. round.
+                    let discard_many = core::cmp::min(
+                        rx.pos,
+                        receiver_state.received_bytes as usize,
+                    );
+                    // -1 on receiver_state.received_bytes is not needed,
+                    // as surely in the prev. round we did not reached the CRC field
+                    rx.pos -= discard_many;
+                    // Skip this round, keeping the listener
+                    return true;
+                }
+                // Compute how much data of the packet the component actually requested.
+                // We admit waiting for less than the packet size, and even for more.
+                // In the first case, the remaining packet is discarded, in the last multiple
+                // packets are joined to fill the buffer
                 let need_bytes = core::cmp::min(
                     rx.len - rx.pos,
                     match last_packet_slice {
@@ -1134,55 +1197,43 @@ fn rx_update_caller(
                         false => available_bytes,
                     },
                 );
-                // If failed, we have to remove the length from the buffer of the component
-                // Currently, it's possible that a component finishes before the end of the packet,
-                // in this case, we ignore the event and hope that component have an higher layer CRC.
-                if packet_failed {
-                    // All we can do here is try to remove data from the current listener.
-                    // We might need multiple packets to fill the buffer. In this case, we have to check
-                    // how many bytes of this packet we have already written to this component.
-                    let discard_many = core::cmp::min(
-                        rx.pos,
-                        receiver_state.received_bytes as usize,
-                    );
-                    // -1 on receiver_state.received_bytes is not needed, received_bytes is incremented
-                    // only after this loop, so it accounts only for bytes consumed up to the prev. round.
-                    rx.pos -= discard_many;
-                    // Skip this round
-                    return true;
-                }
-                // Try write data
+                // Copy the data to the buffer of the listener
                 if rx
                     .caller
                     .borrow(rx.borrow_num)
                     .write_fully_at(rx.pos, &data[0..need_bytes])
                     .is_some()
                 {
+                    // Consume this data
                     rx.pos += need_bytes;
                     data = &data[need_bytes..];
                     consumed_bytes += need_bytes;
-
+                    // Check whether we completed the reception
                     if rx.pos == rx.len {
-                        // Success
+                        // Signal success
                         rx.caller.clone().reply(());
                         update_deadlines = true;
+                        // Remove this listener
                         return false;
                     }
                     return true;
                 } else {
+                    // An exception occurred!
+                    // Discard this data (and later the packet!)
                     data = &data[need_bytes..];
                     consumed_bytes += need_bytes;
-
+                    // Signal failure
                     rx.caller.clone().reply_fail(ChannelError::BadArgument);
                     update_deadlines = true;
+                    // Remove this listener
                     return false;
                 }
             }
-            // Otherwise this is not the component we are looking for
+            // Otherwise this is not the component we are looking for,
+            // so keep it!
             return true;
         });
-        // If we have not found the component, consume the packet data in any case
-        // in order not to lose the header tracking.
+        // In any case, consume the packet data in order not to lose the header tracking.
         if consumed_bytes < available_bytes {
             match last_packet_slice {
                 false => {
@@ -1296,9 +1347,7 @@ fn step_transmit(
             target_board = "stm32l432kc",
             target_board = "stm32l476rg"
         ))]
-        usart.tdr.write(|w| {
-            w.tdr().bits(u16::from(byte))
-        });
+        usart.tdr.write(|w| w.tdr().bits(u16::from(byte)));
         // Update CRC
         crc8_update(&mut tx.crc, byte);
         tx.pos += 1;
@@ -1312,10 +1361,7 @@ fn step_transmit(
             target_board = "stm32l432kc",
             target_board = "stm32l476rg"
         ))]
-        usart.tdr.write(|w| {
-            w.tdr()
-                .bits(u16::from(byte))
-        });
+        usart.tdr.write(|w| w.tdr().bits(u16::from(byte)));
         // Update CRC
         crc8_update(&mut tx.crc, byte);
         tx.pos += 1;
