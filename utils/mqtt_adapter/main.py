@@ -139,7 +139,7 @@ async def serial_loop(
                     preamble_cnt = 0    # Wait for next preamble
                     last_channel_id = None
                 elif len(in_buffer) > 0:
-                    crc8 = crc8_update(crc8,in_buffer[0])
+                    crc8 = crc8_update(crc8,in_buffer[len(in_buffer)-1])
 
         except AIOSerialException:
             logger.error("Error in serial port reading!")
@@ -152,10 +152,10 @@ async def serial_loop(
             pkt = await serial_out_queue.get()
             # Write preamble + header
             c_preamble = b"\xAA"*4
-            crc8 = 0
             c_id = int(pkt['id']).to_bytes(2, byteorder='big')
             c_len = int(len(pkt['data'])).to_bytes(2, byteorder='big')
             # Compute CRC
+            crc8 = 0
             for i in range(0,2):
                 crc8 = crc8_update(crc8,c_id[i])
             for i in range(0,2):
