@@ -30,7 +30,7 @@ const STORAGE_ANALYZE_MASK: u32 = 1;
 
 #[export_name = "main"]
 fn main() -> ! {
-    sys_log!("[STORAGE] Hello v1!");
+    sys_log!("[STORAGEv1] Online!");
     // Activate task
     kipc::activate_task();
     // Always analyze storage on start-up
@@ -169,7 +169,7 @@ fn main() -> ! {
 }
 
 fn analyze_storage() {
-    sys_log!("[STORAGE] Analyzing");
+    sys_log!("[STORAGEv1] Analyzing");
     // Instantiate the flash operators
     let mut flash = FlashInterface::new();
     // Perform storage analysis
@@ -182,7 +182,7 @@ fn analyze_storage() {
         FLASH_TREE_MAX_LEVEL,
         FLASH_NUM_NODES,
     >::analyze_storage(&mut flash, true);
-    sys_log!("[STORAGE] Analysis completed!");
+    sys_log!("[STORAGEv1] Analysis completed!");
 }
 
 fn generate_status() -> Result<ReportStatusResponse, StorageError> {

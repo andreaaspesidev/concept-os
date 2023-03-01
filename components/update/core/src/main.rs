@@ -36,7 +36,7 @@ fn main() -> ! {
     let mut usart = UartChannel::new();
 
     // Main loop
-    sys_log!("[UPDATE] Hello");
+    sys_log!("[UPDATEv1] Hello");
     loop {
         // Create a buffer where to store the message
         let mut hello_buffer: [u8; HelloMessage::get_size()] = [0x00; HelloMessage::get_size()];

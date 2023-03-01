@@ -231,7 +231,8 @@ fn main() -> ! {
                     // Frame error
                     if usart_isr.fe().bit_is_set() {
                         if !frame_recovery {
-                            panic!("UART Frame Error");
+                            sys_log!("UART Frame Error");
+                            panic!();
                         }
                         // For this time, just reset the error.
                         // This is needed as for some reason it happens to fire
@@ -246,7 +247,8 @@ fn main() -> ! {
                     // otherwise it's impossibile.
                     if usart_isr.ore().bit_is_set() {
                         // Something happened
-                        panic!("UART Overrun");
+                        sys_log!("UART Overrun");
+                        panic!();
                     }
 
                     // Enable again interrupts
@@ -278,7 +280,8 @@ fn main() -> ! {
                         );
                     } else if isr.teif6().bit_is_set() {
                         // Error
-                        panic!("Got error on DMA");
+                        sys_log!("Got error on DMA");
+                        panic!();
                     }
 
                     // Enable again interrupt

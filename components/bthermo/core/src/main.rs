@@ -26,7 +26,7 @@ const SLEEP_MAX_TIME_MS: u64 = 500;
 
 #[export_name = "main"]
 fn main() -> ! {
-    sys_log!("[THERMO] Waiting for state!");
+    sys_log!("[THERMOv1] Waiting for state!");
     // Prepare for state migration
     let mut transfer_buffer: [u8; core::mem::size_of::<TransferableState>()] =
         [0x00; core::mem::size_of::<TransferableState>()];
@@ -40,7 +40,7 @@ fn main() -> ! {
     // Enable state migration
     kipc::set_update_support(true);
 
-    sys_log!("[THERMO] v1 Online!");
+    sys_log!("[THERMOv1] Online!");
 
     // Create a safe instance of the RCC
     let mut rcc = rcc_api::RCC::new();

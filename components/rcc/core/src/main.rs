@@ -47,7 +47,7 @@ fn main() -> ! {
     // concern. Were it literally a static, we could just reference it.
     let rcc = unsafe { &*device::RCC::ptr() };
 
-    sys_log!("RCC v1");
+    sys_log!("[RCCv1]");
     // Message handler
     let recv_handler = |op: Operation, msg: hl::Message| -> Result<(), RCCError> {
         match op {
