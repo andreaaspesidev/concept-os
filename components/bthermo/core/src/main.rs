@@ -21,12 +21,11 @@ use zerocopy::{AsBytes, LayoutVerified};
 
 use crate::history::History;
 
-const TIMER_IRQ_MASK: u32 = 0x0000_0001;
+const TIMER_IRQ_MASK: u32 = 1 << 0;
 const SLEEP_MAX_TIME_MS: u64 = 500;
 
 #[export_name = "main"]
 fn main() -> ! {
-    sys_log!("[THERMOv1] Waiting for state!");
     // Prepare for state migration
     let mut transfer_buffer: [u8; core::mem::size_of::<TransferableState>()] =
         [0x00; core::mem::size_of::<TransferableState>()];
@@ -34,13 +33,6 @@ fn main() -> ! {
     let transfer_result = hl::get_state(&mut transfer_buffer, (), |_, data: &TransferableState| {
         prev_state = Some(data);
     });
-
-    // Activate
-    kipc::activate_task();
-    // Enable state migration
-    kipc::set_update_support(true);
-
-    sys_log!("[THERMOv1] Online!");
 
     // Create a safe instance of the RCC
     let mut rcc = rcc_api::RCC::new();
@@ -64,6 +56,13 @@ fn main() -> ! {
         );
     }
 
+    // Activate (always after hardware configuration)
+    kipc::activate_task();
+    sys_log!("[THERMOv1] Online!");
+
+    // Enable state migration
+    kipc::set_update_support(true);
+
     // Create an instance of the state manager
     let mut state_manager = StateManager::new(prev_state);
 
@@ -78,11 +77,11 @@ fn main() -> ! {
         // Acquire data from sensors
         let time_result = rtc.read_sensor(&mut i2c);
         if time_result.is_err() {
-            error_loop(ThermoError::RTCNotConnected);
+            error_loop(ThermoError::RTCNotConnected, Some(&mut state_manager));
         }
         let temp_result = thermo.read_temperature(&mut i2c);
         if temp_result.is_err() {
-            error_loop(ThermoError::TempNotConnected);
+            error_loop(ThermoError::TempNotConnected, Some(&mut state_manager));
         }
         let current_time = time_result.unwrap_lite();
         let current_temp = temp_result.unwrap_lite();
@@ -121,17 +120,33 @@ fn start_up_routine(
 
     // If initialization fails, just respond to every request with the error
     if let Err(err) = init_result {
-        error_loop(err);
+        error_loop(err, None);
     }
 }
 
 /// Whenever we are not able to communicate with a sensor, just give up
 /// and respond with the error to any incoming requests
-fn error_loop(err: ThermoError) {
+fn error_loop(err: ThermoError, state_manager: Option<&mut StateManager>) {
+    if state_manager.is_none() {
+        // Disable state transfer, in case was enabled
+        kipc::set_update_support(false);
+    }
     loop {
-        let result = sys_recv(&mut [], 0, None);
+        let result = sys_recv(&mut [], STATE_TRANSFER_REQUESTED_MASK , None);
         if result.is_ok() {
             let msg = result.unwrap_lite();
+            // Check if is a state transfer request
+            if msg.sender == TaskId::KERNEL {
+                if msg.operation & STATE_TRANSFER_REQUESTED_MASK > 0 {
+                    // If we have a state to transfer, let's transfer it
+                    if let Some(sm) = state_manager {
+                        // State transfer requested
+                        hl::transfer_state(sm.get_transferable_state());
+                    } 
+                }
+                // Continue with the loop, ignore
+                continue;
+            }
             // Just send back the error
             sys_reply(msg.sender, err.into(), &[]);
         }
