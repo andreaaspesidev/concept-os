@@ -294,23 +294,17 @@ fn main() -> ! {
                         if #[cfg(feature = "multi-support")] {
                             // Validate lease count and buffer sizes first.
                             let (msg, caller) = msg.fixed_with_leases::<WriteBlockRequest, ()>(1).ok_or(ChannelError::BadArgument)?;
-                            // Deny incoming writes if we're already running one.
-                            if state_ref.transmitter_state.transmitters.is_full() {
-                                return Err(ChannelError::ChannelBusy);
-                            }
                             let channel_id = msg.channel_id as u16;
-                            // Check the channel id is unique
-                            for t in &state_ref.transmitter_state.transmitters {
-                                if t.id == channel_id {
-                                    return Err(ChannelError::BadArgument);
-                                }
+                            // Check if we can add the writer
+                            if !can_add_writer(state_ref, &caller, channel_id) {
+                                return Err(ChannelError::ChannelBusy);
                             }
                         } else {
                             // Validate lease count and buffer sizes first.
                             let ((), caller) = msg.fixed_with_leases(1).ok_or(ChannelError::BadArgument)?;
-                            // Deny incoming writes if we're already running one.
-                            if state_ref.pending_transmitter.is_some() {
-                                return Err(ChannelError::ChannelBusy);
+                            // Check if we can add the writer
+                            if !can_add_writer(state_ref, &caller) {
+                                return Err(ChannelError::BadArgument);
                             }
                         }
                     }
@@ -336,22 +330,16 @@ fn main() -> ! {
                         if #[cfg(feature = "multi-support")] {
                             // Validate lease count and buffer sizes first.
                             let (msg, caller) = msg.fixed_with_leases::<ReadBlockRequest, ()>(1).ok_or(ChannelError::BadArgument)?;
-                            // Deny incoming writes if we're already running one.
-                            if state_ref.receiver_state.receivers.is_full() {
-                                return Err(ChannelError::ChannelBusy);
-                            }
                             let channel_id = msg.channel_id as u16;
-                            // Check the channel id is unique
-                            for r in &state_ref.receiver_state.receivers {
-                                if r.id == channel_id {
-                                    return Err(ChannelError::BadArgument);
-                                }
+                            // Check if we can add the reader
+                            if !can_add_reader(state_ref, &caller, channel_id) {
+                                return Err(ChannelError::ChannelBusy);
                             }
                         } else {
                             // Validate lease count and buffer sizes first.
                             let ((), caller) = msg.fixed_with_leases(1).ok_or(ChannelError::BadArgument)?;
-                            // Deny incoming reads if we're already running too many.
-                            if state_ref.receiver_state.pending_receiver.is_some() {
+                            // Check if we can add the reader
+                            if !can_add_reader(state_ref, &caller) {
                                 return Err(ChannelError::ChannelBusy);
                             }
                         }
@@ -383,20 +371,14 @@ fn main() -> ! {
 
                     cfg_if::cfg_if! {
                         if #[cfg(feature = "multi-support")] {
-                             // Deny incoming reads if we're already running too many.
-                            if state_ref.receiver_state.receivers.is_full() {
+                            let channel_id = msg.channel_id as u16;
+                            // Check if we can add the reader
+                            if !can_add_reader(state_ref, &caller, channel_id) {
                                 return Err(ChannelError::ChannelBusy);
                             }
-                            let channel_id = msg.channel_id as u16;
-                            // Check the channel id is unique
-                            for r in &state_ref.receiver_state.receivers {
-                                if r.id == channel_id {
-                                    return Err(ChannelError::BadArgument);
-                                }
-                            }
                         } else {
-                            // Deny incoming reads if we're already running too many.
-                            if state_ref.receiver_state.pending_receiver.is_some() {
+                            // Check if we can add the reader
+                            if !can_add_reader(state_ref, &caller) {
                                 return Err(ChannelError::ChannelBusy);
                             }
                         }
@@ -445,28 +427,21 @@ fn main() -> ! {
                     cfg_if::cfg_if! {
                         if #[cfg(feature = "multi-support")] {
                             let channel_id = msg.channel_id as u16;
-                            if state_ref.receiver_state.receivers.is_full() {
+                            // Check if we can add as reader
+                            if !can_add_reader(state_ref, &caller, channel_id) {
                                 return Err(ChannelError::ChannelBusy);
                             }
-                            if state_ref.transmitter_state.transmitters.is_full() {
+                            // Check if we can add as writer
+                            if !can_add_writer(state_ref, &caller, channel_id) {
                                 return Err(ChannelError::ChannelBusy);
-                            }
-                            // Check the channel id is unique
-                            for r in &state_ref.receiver_state.receivers {
-                                if r.id == channel_id {
-                                    return Err(ChannelError::BadArgument);
-                                }
-                            }
-                            for t in &state_ref.transmitter_state.transmitters {
-                                if t.id == channel_id {
-                                    return Err(ChannelError::BadArgument);
-                                }
                             }
                         } else {
-                            if state_ref.receiver_state.pending_receiver.is_some() {
+                            // Check if we can add as reader
+                            if !can_add_reader(state_ref, &caller) {
                                 return Err(ChannelError::ChannelBusy);
                             }
-                            if state_ref.pending_transmitter.is_some() {
+                            // Check if we can add as writer
+                            if !can_add_writer(state_ref, &caller) {
                                 return Err(ChannelError::ChannelBusy);
                             }
                         }
@@ -524,6 +499,72 @@ fn main() -> ! {
             },
         )
     }
+}
+
+#[cfg(feature = "multi-support")]
+fn can_add_reader(state_ref: &mut DriverState, caller: &Caller<()>, channel_id: u16) -> bool {
+    // It could happen that an updated component issue again a read. In this case,
+    // discard the old request as surely it's no more valid.
+    let mut can_add = !state_ref.receiver_state.receivers.is_full();
+    state_ref.receiver_state.receivers.retain(|rec| {
+        if rec.caller.task_id().component_id() == caller.task_id().component_id() {
+            // Delete this element
+            can_add = true;
+            return false;
+        } else if rec.id == channel_id {
+            // It's not allowed to share channel ids
+            can_add = false;
+        }
+        return true;
+    });
+    return can_add;
+}
+#[cfg(not(feature = "multi-support"))]
+fn can_add_reader(state_ref: &mut DriverState, caller: &Caller<()>) -> bool {
+    // It could happen that an updated component issue again a read. In this case,
+    // discard the old request as surely it's no more valid.
+    if let Some(rec) = &state_ref.receiver_state.pending_receiver {
+        if rec.caller.task_id().component_id() == caller.task_id().component_id() {
+            // No need to delete it first
+            return true;
+        } else {
+            return false;
+        }
+    }
+    return true;
+}
+
+#[cfg(feature = "multi-support")]
+fn can_add_writer(state_ref: &mut DriverState, caller: &Caller<()>, channel_id: u16) -> bool {
+    // It could happen that an updated component issue again a read. In this case,
+    // discard the old request as surely it's no more valid.
+    let mut can_add = !state_ref.transmitter_state.transmitters.is_full();
+    state_ref.transmitter_state.transmitters.retain(|tr| {
+        if tr.caller.task_id().component_id() == caller.task_id().component_id() {
+            // Delete this element
+            can_add = true;
+            return false;
+        } else if tr.id == channel_id {
+            // It's not allowed to share channel ids
+            can_add = false;
+        }
+        return true;
+    });
+    return can_add;
+}
+#[cfg(not(feature = "multi-support"))]
+fn can_add_writer(state_ref: &mut DriverState, caller: &Caller<()>) -> bool {
+    // It could happen that an updated component issue again a read. In this case,
+    // discard the old request as surely it's no more valid.
+    if let Some(tr) = &state_ref.pending_transmitter {
+        if tr.caller.task_id().component_id() == caller.task_id().component_id() {
+            // No need to delete it first
+            return true;
+        } else {
+            return false;
+        }
+    }
+    return true;
 }
 
 #[cfg(feature = "multi-support")]
