@@ -19,7 +19,7 @@ features = ["log-itm"]
 [components.storage]
 features = ["log-itm"]
 
-[components.uart-channel]
+[components.uart3-channel]
 features = ["log-itm", "multi-support"]
 
 [components.update]

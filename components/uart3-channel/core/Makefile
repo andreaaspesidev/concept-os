@@ -1,4 +1,4 @@
-COMPONENT_NAME:=uart-channel
+COMPONENT_NAME:=uart3-channel
 current_dir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 root_dir := $(shell dirname $(realpath ../../.))
 
@@ -10,9 +10,6 @@ clean:
 
 build-f303re:
 	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32f303re -f log-itm
-
-build-l432kc:
-	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32l432kc -f log-semihosting
 
 build-l476rg:
 	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32l476rg -f log-itm,multi-support

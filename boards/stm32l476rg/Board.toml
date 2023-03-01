@@ -38,6 +38,18 @@ attributes = [
 ]
 interrupts = {irq = 38}
 
+# USART3
+[peripheral.usart3]
+base_address = '0x40004800'
+size = '0x0400' # 1024
+attributes = [
+    'READ',
+    'WRITE',
+    'DEVICE'
+]
+interrupts = {irq = 39}
+
+
 # GPIOA
 [peripheral.gpioa]
 base_address = '0x48000000'
@@ -51,6 +63,16 @@ attributes = [
 # GPIOB
 [peripheral.gpiob]
 base_address = '0x48000400'
+size = '0x0400' # 1024
+attributes = [
+    'READ',
+    'WRITE',
+    'DEVICE'
+]
+
+# GPIOC
+[peripheral.gpioc]
+base_address = '0x48000800'
 size = '0x0400' # 1024
 attributes = [
     'READ',
@@ -77,4 +99,4 @@ attributes = [
     'WRITE',
     'DEVICE'
 ]
-interrupts = {irq6 = 16}
+interrupts = {irq3 = 13, irq6 = 16}
