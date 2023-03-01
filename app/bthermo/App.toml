@@ -10,7 +10,7 @@ features = ["log-itm"]
 [components.bthermo]
 features = []
 
-[components.bthermo_controller]
+[components.bthermo-controller]
 features = []
 
 [components.rcc]

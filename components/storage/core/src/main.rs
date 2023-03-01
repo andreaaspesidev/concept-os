@@ -169,7 +169,7 @@ fn main() -> ! {
 }
 
 fn analyze_storage() {
-    sys_log!("[STORAGEv1] Analyzing");
+    sys_log!("[STORAGE] Analyzing");
     // Instantiate the flash operators
     let mut flash = FlashInterface::new();
     // Perform storage analysis
@@ -182,7 +182,7 @@ fn analyze_storage() {
         FLASH_TREE_MAX_LEVEL,
         FLASH_NUM_NODES,
     >::analyze_storage(&mut flash, true);
-    sys_log!("[STORAGEv1] Analysis completed!");
+    sys_log!("[STORAGE] Analysis completed!");
 }
 
 fn generate_status() -> Result<ReportStatusResponse, StorageError> {
