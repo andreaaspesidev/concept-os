@@ -255,8 +255,11 @@ impl Task {
         self.notifications |= n.0;
 
         // We only need to check the mask, and make updates, if the task is
-        // ready to hear about notifications.
-        if self.state.can_accept_notification() {
+        // ready to hear about notifications. 
+        // There is a single exception: when the component is under update, it needs
+        // to receive the notification cancel from the timer. So we need to override
+        // can_accept_notification() in this situation
+        if self.state.can_accept_notification() || self.is_still_updating().is_some() {
             if let Some(firing) = self.take_notifications() {
                 // A bit the task is interested in has newly become set!
                 // Interrupt it.
@@ -283,7 +286,7 @@ impl Task {
     pub fn take_notifications(&mut self) -> Option<u32> {
         let args = self.save.as_recv_args();
         let ss = args.specific_sender;
-        if ss.is_none() || ss == Some(TaskId::KERNEL) {
+        if ss.is_none() || ss == Some(TaskId::KERNEL) || self.is_still_updating().is_some() {
             // Notifications are not filtered out.
             let firing = self.notifications & args.notification_mask;
             if firing != 0 {
