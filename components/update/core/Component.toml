@@ -9,10 +9,10 @@ min_ram = 2048
 [[dependencies]]
 component_id = 4
 min_version = 1
-max_version = 1
+max_version = 0
 
 # UART
 [[dependencies]]
 component_id = 3
 min_version = 1
-max_version = 1
+max_version = 0
