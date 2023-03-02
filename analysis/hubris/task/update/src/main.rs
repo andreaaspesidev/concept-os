@@ -22,6 +22,7 @@ task_slot!(CHANNEL, channel);
 
 const TIMEOUT_MS: u32 = 2000;
 const PACKET_BUFFER_SIZE: usize = 64;
+const CHANNEL_ID: u16 = 5;
 
 #[export_name = "main"]
 fn main() -> ! {
@@ -36,7 +37,7 @@ fn main() -> ! {
         // Wait for the start command
         let mut data: [u8; CommandStartMessage::get_size()] =
             [0x00; CommandStartMessage::get_size()];
-        if channel.read_block(&mut data).is_ok() {
+        if channel.read_block(CHANNEL_ID, &mut data).is_ok() {
             // Parse message
             if let Ok(msg) = CommandStartMessage::from(&data) {
                 // Start the process
@@ -62,6 +63,7 @@ fn update_process(
             [0; HeaderMessage::get_size()];
         channel
             .transmit_timed(
+                CHANNEL_ID,
                 &[UpdateMessages::SendSectionHeader as u8],
                 &mut header_buff,
                 TIMEOUT_MS,
@@ -80,7 +82,7 @@ fn update_process(
     // Swap banks
     flash.swap_banks().map_err(|_| UpdateErrors::FlashError)?;
     // Send okay
-    channel.write_block(&[UpdateMessages::Success as u8]).unwrap();
+    channel.write_block(CHANNEL_ID, &[UpdateMessages::Success as u8]).unwrap();
     // Restart device
     userlib::kipc::system_restart();
 }
@@ -105,6 +107,7 @@ fn process_section(
             [0x00; PACKET_BUFFER_SIZE + 1];
         channel
             .transmit_timed(
+                CHANNEL_ID,
                 &[UpdateMessages::SendNextFragment as u8],
                 &mut pkt_buff[0..to_read],
                 TIMEOUT_MS,
