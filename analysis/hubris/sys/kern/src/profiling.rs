@@ -33,16 +33,11 @@
 //!    or
 //! 2. Present a part of the address and let the user figure it out.
 //!
-//! Current implementations take the second route. Specifically, they output
-//! `task_addr >> 4`. This produces a number that is unique for up to 8 bits of
-//! output / 256 tasks in the image, but takes some decoding. The basic method
-//! is
+//! Current implementations take another ruote. To balance for ConceptOS measurements,
+//! we resolve the id associated with the component by reading its descriptor.
+//! This operation is fast enough, as currently done for any syscall or pendsv.
+//! And actually we don't mind this little overhead.
 //!
-//! 1. Determine the size of `Task`, using (say) a debugger or dwarfdump tool.
-//!    At the time of this writing it was `0xB0` but that will change.
-//! 2. Determine the base address of the task array (`HUBRIS_TASK_TABLE_SPACE`).
-//! 3. Compute the code corresponding to each task index as
-//!    `(HUBRIS_TASK_TABLE_SPACE + index * size) >> 4 & PINS_EXPOSED`.
 
 use core::sync::atomic::{AtomicPtr, Ordering};
 
@@ -80,9 +75,8 @@ pub struct EventsTable {
     /// Called on exit from the kernel's timer ISR.
     pub timer_isr_exit: fn(),
 
-    /// Called whenever the current task changes, with a pointer to the task's
-    /// control block.
-    pub context_switch: fn(usize),
+    /// Called whenever the current task changes, with the active task index
+    pub context_switch: fn(u16),
 }
 
 /// Supplies the kernel with an events table.
@@ -169,8 +163,8 @@ pub(crate) fn event_timer_isr_exit() {
     }
 }
 
-pub(crate) fn event_context_switch(tcb: usize) {
+pub(crate) fn event_context_switch(index: u16) {
     if let Some(t) = table() {
-        (t.context_switch)(tcb)
+        (t.context_switch)(index)
     }
 }
