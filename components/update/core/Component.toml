@@ -1,7 +1,7 @@
 [component]
 id = 5
 version = 1
-priority = 21
+priority = 30
 flags = ['START_AT_BOOT']
 min_ram = 2048
 

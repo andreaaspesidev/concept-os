@@ -1,7 +1,7 @@
 [component]
 id = 3
 version = 1
-priority = 10
+priority = 15
 flags = ['START_AT_BOOT']
 min_ram = 1024
 peripherals = ["usart3","gpioc","dma1"]
