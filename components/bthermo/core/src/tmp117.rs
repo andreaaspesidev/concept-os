@@ -1,6 +1,6 @@
 use crate::i2c::I2C_Channel;
 use bthermo_api::ThermoError;
-use userlib::sys_get_timer;
+use userlib::{sys_get_timer, sys_log};
 
 /**
  * TMP117
@@ -29,20 +29,17 @@ const UPDATE_MS: u64 = 1000;
 
 pub struct TMP117 {
     last_update: u64,
-    last_temp: f32
+    last_temp: f32,
 }
 
 impl TMP117 {
     pub fn new() -> Self {
         Self {
             last_update: 0,
-            last_temp: 0.0
+            last_temp: 0.0,
         }
     }
-    pub fn init_hardware(
-        &mut self,
-        i2c: &mut I2C_Channel,
-    ) -> Result<(), ThermoError> {
+    pub fn init_hardware(&mut self, i2c: &mut I2C_Channel) -> Result<(), ThermoError> {
         // Read device ID
         let mut device_id: [u8; 2] = [0; 2];
         i2c.i2c_mem_read(TMP117_ADDR, TMP117_REG_DEVICE_ID, &mut device_id)
@@ -66,10 +63,7 @@ impl TMP117 {
             .map_err(|_| ThermoError::TempNotConnected)
     }
 
-    pub fn read_temperature(
-        &mut self,
-        i2c: &mut I2C_Channel,
-    ) -> Result<f32, ThermoError> {
+    pub fn read_temperature(&mut self, i2c: &mut I2C_Channel) -> Result<f32, ThermoError> {
         // Avoid reading too often. The temperature updates
         // every 1 second
         let now = sys_get_timer().now;

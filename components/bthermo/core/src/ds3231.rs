@@ -1,5 +1,6 @@
 use crate::i2c::I2C_Channel;
 use bthermo_api::{ThermoError, TimeStructure};
+use userlib::sys_log;
 
 /**
  * DS3231
@@ -21,25 +22,18 @@ use bthermo_api::{ThermoError, TimeStructure};
  */
 const CLOCK_ADDRESS: u8 = 0x68;
 
-
 pub struct DS3231 {}
 
 impl DS3231 {
     pub fn new() -> Self {
         Self {}
     }
-    pub fn init_hardware(
-        &mut self,
-        _: &mut I2C_Channel,
-    ) -> Result<(), ThermoError> {
+    pub fn init_hardware(&mut self, _: &mut I2C_Channel) -> Result<(), ThermoError> {
         // Nothing to change from the default configuration
         Ok(())
     }
 
-    pub fn read_sensor(
-        &mut self,
-        i2c: &mut I2C_Channel,
-    ) -> Result<TimeStructure, ThermoError> {
+    pub fn read_sensor(&mut self, i2c: &mut I2C_Channel) -> Result<TimeStructure, ThermoError> {
         let mut raw_data: [u8; 7] = [0; 7];
         // Read data from the sensor
         i2c.i2c_mem_read(CLOCK_ADDRESS, 0, &mut raw_data)

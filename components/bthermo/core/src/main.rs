@@ -56,7 +56,7 @@ fn main() -> ! {
         );
     }
 
-    // Activate (always after hardware configuration)
+    // Activate (always better after hardware configuration)
     kipc::activate_task();
     sys_log!("[THERMOv1] Online!");
 
@@ -132,7 +132,7 @@ fn error_loop(err: ThermoError, state_manager: Option<&mut StateManager>) {
         kipc::set_update_support(false);
     }
     loop {
-        let result = sys_recv(&mut [], STATE_TRANSFER_REQUESTED_MASK , None);
+        let result = sys_recv(&mut [], STATE_TRANSFER_REQUESTED_MASK, None);
         if result.is_ok() {
             let msg = result.unwrap_lite();
             // Check if is a state transfer request
@@ -142,7 +142,7 @@ fn error_loop(err: ThermoError, state_manager: Option<&mut StateManager>) {
                     if let Some(sm) = state_manager {
                         // State transfer requested
                         hl::transfer_state(sm.get_transferable_state());
-                    } 
+                    }
                 }
                 // Continue with the loop, ignore
                 continue;

@@ -5,7 +5,6 @@
 #![no_std]
 #![no_main]
 
-use cortex_m::peripheral::SCB;
 use flash::Flash;
 
 mod crc;

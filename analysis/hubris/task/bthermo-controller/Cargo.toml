@@ -1,0 +1,25 @@
+[package]
+name = "bthermo-controller"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+
+
+[dependencies]
+userlib = {path = "../../sys/userlib", features=["log-itm"]}
+zerocopy = "0.6.1"
+cortex-m = { version = "0.7", features = ["inline-asm"] }
+# Component dependencies
+channel-api = {path = "../channel-api", features=["multi-support"]}
+bthermo-api = {path = "../bthermo-api"}
+
+[build-dependencies]
+build-util = {path = "../../build/util"}
+
+# This section is here to discourage RLS/rust-analyzer from doing test builds,
+# since test builds don't work for cross compilation.
+[[bin]]
+name = "bthermo-controller"
+test = false
+bench = false

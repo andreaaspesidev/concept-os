@@ -28,6 +28,11 @@ pub fn clock_mapping(p: Peripheral) -> Result<(Bus, u32), RCCError> {
         Peripheral::USART2 => Ok((Bus::APB1, 17)),
         Peripheral::USART3 => Ok((Bus::APB1, 18)),
         Peripheral::UART4 => Ok((Bus::APB1, 19)),
+
+        Peripheral::I2C1 => Ok((Bus::APB1, 21)),
+        Peripheral::I2C2 => Ok((Bus::APB1, 22)),
+        Peripheral::I2C3 => Ok((Bus::APB1, 23)),
+
         _ => Err(RCCError::BadArgument)
     }
 }
@@ -59,6 +64,11 @@ pub fn reset_mapping(p: Peripheral) -> Result<(Bus, u32), RCCError> {
         Peripheral::USART2 => Ok((Bus::APB1, 17)),
         Peripheral::USART3 => Ok((Bus::APB1, 18)),
         Peripheral::UART4 => Ok((Bus::APB1, 19)),
+
+        Peripheral::I2C1 => Ok((Bus::APB1, 21)),
+        Peripheral::I2C2 => Ok((Bus::APB1, 22)),
+        Peripheral::I2C3 => Ok((Bus::APB1, 23)),
+        
         _ => Err(RCCError::BadArgument)
     }
 }

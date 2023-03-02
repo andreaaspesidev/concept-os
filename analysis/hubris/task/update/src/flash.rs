@@ -144,7 +144,8 @@ impl Flash {
         // Return the result
         result
     }
-
+    
+    #[allow(unused)]
     pub fn force_bank1(&mut self) -> Result<(), ()> {
         if self.flash.optr.read().bfb2().bit_is_set() {
             self.flash.optr.modify(|_, w| w.bfb2().clear_bit());

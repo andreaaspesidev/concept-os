@@ -2,7 +2,7 @@ name = "bthermo"
 board = "stm32l476rg"
 kernel_ram = 6656
 clock_speed = 80000000
-strip_panics = true
+strip_panics = false
 
 [components.idle]
 features = ["log-itm"]
