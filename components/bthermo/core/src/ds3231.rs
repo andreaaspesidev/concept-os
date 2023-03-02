@@ -1,6 +1,5 @@
 use crate::i2c::I2C_Channel;
 use bthermo_api::{ThermoError, TimeStructure};
-use userlib::sys_log;
 
 /**
  * DS3231

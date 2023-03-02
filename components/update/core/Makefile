@@ -8,8 +8,6 @@ clean:
 	rm -rf build
 	rm $(COMPONENT_NAME).hbf
 
-build-f303re:
-	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32f303re -f log-itm
 
 build-l476rg:
 	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32l476rg -f log-itm,multi-support

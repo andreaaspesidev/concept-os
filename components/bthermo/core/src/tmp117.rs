@@ -1,6 +1,6 @@
 use crate::i2c::I2C_Channel;
 use bthermo_api::ThermoError;
-use userlib::{sys_get_timer, sys_log};
+use userlib::sys_get_timer;
 
 /**
  * TMP117

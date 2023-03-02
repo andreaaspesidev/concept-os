@@ -1,5 +1,5 @@
 [package]
-name = "bthermo-scheduling"
+name = "bthermo-syscalls"
 version = "0.1.0"
 edition = "2021"
 
@@ -19,7 +19,7 @@ default-features = false
 features = ["l476rg"] #, "log-itm"]
 
 [[bin]]
-name = "bthermo-scheduling"
+name = "bthermo-syscalls"
 test = false
 bench = false
 

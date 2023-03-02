@@ -14,10 +14,10 @@ use stm32l476rg::device as device;
  * - PC3 rising: timer_isr_enter_profile
  * - PC3 falling: timer_isr_exit_profile
  * 
- * - PC4 (component identifier) bit0
- * - PC5 (component identifier) bit1
- * - PC6 (component identifier) bit2
- * - PC7 (component identifier) bit3
+ * - PC4 (syscall number) bit0
+ * - PC5 (syscall number) bit1
+ * - PC6 (syscall number) bit2
+ * - PC7 (syscall number) bit3
  */
 
 // Create a new static instance of the EventsTable
@@ -44,21 +44,21 @@ pub fn configure_profiling() {
     // -> set highest speed on all pins
     gpioc.ospeedr.modify(|_, w| {
         w.ospeedr0()
-            .high_speed()
+            .very_high_speed()
             .ospeedr1()
-            .high_speed()
+            .very_high_speed()
             .ospeedr2()
-            .high_speed()
+            .very_high_speed()
             .ospeedr3()
-            .high_speed()
+            .very_high_speed()
             .ospeedr4()
-            .high_speed()
+            .very_high_speed()
             .ospeedr5()
-            .high_speed()
+            .very_high_speed()
             .ospeedr6()
-            .high_speed()
+            .very_high_speed()
             .ospeedr7()
-            .high_speed()
+            .very_high_speed()
     });
     // -> set push-pull mode for all pins
     gpioc.otyper.modify(|_, w| {
@@ -102,10 +102,13 @@ pub fn configure_profiling() {
     kern::profiling::configure_events_table(&EVENT_TABLE);
 }
 
-fn syscall_enter_profile(_number: u32) {
-    // Set PC0 to high
+fn syscall_enter_profile(number: u32) {
     let gpioc = unsafe { &*device::GPIOC::PTR };
-    gpioc.odr.modify(|_, w| w.odr0().set_bit());
+    // Write the lowest 4 bits of the syscall number + mark syscall start
+    let syscall_4bits = ((number & 0b1111) << 4) as u32;
+    gpioc.odr.modify(|r, w| unsafe {w.bits(
+        (r.bits() & (0b0000_u32 << 4_u32)) | syscall_4bits | 1
+    )});
 }
 fn syscall_exit_profile() {
     // Set PC0 to low
@@ -146,11 +149,7 @@ fn timer_isr_exit_profile() {
     gpioc.odr.modify(|_, w| w.odr3().clear_bit());
 }
 
-fn context_switch(component_id: u16) {
-    let gpioc = unsafe { &*device::GPIOC::PTR };
-    // Write the lowest 4 bits of the component_id
-    let id_4bits = ((component_id & 0b1111) << 4) as u32;
-    gpioc.odr.modify(|r, w| unsafe {w.bits(
-        (r.bits() & (0b0000_u32 << 4_u32)) | id_4bits
-    )});
+fn context_switch(_component_id: u16) {
+    // Ignore for now, as we do not have enough pins on the
+    // logic analyser.
 }
