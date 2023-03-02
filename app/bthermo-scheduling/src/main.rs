@@ -12,6 +12,7 @@ extern crate stm32l476rg;
 extern crate panic_itm;
 
 mod clocks;
+mod profiling;
 
 use core::arch::asm;
 
@@ -46,6 +47,9 @@ fn main() -> ! {
         .pll_source(clocks::PllSource::MSI)
         .sysclk(80_u32.MHz())
         .freeze();
+
+    // Configure profiling
+    profiling::configure_profiling();
     
     unsafe { kern::startup::start_kernel(CYCLES_PER_MS) }
 }
