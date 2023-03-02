@@ -20,7 +20,7 @@ extern crate userlib;
 
 task_slot!(CHANNEL, channel);
 
-const TIMEOUT_MS: u32 = 2000;
+const TIMEOUT_MS: u32 = 10000;
 const PACKET_BUFFER_SIZE: usize = 64;
 const CHANNEL_ID: u16 = 5;
 
@@ -57,10 +57,11 @@ fn update_process(
     // Receive data
     let mut received_bytes: usize = 0;
     // While we have data to receive
-    while received_bytes != total_size {
+    while received_bytes < total_size {
         // Ask for the program header and wait for the response
         let mut header_buff: [u8; HeaderMessage::get_size()] =
             [0; HeaderMessage::get_size()];
+        // Launch the read operation
         channel
             .transmit_timed(
                 CHANNEL_ID,
@@ -78,11 +79,11 @@ fn update_process(
         // Update stats
         received_bytes += header.get_section_size() as usize;
     }
+    // Send okay
+    channel.write_block(CHANNEL_ID, &[UpdateMessages::Success as u8]).unwrap();
     sys_log!("Swapping banks");
     // Swap banks
     flash.swap_banks().map_err(|_| UpdateErrors::FlashError)?;
-    // Send okay
-    channel.write_block(CHANNEL_ID, &[UpdateMessages::Success as u8]).unwrap();
     // Restart device
     userlib::kipc::system_restart();
 }
@@ -117,8 +118,9 @@ fn process_section(
         RawPacket::validate(&pkt_buff[0..to_read])?;
         // Write data using the correct alignment.
         // For simplicity, we assume to already have the correct alignments (64 bits)
-        assert!((to_read - 1) % 8 == 0);
-        let words = (to_read - 1) / 8;
+        let available_bytes = to_read - 1;
+        assert!(available_bytes % 8 == 0);
+        let words = available_bytes / 8;
         for i in 0..words {
             let start_i = i * 8;
             let word =
@@ -131,7 +133,7 @@ fn process_section(
             current_addr += 8;
         }
         // Update stats
-        received_bytes += to_read - 1;
+        received_bytes += available_bytes;
     }
     Ok(())
 }

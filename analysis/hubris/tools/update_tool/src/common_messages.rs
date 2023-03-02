@@ -60,7 +60,7 @@ impl<'a> FragmentedMessage<'a> for RawPacket<'a> {
         // Otherwise extract the new fragment
         let fragment_size =
             core::cmp::min(PACKET_BUFFER_SIZE, self.buffer.len() - self.current_pos);
-        let fragment = &self.buffer[self.current_pos..self.current_pos + fragment_size];
+        let fragment = &self.buffer[self.current_pos..(self.current_pos + fragment_size)];
         // Append to buffer
         let mut buffer = Vec::<u8>::new();
         buffer.extend_from_slice(fragment);

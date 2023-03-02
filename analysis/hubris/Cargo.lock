@@ -236,6 +236,7 @@ version = "0.1.0"
 dependencies = [
  "bthermo-api",
  "build-util",
+ "cfg-if",
  "cortex-m",
  "heapless",
  "rcc-api",
@@ -269,7 +270,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "bthermo-scheduling"
+name = "bthermo-scheduling-v1"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "fugit",
+ "kern",
+ "panic-halt",
+ "panic-itm",
+ "panic-semihosting",
+ "stm32l4",
+]
+
+[[package]]
+name = "bthermo-scheduling-v2"
 version = "0.1.0"
 dependencies = [
  "cortex-m",

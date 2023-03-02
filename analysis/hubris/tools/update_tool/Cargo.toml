@@ -2,7 +2,7 @@
 name = "update-tool"
 version = "0.0.2"
 edition = "2021"
-description = "A tool to update Concept-OS"
+description = "A tool to update Hubris on L4"
 
 [features]
 uart = []

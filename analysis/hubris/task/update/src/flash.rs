@@ -176,13 +176,29 @@ impl Flash {
         self.flash.cr.modify(|_, w| w.optstrt().clear_bit());
         // Set OBL_LAUNCH
         // This line causes a reset but halts the cpu in a strange state. So we use the IWDG
-        // to preform the system reset
-        let iwdg = unsafe{&*device::IWDG::ptr()};
-        iwdg.kr.write(|w| w.key().start());
+        // to preform the system reset (after 1ms)
+        configure_watchdog();
         self.flash.cr.modify(|_,w| w.obl_launch().set_bit());
         // Return
         Ok(())
     }
+}
+
+fn configure_watchdog() {
+    let iwdg = unsafe{&*device::IWDG::ptr()};
+    // Enable watchdog
+    iwdg.kr.write(|w| w.key().start());
+    // Unlock the registers
+    iwdg.kr.write(|w| w.key().enable());
+    // Change configuration
+    iwdg.pr.write(|w| w.pr().divide_by4()); // 32KHz / 4 = 8KHz
+    iwdg.rlr.write(|w| w.rl().bits(8));
+    loop {
+        if iwdg.sr.read().bits() == 0 {
+            break;
+        }
+    }
+    iwdg.kr.write(|w| w.key().reset());
 }
 
 include!(concat!(env!("OUT_DIR"), "/notifications.rs"));
