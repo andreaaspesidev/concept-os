@@ -56,6 +56,9 @@ pub struct EventsTable {
     pub timer_isr_enter: fn(),
     /// Called on exit from the kernel's timer ISR.
     pub timer_isr_exit: fn(),
+
+    /// Called whenever the current task changes, with the current component identifier
+    pub context_switch: fn(u16),
 }
 
 /// Supplies the kernel with an events table.
@@ -139,5 +142,11 @@ pub(crate) fn event_timer_isr_enter() {
 pub(crate) fn event_timer_isr_exit() {
     if let Some(t) = table() {
         (t.timer_isr_exit)()
+    }
+}
+
+pub(crate) fn event_context_switch(id: u16) {
+    if let Some(t) = table() {
+        (t.context_switch)(id)
     }
 }

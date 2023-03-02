@@ -660,6 +660,10 @@ pub unsafe extern "C" fn SVCall() {
 /// stored is actually in the task table, you'll be okay.
 pub unsafe fn set_current_task(task: &mut task::Task) {
     CURRENT_TASK_PTR.store(task, Ordering::Relaxed);
+    // We need to get its component ID, as otherwise the same pointer
+    // could be associated to different components during the updates
+    // and we could mistake a pointer with one another using only the position
+    crate::profiling::event_context_switch(task.id());
 }
 
 /// Reads the tick counter.

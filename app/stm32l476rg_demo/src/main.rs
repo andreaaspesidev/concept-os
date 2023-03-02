@@ -18,7 +18,6 @@ use core::arch::asm;
 use cortex_m_rt::pre_init;
 use cortex_m_rt::entry;
 use fugit::RateExtU32;
-use stm32l476rg::device;
 
 #[pre_init]
 unsafe fn clear_ram() {

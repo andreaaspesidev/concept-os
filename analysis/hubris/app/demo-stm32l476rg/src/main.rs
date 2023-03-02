@@ -33,9 +33,5 @@ fn main() -> ! {
         .sysclk(80_u32.MHz())
         .freeze();
 
-    // Configure flash
-    let flash = unsafe {&*stm32l4::stm32l4x6::FLASH::ptr()};
-    
-
     unsafe { kern::startup::start_kernel(CYCLES_PER_MS) }
 }
