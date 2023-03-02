@@ -151,48 +151,49 @@ class Decoder(srd.Decoder):
             # Output the component id
             self.put(last_samplenum, self.samplenum, self.out_ann, [0, [f"{component_id}"]])
             # Check wheter to output time
-            if self.options['component_id'] > 0: 
-                # Compute processing time of that component
-                if component_id == self.options['component_id']:
-                    t_processing = (self.samplenum - last_samplenum) / self.samplerate
-                    t_waiting = (last_samplenum - last_component_ended_sample) / self.samplerate
-                    # Visualize
-                    self.put(last_samplenum, self.samplenum, self.out_ann, [1, [normalize_time(t_processing)]])
-                    self.put(last_component_ended_sample, last_samplenum, self.out_ann, [2, [normalize_time(t_waiting)]])
-                    # Update totals
-                    current_time = self.samplenum / self.samplerate
-                    t_start = self.options['start_time'] / 1000
-                    t_end = self.options['end_time'] / 1000
-                    if current_time > t_start and current_time < t_end:
-                        # Processing time
-                        t_process_end = self.samplenum / self.samplerate
-                        t_process_start = last_samplenum / self.samplerate
-                        t_process_start_sample = last_samplenum
-                        t_process_end_sample = self.samplenum
-                        if t_process_start < t_start:
-                            t_process_start_sample = int(t_start * self.samplerate)
-                        if t_process_end > t_end:
-                            t_process_end_sample = int(t_end * self.samplerate)
-                        t_process_corrected = (t_process_end_sample - t_process_start_sample) / self.samplerate
-                        if t_process_corrected > 0:
-                            t_total_processing += t_process_corrected
-                            self.put(t_process_start_sample, t_process_end_sample, self.out_ann, [3, [normalize_total_time(t_total_processing)]])
-                        # Waiting time
-                        t_wait_end = last_samplenum / self.samplerate
-                        t_wait_start = last_component_ended_sample / self.samplerate
-                        t_wait_start_sample = last_component_ended_sample
-                        t_wait_end_sample = last_samplenum
-                        if t_wait_start < t_start:
-                            t_wait_start_sample = int(t_start * self.samplerate)
-                        if t_wait_end > t_end:
-                            t_wait_end_sample = int(t_end * self.samplerate)     
-                        t_wait_corrected = (t_wait_end_sample - t_wait_start_sample) / self.samplerate
-                        if t_wait_corrected > 0:
-                            t_total_waiting += t_wait_corrected
-                            self.put(t_wait_start_sample, t_wait_end_sample, self.out_ann, [4, [normalize_total_time(t_total_waiting)]])
-                
-                    # Save for next round
-                    last_component_ended_sample = self.samplenum            
+            
+            # Compute processing time of that component
+            if component_id == self.options['component_id']:
+                t_processing = (self.samplenum - last_samplenum) / self.samplerate
+                t_waiting = (last_samplenum - last_component_ended_sample) / self.samplerate
+                # Visualize
+                self.put(last_samplenum, self.samplenum, self.out_ann, [1, [normalize_time(t_processing)]])
+                self.put(last_component_ended_sample, last_samplenum, self.out_ann, [2, [normalize_time(t_waiting)]])
+                # Update totals
+                current_time = self.samplenum / self.samplerate
+                t_start = self.options['start_time'] / 1000
+                t_end = self.options['end_time'] / 1000
+                if current_time > t_start and current_time < t_end:
+                    # Processing time
+                    t_process_end = self.samplenum / self.samplerate
+                    t_process_start = last_samplenum / self.samplerate
+                    t_process_start_sample = last_samplenum
+                    t_process_end_sample = self.samplenum
+                    if t_process_start < t_start:
+                        t_process_start_sample = int(t_start * self.samplerate)
+                    if t_process_end > t_end:
+                        t_process_end_sample = int(t_end * self.samplerate)
+                    t_process_corrected = (t_process_end_sample - t_process_start_sample) / self.samplerate
+                    if t_process_corrected > 0:
+                        t_total_processing += t_process_corrected
+                        self.put(t_process_start_sample, t_process_end_sample, self.out_ann, [3, [normalize_total_time(t_total_processing)]])
+                    # Waiting time
+                    t_wait_end = last_samplenum / self.samplerate
+                    t_wait_start = last_component_ended_sample / self.samplerate
+                    t_wait_start_sample = last_component_ended_sample
+                    t_wait_end_sample = last_samplenum
+                    if t_wait_start < t_start:
+                        t_wait_start_sample = int(t_start * self.samplerate)
+                    if t_wait_end > t_end:
+                        t_wait_end_sample = int(t_end * self.samplerate)     
+                    t_wait_corrected = (t_wait_end_sample - t_wait_start_sample) / self.samplerate
+                    if t_wait_corrected > 0:
+                        t_total_waiting += t_wait_corrected
+                        self.put(t_wait_start_sample, t_wait_end_sample, self.out_ann, [4, [normalize_total_time(t_total_waiting)]])
+            
+                # Save for next round
+                last_component_ended_sample = self.samplenum           
+                 
             # Load data for the next round
             last_samplenum = self.samplenum
             component_id = next_component_id

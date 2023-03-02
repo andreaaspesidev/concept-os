@@ -12,7 +12,7 @@ log-semihosting = ["cortex-m-semihosting", "userlib/log-semihosting"]
 # to keep the binary tiny.
 userlib = {path = "../../sys/userlib", features = ["panic-messages"]}
 cortex-m = { workspace = true, features = ["inline-asm"] }
-channel-api = { path = "../channel-api"}
+channel-api = { path = "../channel-api", features = ["multi-support"]}
 static_assertions = "1.1.0"
 stm32l4 = { version = "0.15.1", features = ["stm32l4x6"] }
 cortex-m-semihosting =  { workspace = true, optional=true}

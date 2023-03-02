@@ -269,7 +269,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bthermo_app"
+name = "bthermo-scheduling"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
@@ -2854,6 +2854,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6b53e329000edc2b34dbe8545fd20e55a333362d0a321909685a19bd28c3f1b"
 dependencies = [
  "lazy_static",
+]
+
+[[package]]
+name = "ticker"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "userlib",
 ]
 
 [[package]]

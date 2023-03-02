@@ -1,12 +1,12 @@
-name = "bthermo_app"
+name = "bthermo-scheduling"
 target = "thumbv7em-none-eabihf"
 board = "stm32l476rg"
 chip = "../../chips/stm32l476rg"
 stacksize = 896
 
 [kernel]
-name = "bthermo_app"
-requires = {flash = 22000, ram = 3072}
+name = "bthermo-scheduling"
+requires = {flash = 24000, ram = 3072}
 #
 # For the kernel (and for any task that logs), we are required to enable
 # either "itm" (denoting logging/panicking via ARM's Instrumentation Trace
@@ -18,6 +18,15 @@ requires = {flash = 22000, ram = 3072}
 # development, be sure to also change it in every task of interest.
 #
 features = ["itm"]
+
+# ID TASK                       GEN PRI STATE    
+#  0 rcc                          0   0 recv
+#  1 bthermo                      0   5 recv, notif: bit0(T+464)
+#  2 ticker                       0  10 notif: bit31(T+10)
+#  3 channel                      0  15 recv, notif: usart-irq(irq13) dma-irq bit31
+#  4 bthermo_controller           0  20 wait: reply from channel/gen0
+#  5 update                       0  30 wait: reply from channel/gen0
+#  6 idle                         0 255 RUNNING
 
 [tasks.rcc]
 name = "rcc"
@@ -35,6 +44,13 @@ max-sizes = {flash = 16384, ram = 4096}
 stacksize = 2048
 uses = ["gpiob", "i2c1"]
 task-slots = ["rcc"]
+start = true
+
+[tasks.ticker]
+name = "ticker"
+priority = 10
+max-sizes = {flash = 512, ram = 256}
+stacksize = 256
 start = true
 
 [tasks.channel]
