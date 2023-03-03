@@ -2719,7 +2719,6 @@ impl core::fmt::Debug for SCB_ACTRL {
 }
 #[doc = "System control block ACTLR"]
 pub mod scb_actrl;
-#[no_mangle]
 static mut DEVICE_PERIPHERALS: bool = false;
 #[doc = r"All the peripherals"]
 #[allow(non_snake_case)]

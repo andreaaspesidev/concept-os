@@ -4,7 +4,7 @@ build:
 	CARGO_TARGET_DIR="$(current_dir)/target" cargo build --release --features uart
 	cp ./target/release/update-tool ./update-tool-uart
 	chmod +x ./update-tool-uart
-	cargo build --release --features mqtt
+	CARGO_TARGET_DIR="$(current_dir)/target" cargo build --release --features mqtt
 	cp ./target/release/update-tool ./update-tool-mqtt
 	chmod +x ./update-tool-mqtt
 

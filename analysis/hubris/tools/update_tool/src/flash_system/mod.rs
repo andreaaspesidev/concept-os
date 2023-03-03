@@ -29,6 +29,7 @@ pub fn flash_system(
     // Parse elf
     let elf = parse_elf(&elf_path);
     // Setup progress
+    println!("");
     let mut progress = ProgressBar::new(elf.total_size as u64);
     progress.show_speed = false;
     progress.show_counter = false;
@@ -52,9 +53,12 @@ pub fn flash_system(
         // Wait for next fragment until all the section is processed
         send_section(&channel_in_consumer, &channel_out_producer, section, &mut progress);
     }
+    // Wait for the end message
+    wait_end_message(&channel_in_consumer, &channel_out_producer);
     // Success
     progress.message("Success");
     progress.finish();
+    println!("\nSuccess!");
 }
 
 fn wait_section_header(
@@ -80,6 +84,20 @@ fn wait_next_fragment(
     if sh_buff[0] != UpdateMessages::SendNextFragment as u8 {
         panic!(
             "Unexpected response from device at section transmission: {:?}",
+            sh_buff[0]
+        );
+    }
+}
+
+fn wait_end_message(
+    channel_in_consumer: &Receiver<u8>,
+    _channel_out_producer: &Sender<Vec<u8>>,
+) {
+    let mut sh_buff: [u8; 1] = [0x00; 1];
+    channel_read(channel_in_consumer, &mut sh_buff);
+    if sh_buff[0] != UpdateMessages::Success as u8 {
+        panic!(
+            "Unexpected response from device at final step: {:?}",
             sh_buff[0]
         );
     }
