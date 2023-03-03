@@ -22,6 +22,7 @@ workspace = true
 
 [dependencies.kern]
 path = "../../sys/kern"
+features = ["stm32l476rg"]
 default-features = false
 
 # this lets you use `cargo fix`!

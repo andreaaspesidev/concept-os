@@ -3,6 +3,9 @@ name = "kern"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+stm32l476rg = ["dep:stm32l476rg"]
+
 [dependencies]
 bitflags = { workspace = true }
 byteorder = { workspace = true }
@@ -16,6 +19,9 @@ abi = { path = "../abi" }
 armv8-m-mpu = { path = "../../lib/armv8-m-mpu" }
 phash = { path = "../../lib/phash" }
 unwrap-lite = { path = "../../lib/unwrap-lite" }
+
+stm32l476rg = { path = "../../lib/stm32l476rg", optional = true, default-features = false}
+
 
 [build-dependencies]
 anyhow = { workspace = true }

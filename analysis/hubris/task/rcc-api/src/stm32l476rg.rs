@@ -28,6 +28,9 @@ pub fn clock_mapping(p: Peripheral) -> Result<(Bus, u32), RCCError> {
         Peripheral::USART2 => Ok((Bus::APB1, 17)),
         Peripheral::USART3 => Ok((Bus::APB1, 18)),
         Peripheral::UART4 => Ok((Bus::APB1, 19)),
+
+        Peripheral::PWR => Ok((Bus::APB1, 28)),
+        
         _ => Err(RCCError::BadArgument)
     }
 }

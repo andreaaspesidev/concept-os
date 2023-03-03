@@ -4,7 +4,8 @@ use crate::crc::crc8_update;
 #[repr(u8)]
 pub enum UpdateMessages {
     SendSectionHeader = 0x01,
-    SendNextFragment = 0x02
+    SendNextFragment = 0x02,
+    Success = 0xFF
 }
 
 pub struct CommandStartMessage {

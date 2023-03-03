@@ -1364,6 +1364,7 @@ dependencies = [
  "ron",
  "serde",
  "ssmarshal",
+ "stm32l476rg",
  "syn",
  "unwrap-lite",
  "zerocopy",
