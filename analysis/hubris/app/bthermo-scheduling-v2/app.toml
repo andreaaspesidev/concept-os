@@ -81,7 +81,7 @@ priority = 30
 max-sizes = {flash = 16384, ram = 2048}
 stacksize = 1024
 start = true
-uses = ["flash_interface", "bank2", "iwdg"]
+uses = ["flash_interface", "bank2"]
 notifications = ["flash-irq"]
 interrupts = {"flash_interface.irq" = "flash-irq"}
 task-slots = ["channel"]

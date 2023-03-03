@@ -33,6 +33,8 @@ pub fn clock_mapping(p: Peripheral) -> Result<(Bus, u32), RCCError> {
         Peripheral::I2C2 => Ok((Bus::APB1, 22)),
         Peripheral::I2C3 => Ok((Bus::APB1, 23)),
 
+        Peripheral::PWR => Ok((Bus::APB1, 28)),
+        
         _ => Err(RCCError::BadArgument)
     }
 }

@@ -174,11 +174,6 @@ impl Flash {
         self.wait_flash_operation()?;
         // Clear the bit
         self.flash.cr.modify(|_, w| w.optstrt().clear_bit());
-        // Set OBL_LAUNCH
-        // This line causes a reset but halts the cpu in a strange state. So we use the IWDG
-        // to preform the system reset (after 1ms)
-        configure_watchdog();
-        self.flash.cr.modify(|_,w| w.obl_launch().set_bit());
         // Return
         Ok(())
     }
