@@ -25,6 +25,9 @@ fn main() -> ! {
         unsafe{p.vtor.write(0x08000000)};
     });
 
+    // Configure gpio for profiling
+    profiling::configure_gpio();
+
     // Boost clock frequency
     let rcc = crate::clocks::CFGR::new();
 

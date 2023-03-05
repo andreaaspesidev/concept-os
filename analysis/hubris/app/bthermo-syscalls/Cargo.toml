@@ -1,6 +1,6 @@
 [package]
 edition = "2018"
-name = "bthermo-scheduling-v1"
+name = "bthermo-syscalls"
 version = "0.1.0"
 
 [features]
@@ -26,6 +26,6 @@ default-features = false
 
 # this lets you use `cargo fix`!
 [[bin]]
-name = "bthermo-scheduling-v1"
+name = "bthermo-syscalls"
 test = false
 bench = false

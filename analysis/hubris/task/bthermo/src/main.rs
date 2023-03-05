@@ -49,8 +49,6 @@ fn main() -> ! {
         &mut output_controller,
     );
 
-    sys_log!("[THERMOv1] Online!");
-
     // Create an instance of the state manager
     let mut state_manager = StateManager::new();
 
@@ -62,6 +60,10 @@ fn main() -> ! {
 
     // Main loop
     loop {
+        #[cfg(feature = "v1")]
+        sys_log!("[THERMOv1] Online!");
+        #[cfg(feature = "v2")]
+        sys_log!("[THERMOv2] Online!");
         // Acquire data from sensors
         let time_result = rtc.read_sensor(&mut i2c);
         if time_result.is_err() {

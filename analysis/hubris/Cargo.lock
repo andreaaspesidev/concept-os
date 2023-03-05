@@ -298,6 +298,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "bthermo-syscalls"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "fugit",
+ "kern",
+ "panic-halt",
+ "panic-itm",
+ "panic-semihosting",
+ "stm32l4",
+]
+
+[[package]]
 name = "build-fpga-regmap"
 version = "0.1.0"
 dependencies = [
