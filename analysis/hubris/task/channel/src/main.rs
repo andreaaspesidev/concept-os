@@ -135,7 +135,6 @@ fn main() -> ! {
     };
 
     // Main loop
-    sys_log!("[UARTv1] Online!");
     let mut recv_buff: [u8; 12] = [0x00; 12];
     let mut frame_recovery: bool = true;
     loop {

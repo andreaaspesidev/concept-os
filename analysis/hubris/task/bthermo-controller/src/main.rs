@@ -28,8 +28,6 @@ fn main() -> ! {
     // Listen for commands packet on serial
     let mut serial = channel_api::UartChannel::new(CHANNEL.get_task_id());
 
-    sys_log!("[CONTROLLERv1] Online!");
-
     // Main loop
     let mut in_buffer: [u8; 1] = [0; 1];
     loop {

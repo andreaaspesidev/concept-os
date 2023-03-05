@@ -49,8 +49,6 @@ fn main() -> ! {
         &mut output_controller,
     );
 
-    sys_log!("[THERMOv1] Online!");
-
     // Create an instance of the state manager
     let mut state_manager = StateManager::new();
 

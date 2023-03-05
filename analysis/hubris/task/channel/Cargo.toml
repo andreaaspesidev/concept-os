@@ -13,7 +13,7 @@ stm32l476rg = ["rcc-api/stm32l476rg", "dep:stm32l476rg"]
 
 [dependencies]
 channel-api = {path = "../channel-api"}
-userlib = {path = "../../sys/userlib", features = ["panic-messages"]}
+userlib = {path = "../../sys/userlib"}
 cortex-m = { workspace = true, features = ["inline-asm"] }
 cfg-if = {workspace = true}
 cortex-m-semihosting =  { workspace = true, optional=true}

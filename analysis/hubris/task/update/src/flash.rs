@@ -1,5 +1,5 @@
 use stm32l4::stm32l4x6 as device;
-use userlib::{sys_irq_control, sys_log, sys_recv_closed, TaskId, UnwrapLite};
+use userlib::{sys_irq_control, sys_recv_closed, TaskId, UnwrapLite};
 
 const BANK2_BASE: u32 = 0x0808_0000; // Page 256
 const FLASH_KEY1: u32 = 0x4567_0123;
@@ -14,7 +14,6 @@ pub struct Flash {
 impl Flash {
     pub fn new() -> Self {
         let flash = unsafe { &*device::FLASH::ptr() };
-        sys_log!("BFB2: {}", flash.optr.read().bfb2().bit());
         Self::init_flash(flash);
         Self { flash }
     }
@@ -37,12 +36,9 @@ impl Flash {
         });
         // Configure for bank mass erase
         // IMPORTANT: banks here do not switch, so we have to alternate
-        sys_log!("OPTR: {}", self.flash.optr.read().bits());
         if self.flash.optr.read().bfb2().bit() {
-            sys_log!("Erasing bank 1");
             self.flash.cr.modify(|_, w| w.mer1().set_bit());
         } else {
-            sys_log!("Erasing bank 2");
             self.flash.cr.modify(|_, w| w.mer2().set_bit());
         }
 
@@ -85,22 +81,18 @@ impl Flash {
             }
             if r.pgserr().bit() {
                 errors = true;
-                sys_log!("Programming sequence error");
                 w.pgserr().set_bit(); // Clear bit
             }
             if r.pgaerr().bit() {
                 errors = true;
-                sys_log!("Programming alignment error");
                 w.pgaerr().set_bit(); // Clear bit
             }
             if r.wrperr().bit() {
                 errors = true;
-                sys_log!("Write protection error");
                 w.wrperr().set_bit(); // Clear bit
             }
             if r.sizerr().bit() {
                 errors = true;
-                sys_log!("Size error");
                 w.sizerr().set_bit(); // Clear bit
             }
             w

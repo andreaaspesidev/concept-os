@@ -15,7 +15,7 @@ use channel_api::UartChannel;
 use messages::{
     CommandStartMessage, HeaderMessage, RawPacket, UpdateErrors, UpdateMessages,
 };
-use userlib::{task_slot, sys_log};
+use userlib::task_slot;
 extern crate userlib;
 
 task_slot!(CHANNEL, channel);
@@ -30,8 +30,6 @@ fn main() -> ! {
     let mut channel = channel_api::UartChannel::new(CHANNEL.get_task_id());
     let mut flash = flash::Flash::new();
     // flash.force_bank1();
-
-    sys_log!("Update Online!");
     
     loop {
         // Wait for the start command
@@ -71,14 +69,11 @@ fn update_process(
             .map_err(|_| UpdateErrors::Timeout)?;
         // Decode packet
         let header = HeaderMessage::from(&header_buff)?;
-        sys_log!("Got section");
         // Process it
         process_section(channel, &header, flash)?;
-        sys_log!("Processed section");
         // Update stats
         received_bytes += header.get_section_size() as usize;
     }
-    sys_log!("Swapping banks");
     // Swap banks
     flash.swap_banks().map_err(|_| UpdateErrors::FlashError)?;
     // Send okay

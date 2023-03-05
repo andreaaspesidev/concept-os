@@ -6,7 +6,7 @@ stacksize = 896
 
 [kernel]
 name = "bthermo_app"
-requires = {flash = 22000, ram = 3072}
+requires = {flash = 21500, ram = 2192}
 #
 # For the kernel (and for any task that logs), we are required to enable
 # either "itm" (denoting logging/panicking via ARM's Instrumentation Trace
@@ -17,13 +17,14 @@ requires = {flash = 22000, ram = 3072}
 # If one does choose to change this to semihosting for purposes of
 # development, be sure to also change it in every task of interest.
 #
-features = ["itm"]
+features = []
 
 [tasks.rcc]
 name = "rcc"
 features = ["stm32l476rg"]
 priority = 0
-max-sizes = {flash = 1024, ram = 1024}
+max-sizes = {flash = 1024, ram = 256}
+stacksize = 256
 uses = ["rcc"]
 start = true
 
@@ -31,7 +32,7 @@ start = true
 name = "bthermo"
 features = []
 priority = 5
-max-sizes = {flash = 16384, ram = 4096}
+max-sizes = {flash = 8192, ram = 4096}
 stacksize = 2048
 uses = ["gpiob", "i2c1"]
 task-slots = ["rcc"]
@@ -39,10 +40,10 @@ start = true
 
 [tasks.channel]
 name = "channel"
-features = ["stm32l476rg", "log-itm", "multi-support"]
+features = ["stm32l476rg", "multi-support"]
 priority = 15
-max-sizes = {flash = 16384, ram = 4096}
-stacksize = 2048
+max-sizes = {flash = 8192, ram = 2048}
+stacksize = 1024
 uses = ["usart3", "gpioc", "dma1"]
 start = true
 notifications = ["usart-irq", "dma-irq"]
@@ -60,9 +61,9 @@ start = true
 
 [tasks.update]
 name = "update"
-features = ["log-itm"]
+features = []
 priority = 30
-max-sizes = {flash = 16384, ram = 2048}
+max-sizes = {flash = 8192, ram = 2048}
 stacksize = 1024
 start = true
 uses = ["flash_interface", "bank2"]
