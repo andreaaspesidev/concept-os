@@ -6,7 +6,7 @@ stacksize = 896
 
 [kernel]
 name = "bthermo_app"
-requires = {flash = 21500, ram = 2192}
+requires = {flash = 21450, ram = 2192}
 #
 # For the kernel (and for any task that logs), we are required to enable
 # either "itm" (denoting logging/panicking via ARM's Instrumentation Trace
