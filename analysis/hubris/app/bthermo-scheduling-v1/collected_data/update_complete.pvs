@@ -374,12 +374,6 @@ decoders=1
 enabled=true
 name=IDLE
 
-[meta_obj0]
-assoc_view=0
-end_time=22 serialization::archive 18 0 0 0 0 134 15335466 66666723 1289509 5054807 34338928 0 0 0 6
-start_time=22 serialization::archive 18 0 0 0 0 134 13039399 99999954 57983459 34599637 83386832 0 0 0 6
-type=selection
-
 [view0]
 D0\trace_height=34
 D1\trace_height=34
@@ -389,8 +383,8 @@ D4\trace_height=34
 D5\trace_height=34
 D6\trace_height=34
 D7\trace_height=34
-offset=22 serialization::archive 18 0 0 0 0 11 23597491 7284740 94592441 16813891 87840112 0 0 0 6
-scale=0.00012380722951934963
+offset=22 serialization::archive 18 0 0 0 0 39 60615059 77803326 97078753 41225644 66085280 0 1 0 6
+scale=0.12198246613088405
 segment_display_mode=1
 splitter_state=@ByteArray(\0\0\0\xff\0\0\0\x1\0\0\0\x2\0\0\0\xc0\0\0\x5K\x1\0\0\0\x1\x1\0\0\0\x1\0)
 v_offset=-44

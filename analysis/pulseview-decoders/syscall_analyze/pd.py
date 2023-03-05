@@ -176,7 +176,7 @@ class Decoder(srd.Decoder):
             v_new = (v_old + (t_syscall - mean_old) * (t_syscall - mean_new)) / k_old
             self.var_map[syscall_number] = v_new
 
-    def _visualize_with_confidence(self, syscall_num) -> str:
+    def _get_avg_with_confidence(self, syscall_num):
         # Get stats
         avg = self.avg_map[syscall_num][0]
         num_data = self.avg_map[syscall_num][1]
@@ -186,6 +186,10 @@ class Decoder(srd.Decoder):
         d = 1.96    # Confidence 0.95
         lower_bound = avg - d*np.sqrt(var / num_data)
         upper_bound = avg + d*np.sqrt(var / num_data)
+        return (lower_bound, upper_bound)
+
+    def _visualize_with_confidence(self, syscall_num) -> str:
+        lower_bound, upper_bound = self._get_avg_with_confidence(syscall_num)
         return f"[{normalize_total_time(lower_bound)},{normalize_total_time(upper_bound)}]"
 
     def _log_to_file(self, _time):
@@ -195,20 +199,26 @@ class Decoder(srd.Decoder):
         max_times = "MAX;"
         avg_times = "AVG;"
         min_times = "MIN;"
-        avg_intervals = "AVG_CONF;"
+        conf_max = "AVG_CONF_MAX;"
+        conf_min = "AVG_CONF_MIN;"
         for syscall_num in sorted(self.avg_map.keys()):
             intestation += f"SYSCALL_{syscall_num};"
-            max_times += f"{normalize_total_time(self.max_map[syscall_num])};"
-            avg_times += f"{normalize_total_time(self.avg_map[syscall_num][0])};"
-            min_times += f"{normalize_total_time(self.min_map[syscall_num])};"
-            avg_intervals += f"{self._visualize_with_confidence(syscall_num)};"
+            max_times += f"{self.max_map[syscall_num]};"
+            avg_times += f"{self.avg_map[syscall_num][0]};"
+            min_times += f"{self.min_map[syscall_num]};"
+            lower_bound,upper_bound = self._get_avg_with_confidence(syscall_num)
+            conf_max += f"{upper_bound};"
+            conf_min += f"{lower_bound};"
+
         # Open pipe truncate and write
         with open(self.options['stream_fifo'], 'a') as f:
             f.write(f"{intestation}\n")
             f.write(f"{max_times}\n")
             f.write(f"{avg_times}\n")
             f.write(f"{min_times}\n")
-            f.write(f"{avg_intervals}\n")
+            f.write(f"{conf_max}\n")
+            f.write(f"{conf_min}\n")
+            f.write(f"SAMPLE_RATE;{self.samplerate}\n")
 
     def decode(self):
         if not self.samplerate:
