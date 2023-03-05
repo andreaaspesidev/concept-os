@@ -1437,28 +1437,13 @@ pub fn reset() -> ! {
     // We crave a stronger reset than a simple software reset. It might be needed to
     // reload the option bytes to allow the bootloader after the software reset to
     // load the correct bank.
-    // Set OBL_LAUNCH cause a strange cpu hang on this L4 device, that appears to be common to
-    // other STM32 devices as well: https://community.st.com/s/question/0D50X0000AwWZjDSQW/problem-with-reloading-option-bytes-stm32l452re
-    // The only other option we have is to enter reset and leave it with IWDG. This
-    // is roughly equivalent to a power cycle for our purpose.
-
-    // As first thing, turn on PWR clock
     use stm32l476rg::device as device;
-    let rcc_raw = unsafe{&*device::RCC::ptr()};
-    rcc_raw.apb1enr1.modify(|_,w| w.pwren().set_bit());
-    // Set standby mode
-    let pwr = unsafe{&*device::PWR::ptr()};
-    pwr.cr1.modify(|_,w| unsafe{w.lpms().bits(3)});
-    // Set SLEEPDEEP bit of Cortex System Control Register
-    let scb = unsafe{&*cortex_m::peripheral::SCB::PTR};
-    unsafe{scb.scr.modify(|v| v | 1 << 2)};
-    // Setup IWDG
-    let iwdg = unsafe{&*device::IWDG::ptr()};
-    iwdg.kr.write(|w| w.key().start());
-    // Enter sleep
-    cortex_m::asm::wfi();
+    // Perform OBL reset
+    let flash = unsafe{&*device::FLASH::ptr()};
+    flash.cr.modify(|_,w| w.obl_launch().set_bit());
     unreachable!();
 }
+
 #[cfg(not(feature = "stm32l476rg"))]
 pub fn reset() -> ! {
     cortex_m::peripheral::SCB::sys_reset()

@@ -179,21 +179,4 @@ impl Flash {
     }
 }
 
-fn configure_watchdog() {
-    let iwdg = unsafe{&*device::IWDG::ptr()};
-    // Enable watchdog
-    iwdg.kr.write(|w| w.key().start());
-    // Unlock the registers
-    iwdg.kr.write(|w| w.key().enable());
-    // Change configuration
-    iwdg.pr.write(|w| w.pr().divide_by4()); // 32KHz / 4 = 8KHz
-    iwdg.rlr.write(|w| w.rl().bits(8));
-    loop {
-        if iwdg.sr.read().bits() == 0 {
-            break;
-        }
-    }
-    iwdg.kr.write(|w| w.key().reset());
-}
-
 include!(concat!(env!("OUT_DIR"), "/notifications.rs"));
