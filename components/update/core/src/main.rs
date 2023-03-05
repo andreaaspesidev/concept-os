@@ -25,9 +25,7 @@ use crate::consts::CHANNEL_ID;
 fn main() -> ! {
     // Wait for state to give time to the old version to terminate cleanly
     let mut state_buff: [u8; 4] = [0; 4];
-    if hl::get_state(&mut state_buff, (), |_s, _m: &u32| {}).is_ok() {
-        sys_log!("Got state!");
-    }
+    let _ = hl::get_state(&mut state_buff, (), |_s, _m: &u32| {});
     // Then activate
     kipc::activate_task();
     // Immediately set the handler
@@ -36,7 +34,6 @@ fn main() -> ! {
     let mut usart = UartChannel::new();
 
     // Main loop
-    sys_log!("[UPDATEv1] Hello");
     loop {
         // Create a buffer where to store the message
         let mut hello_buffer: [u8; HelloMessage::get_size()] = [0x00; HelloMessage::get_size()];
@@ -48,7 +45,6 @@ fn main() -> ! {
 
         if read_result.is_ok() {
             // Validate message
-            sys_log!("[UPDATE] Got hello message");
             let parsed = HelloMessage::from(&hello_buffer);
             if parsed.is_ok() {
                 let msg = parsed.unwrap_lite();
@@ -60,18 +56,15 @@ fn main() -> ! {
                 let wrire_result = usart.write_block(&response.get_raw());
 
                 if wrire_result.is_ok() {
-                    sys_log!("[UPDATE] Wrote hello response");
                     // Process this message
                     let result = hello_arrived(&msg, &mut usart);
                     if result.is_err() {
                         error_response(result.unwrap_err(), &mut usart);
                     }
                 } else {
-                    panic!("Cannot write!");
+                    panic!();
                 }
             }
-        } else {
-            sys_log!("[UPDATE] Read error");
         }
         // Check for update request
         if kipc::is_state_transfer_requested() {

@@ -5,8 +5,6 @@ edition = "2021"
 
 [features]
 multi-support = ["uart-channel-api/multi-support"]
-log-itm = ["userlib/log-itm"]
-log-semihosting = ["dep:cortex-m-semihosting", "userlib/log-semihosting"]
 board_stm32f303re = []
 board_stm32l432kc = []
 board_stm32l476rg = []

@@ -1,11 +1,11 @@
 name = "bthermo"
 board = "stm32l476rg"
-kernel_ram = 6656
+kernel_ram = 4096
 clock_speed = 80000000
-strip_panics = false
+strip_panics = true
 
 [components.idle]
-features = ["log-itm"]
+features = []
 
 [components.bthermo]
 features = []
@@ -14,13 +14,13 @@ features = []
 features = []
 
 [components.rcc]
-features = ["log-itm"]
+features = []
 
 [components.storage]
-features = ["log-itm"]
+features = []
 
 [components.uart3-channel]
-features = ["log-itm", "multi-support"]
+features = ["multi-support"]
 
 [components.update]
-features = ["log-itm", "multi-support"]
+features = ["multi-support"]

@@ -8,7 +8,7 @@ board_stm32l476rg = ["rcc-api/stm32l476rg", "dep:stm32l476rg"]
 
 [dependencies]
 bthermo-api = {path = "../api"}
-userlib = {path = "../../../sys/userlib", features=["log-itm"]}
+userlib = {path = "../../../sys/userlib"}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
 zerocopy = "0.6.1"
 serde = { version = "1.0.114", default-features = false, features = ["derive"] }

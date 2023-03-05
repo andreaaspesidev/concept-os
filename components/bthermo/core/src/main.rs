@@ -58,7 +58,6 @@ fn main() -> ! {
 
     // Activate (always better after hardware configuration)
     kipc::activate_task();
-    sys_log!("[THERMOv1] Online!");
 
     // Enable state migration
     kipc::set_update_support(true);

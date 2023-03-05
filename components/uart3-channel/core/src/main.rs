@@ -165,7 +165,6 @@ fn main() -> ! {
     };
 
     // Main loop
-    sys_log!("[UARTv1] Online!");
     let mut recv_buff: [u8; 12] = [0x00; 12];
     let mut frame_recovery: bool = true;
     loop {
@@ -231,7 +230,6 @@ fn main() -> ! {
                     // Frame error
                     if usart_isr.fe().bit_is_set() {
                         if !frame_recovery {
-                            sys_log!("UART Frame Error");
                             panic!();
                         }
                         // For this time, just reset the error.
@@ -247,7 +245,6 @@ fn main() -> ! {
                     // otherwise it's impossibile.
                     if usart_isr.ore().bit_is_set() {
                         // Something happened
-                        sys_log!("UART Overrun");
                         panic!();
                     }
 
@@ -280,7 +277,6 @@ fn main() -> ! {
                         );
                     } else if isr.teif3().bit_is_set() {
                         // Error
-                        sys_log!("Got error on DMA");
                         panic!();
                     }
 

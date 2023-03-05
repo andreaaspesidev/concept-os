@@ -35,7 +35,7 @@ pub const FLASH_ALLOCATOR_SIZE: usize =
 // This value needs to be fixed (automatically during build),
 // and (FLASH_ALLOCATOR_START_SCAN_ADDR - FLASH_ALLOCATOR_START_ADDR) must be a valid multiple of FLASH_PAGE_SIZE
 // (even 0 is fine)
-pub const FLASH_ALLOCATOR_START_SCAN_ADDR: u32 = 0x0800_A000; // 38912 bytes for the kernel
+pub const FLASH_ALLOCATOR_START_SCAN_ADDR: u32 = 0x0800_4800; // 18432 bytes for the kernel
 
 pub const FLASH_START_ADDR: u32 = 0x0800_0000;
 pub const FLASH_END_ADDR: u32 = 0x0807_FFFF;
@@ -67,7 +67,7 @@ pub const SRAM_START_ADDR: u32 = 0x2000_0000;
 pub const SRAM_END_ADDR: u32 = 0x2000_FFFF;
 pub const SRAM_SIZE: usize = (SRAM_END_ADDR - SRAM_START_ADDR + 1) as usize; // 64Kb
 
-pub const SRAM_RESERVED: u32 = 6656;    // Kernel memory
+pub const SRAM_RESERVED: u32 = 4352; // Kernel memory (must be a multiple of 256)
 pub const SRAM_BLOCK_SIZE: usize = 256;
 pub const SRAM_NUM_BLOCKS: usize = SRAM_SIZE / SRAM_BLOCK_SIZE as usize; // 256
 pub const SRAM_TREE_MAX_LEVEL: usize = 8; // log2(num_blocks) = log2(memory_area / block_size)

@@ -47,7 +47,6 @@ fn main() -> ! {
     // concern. Were it literally a static, we could just reference it.
     let rcc = unsafe { &*device::RCC::ptr() };
 
-    sys_log!("[RCCv1] Online!");
     // Message handler
     let recv_handler = |op: Operation, msg: hl::Message| -> Result<(), RCCError> {
         match op {
@@ -68,14 +67,11 @@ fn main() -> ! {
                     },
                     Bus::AHB2 => {
                         #[cfg(feature = "board_stm32f303re")]
-                        sys_log!("Wrong bus for f303re!");
-                        #[cfg(feature = "board_stm32f303re")]
                         panic!(); // The function of mapping should be correct
                         #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         set_bits!(rcc.ahb2enr, pmask);
                     }
                     Bus::AHB3 => {
-                        sys_log!("AHB3 not supported!");
                         panic!(); // The function of mapping should be correct
                     },
                     Bus::APB1 => {
@@ -108,14 +104,11 @@ fn main() -> ! {
                     }
                     Bus::AHB2 => {
                         #[cfg(feature = "board_stm32f303re")]
-                        sys_log!("Wrong bus for f303re!");
-                        #[cfg(feature = "board_stm32f303re")]
                         panic!(); // The function of mapping should be correct
                         #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         clear_bits!(rcc.ahb2enr, pmask);
                     }
                     Bus::AHB3 => {
-                        sys_log!("AHB3 not supported!");
                         panic!(); // The function of mapping should be correct
                     },
                     Bus::APB1 => {
@@ -148,14 +141,11 @@ fn main() -> ! {
                     }
                     Bus::AHB2 => {
                         #[cfg(feature = "board_stm32f303re")]
-                        sys_log!("Wrong bus for f303re!");
-                        #[cfg(feature = "board_stm32f303re")]
                         panic!(); // The function of mapping should be correct
                         #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         set_bits!(rcc.ahb2rstr, pmask);
                     }
                     Bus::AHB3 => {
-                        sys_log!("AHB3 not supported!");
                         panic!(); // The function of mapping should be correct
                     },
                     Bus::APB1 => {
@@ -188,14 +178,11 @@ fn main() -> ! {
                     }
                     Bus::AHB2 => {
                         #[cfg(feature = "board_stm32f303re")]
-                        sys_log!("Wrong bus for f303re!");
-                        #[cfg(feature = "board_stm32f303re")]
                         panic!(); // The function of mapping should be correct
                         #[cfg(any(feature = "board_stm32l432kc",feature = "board_stm32l476rg"))]
                         clear_bits!(rcc.ahb2rstr, pmask);
                     }
                     Bus::AHB3 => {
-                        sys_log!("AHB3 not supported!");
                         panic!(); // The function of mapping should be correct
                     },
                     Bus::APB1 => {

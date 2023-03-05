@@ -16,7 +16,7 @@ path = "../../boards/stm32l476rg"
 [dependencies.kern]
 path = "../../sys/kern"
 default-features = false
-features = ["l476rg", "log-itm"]
+features = ["l476rg"] #, "log-itm"]
 
 [[bin]]
 name = "bthermo"

@@ -9,7 +9,6 @@ use relocator::Relocator;
 use storage_api::*;
 use uart_channel_api::*;
 use userlib::flash::BlockType;
-use userlib::sys_log;
 use userlib::UnwrapLite;
 
 /*
@@ -310,8 +309,6 @@ fn add_update_core(
 
     methods.channel_write_single(ComponentUpdateCommand::SendComponentVariableHeader as u8)?;
 
-    sys_log!("Waiting for variable header");
-
     read_exact_bytes(
         methods,
         to_read,
@@ -333,11 +330,9 @@ fn add_update_core(
     // --------------------------------------------------------------------------------
     let flash_reader = FlashReader::from(allocation.flash_base_address, allocation.flash_size); // TODO: remove the second mutable reference to Storage created here
 
-    sys_log!("Reading HBF from flash");
     let flash_hbf = wrap_hbf_error(HbfFile::from_reader(&flash_reader))?;
 
     // Before reading the payload, validate the dependencies of this component
-    sys_log!("Checking dependencies");
     validate_component_version_and_dependencies(
         &flash_hbf,
         methods,
@@ -370,7 +365,6 @@ fn add_update_core(
 
     // Ask for it
     methods.channel_write_single(ComponentUpdateCommand::SendComponentPayload as u8)?;
-    sys_log!("Waiting for payload");
 
     let mut checksum_buff = ChecksumBuff::new();
 
@@ -420,7 +414,6 @@ fn add_update_core(
     static_assertions::const_assert_eq!(hbf_lite::HBF_TRAILER_SIZE, 4);
 
     let mut hbf_trailer_buff: [u8; 4] = [0x00; 4];
-    sys_log!("Waiting for trailer");
 
     methods.channel_ask(
         ComponentUpdateCommand::SendComponentTrailer as u8,
@@ -502,11 +495,9 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
         e
     })?;
     // Start component, do stuff ...
-    sys_log!("Try to start component");
     if !userlib::kipc::load_component(allocation.flash_base_address) {
         return Err(MessageError::CannotStartComponent);
     }
-    sys_log!("Component started!");
     // Respond (at this point, do not delete the component if we just fail to send the end byte)
     methods.channel_write_single(ComponentUpdateResponse::Success as u8)
 }
