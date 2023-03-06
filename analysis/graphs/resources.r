@@ -43,7 +43,7 @@ resource_comparison <- ggplot(data = df1, aes(
   labs(y = "Used space [bytes]", x = "Resource") +
   theme(
     legend.title = element_blank(),
-    legend.position = c(0.8, 0.85),
+    legend.position = c(0.8, 0.7),
     legend.box = "horizontal",
     plot.margin = margin(0.1,0.5,0.1,0.1, "cm")
   ) + 
@@ -55,6 +55,6 @@ ggsave(
   "output/resources.pdf",
   plot = resource_comparison,
   scale = 1,
-  width = 1920, height = 1080, units = "px",
+  width = 1500, height = 500, units = "px",
   dpi = 300,
 )
