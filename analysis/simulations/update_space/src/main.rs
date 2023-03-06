@@ -5,7 +5,10 @@ use stm32l476rg::{
     FLASH_BLOCK_SIZE, FLASH_NUM_BLOCKS, FLASH_NUM_NODES, FLASH_TREE_MAX_LEVEL,
 };
 
+use crate::visualize_stats::{AllocStats, visualize_flash};
+
 mod fake_flash;
+mod visualize_stats;
 
 fn init_stm32l476rg<'a>(flash: &'a mut dyn FlashMethods<'a>) -> impl FlashAllocator<'a> {
     let bd = FlashAllocatorImpl::<
@@ -34,17 +37,6 @@ fn init_stm32l476rg<'a>(flash: &'a mut dyn FlashMethods<'a>) -> impl FlashAlloca
     return bd;
 }
 
-fn process_alloc(highest_address: &mut u32, alloc: FlashBlock) {
-    println!(
-        "Allocated at {:x} for {} bytes",
-        alloc.get_nominal_base_address(),
-        alloc.get_nominal_size()
-    );
-    let current_end_address = alloc.get_nominal_base_address() + alloc.get_nominal_size();
-    if current_end_address > *highest_address {
-        *highest_address = current_end_address;
-    }
-}
 
 fn main() {
     const FLASH_SIZE: usize = (FLASH_ALLOCATOR_END_ADDR - FLASH_ALLOCATOR_START_ADDR + 1) as usize;
@@ -55,62 +47,58 @@ fn main() {
         FLASH_ALLOCATOR_END_ADDR,
     >::new(&mut flash_content);
     let mut flash_allocator = init_stm32l476rg(&mut flash);
-    let mut highest_address: u32 = 0;
+    let mut allocs: Vec<FlashBlock> = Vec::new();
     // 8
-    process_alloc(
-        &mut highest_address,
-        flash_allocator
-            .allocate(184, flash_allocator::flash::BlockType::COMPONENT)
-            .unwrap(),
-    );
+    allocs.push(flash_allocator
+        .allocate(184, flash_allocator::flash::BlockType::COMPONENT)
+        .unwrap());
     // 11
-    process_alloc(
-        &mut highest_address,
-        flash_allocator
+    allocs.push(flash_allocator
             .allocate(2096, flash_allocator::flash::BlockType::COMPONENT)
             .unwrap(),
     );
     // 10
-    process_alloc(
-        &mut highest_address,
-        flash_allocator
+    allocs.push(flash_allocator
             .allocate(5588, flash_allocator::flash::BlockType::COMPONENT)
             .unwrap(),
     );
     // 2
-    process_alloc(
-        &mut highest_address,
-        flash_allocator
+    allocs.push(flash_allocator
             .allocate(768, flash_allocator::flash::BlockType::COMPONENT)
             .unwrap(),
     );
     // 4
-    process_alloc(
-        &mut highest_address,
-        flash_allocator
+    allocs.push(flash_allocator
             .allocate(4644, flash_allocator::flash::BlockType::COMPONENT)
             .unwrap(),
     );
     // 3
-    process_alloc(
-        &mut highest_address,
-        flash_allocator
+    allocs.push(flash_allocator
             .allocate(5516, flash_allocator::flash::BlockType::COMPONENT)
             .unwrap(),
     );
-    // 3
-    process_alloc(
-        &mut highest_address,
-        flash_allocator
+    // 5
+    allocs.push(flash_allocator
             .allocate(6960, flash_allocator::flash::BlockType::COMPONENT)
             .unwrap(),
     );
+    let mut out1 = std::env::current_dir().unwrap();
+    out1.push("Report1.html");
+    visualize_flash(&AllocStats{
+        entries: allocs.clone(),
+        flash_start: FLASH_ALLOCATOR_START_ADDR,
+        flash_size: (FLASH_ALLOCATOR_END_ADDR - FLASH_ALLOCATOR_START_ADDR + 1),
+    }, &out1);
     // new component
-    process_alloc(
-        &mut highest_address,
-        flash_allocator
-            .allocate(6960, flash_allocator::flash::BlockType::COMPONENT)
+    allocs.push(flash_allocator
+            .allocate(6000, flash_allocator::flash::BlockType::COMPONENT)
             .unwrap(),
     );
-    println!("Highest address: {:x}", highest_address);
+    let mut out2 = std::env::current_dir().unwrap();
+    out2.push("Report2.html");
+    visualize_flash(&AllocStats{
+        entries: allocs.clone(),
+        flash_start: FLASH_ALLOCATOR_START_ADDR,
+        flash_size: (FLASH_ALLOCATOR_END_ADDR - FLASH_ALLOCATOR_START_ADDR + 1),
+    }, &out2);
 }

@@ -49,6 +49,8 @@ resource_comparison <- ggplot(data = df1, aes(
   ) + 
   guides(fill = guide_legend(reverse = TRUE))
 
+resource_comparison
+
 ggsave(
   "output/resources.pdf",
   plot = resource_comparison,
