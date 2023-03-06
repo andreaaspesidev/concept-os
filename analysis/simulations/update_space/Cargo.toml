@@ -1,0 +1,8 @@
+[package]
+name = "flash_allocator_simulator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+flash_allocator = {path="../../../libs/flash_allocator"}
+stm32l476rg = {path = "../../../boards/stm32l476rg"}
