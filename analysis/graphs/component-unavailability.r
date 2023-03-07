@@ -15,13 +15,17 @@ setwd(this.dir)
 unavailability <- read.csv("data/conceptos-component-unavailability.csv", header = TRUE, sep = ",")
 # Convert to microseconds
 unavailability[2] <- unavailability[2] * 10^6
+# Rename elements
+unavailability[1] <- c("(0) RCC","(15) UART", "(25) STORAGE", 
+"(30) UPDATE","(255) IDLE","(10) TICKER",
+"(5) BTHERMO","(20) BTHERMO_CTRL")
 
 # Plot max timings
 graph <- ggplot(data = unavailability, aes(
   x = forcats::fct_rev(factor(component_id, level=c(
-    "(2) RCC","(3) UART", "(4) STORAGE", 
-    "(5) UPDATE","(8) IDLE","(9) TICKER",
-    "(10) BTHERMO","(11) BTHERMO_CTRL"))),
+    "(0) RCC","(5) BTHERMO","(10) TICKER","(15) UART", 
+    "(20) BTHERMO_CTRL","(25) STORAGE", 
+    "(30) UPDATE","(255) IDLE"))),
   y = unavailable_time,
 )) +
   geom_bar(aes(y = unavailable_time),

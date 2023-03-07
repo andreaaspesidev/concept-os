@@ -28,7 +28,7 @@ graph <- ggplot(data = unavailability, aes(
   coord_flip() +
   scale_fill_grey() +
   theme_bw() +
-  labs(y = "Max system unavailability [ms]", x = "Operating System")
+  labs(y = "Max system unavailability [ms]", x = "Operating\nSystem")
   
 graph
 
@@ -36,6 +36,6 @@ ggsave(
   "output/system_unavailability.pdf",
   plot = graph,
   scale = 1,
-  width = 1500, height = 500, units = "px",
+  width = 1500, height = 300, units = "px",
   dpi = 300,
 )
