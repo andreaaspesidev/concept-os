@@ -7,7 +7,7 @@ This happens for example when we have the update client running in parallel with
 
 Many implementations can be done, and this has nothing to do with the kernel itself, as no specific support is needed. In the following sections, it's presented a very simple methods to share a Serial Channel between multiple components, but with a maximum number of components at the same time.
 
-The idea is to append in both direction a header to the message:
+The idea is to encapsulate the message bytes in a custom packet:
 
 ```
 ----------------------------------
@@ -18,9 +18,9 @@ The `N` number of bytes is always known both when a component asks to receive da
 
 The message then will be sent in the channel as:
 ```
------------------------------------------------------------
-| COMPONENT_ID | MSG_LEN | MSG_BYTE_0 |  ... | MSG_BYTE_N |
------------------------------------------------------------
+------------------------------------------------------------------------------
+| PREAMBLE | COMPONENT_ID | MSG_LEN | MSG_BYTE_0 |  ... | MSG_BYTE_N | CRC-8 |
+------------------------------------------------------------------------------
 ```
 Where:
 - `COMPONENT_ID` is a `16-bits` encoded unsigned integer (big endian).
