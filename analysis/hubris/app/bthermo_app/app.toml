@@ -6,7 +6,7 @@ stacksize = 896
 
 [kernel]
 name = "bthermo_app"
-requires = {flash = 21450, ram = 2192}
+requires = {flash = 12064, ram = 2064}
 #
 # For the kernel (and for any task that logs), we are required to enable
 # either "itm" (denoting logging/panicking via ARM's Instrumentation Trace
@@ -23,7 +23,7 @@ features = []
 name = "rcc"
 features = ["stm32l476rg"]
 priority = 0
-max-sizes = {flash = 1024, ram = 256}
+max-sizes = {flash = 512, ram = 256}
 stacksize = 256
 uses = ["rcc"]
 start = true
@@ -54,7 +54,7 @@ task-slots = ["rcc"]
 name = "bthermo-controller"
 features = []
 priority = 20
-max-sizes = {flash = 4096, ram = 4096}
+max-sizes = {flash = 2048, ram = 4096}
 stacksize = 2048
 task-slots = ["bthermo", "channel"]
 start = true
@@ -63,7 +63,7 @@ start = true
 name = "update"
 features = []
 priority = 30
-max-sizes = {flash = 8192, ram = 2048}
+max-sizes = {flash = 2048, ram = 2048}
 stacksize = 1024
 start = true
 uses = ["flash_interface", "bank2"]

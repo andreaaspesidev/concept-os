@@ -1345,6 +1345,10 @@ fn build(
     println!("building crate {}", build_config.crate_name);
 
     let mut cmd = build_config.cmd("rustc");
+    cmd.arg("-Z");
+    cmd.arg("build-std=core,panic_abort");
+    cmd.arg("-Z");
+    cmd.arg("build-std-features=panic_immediate_abort");
     cmd.arg("--release");
 
     // We're capturing stderr (for diagnosis), so `cargo` won't automatically
