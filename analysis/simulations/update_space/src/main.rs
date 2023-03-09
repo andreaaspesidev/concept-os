@@ -48,23 +48,23 @@ fn main() {
     >::new(&mut flash_content);
     let mut flash_allocator = init_stm32l476rg(&mut flash);
     let mut allocs: Vec<FlashBlock> = Vec::new();
+    // 11
+    allocs.push(flash_allocator
+        .allocate(1908, flash_allocator::flash::BlockType::COMPONENT)
+        .unwrap(),
+    );
     // 8
     allocs.push(flash_allocator
         .allocate(184, flash_allocator::flash::BlockType::COMPONENT)
         .unwrap());
-    // 11
+    // 2
     allocs.push(flash_allocator
-            .allocate(2096, flash_allocator::flash::BlockType::COMPONENT)
-            .unwrap(),
+        .allocate(768, flash_allocator::flash::BlockType::COMPONENT)
+        .unwrap(),
     );
     // 10
     allocs.push(flash_allocator
             .allocate(5588, flash_allocator::flash::BlockType::COMPONENT)
-            .unwrap(),
-    );
-    // 2
-    allocs.push(flash_allocator
-            .allocate(768, flash_allocator::flash::BlockType::COMPONENT)
             .unwrap(),
     );
     // 4

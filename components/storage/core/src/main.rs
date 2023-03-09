@@ -216,7 +216,7 @@ fn generate_status() -> Result<ReportStatusResponse, StorageError> {
             let mut sram_size_bytes: [u8; 4] = [0x00; 4];
             FlashInterface::new()
                 .read(b.get_base_address() + 4, &mut sram_size_bytes)
-                .unwrap();
+                .unwrap_lite();
             let sram_size = u32::from_le_bytes(sram_size_bytes);
             response.ram_used += sram_size;
         }
@@ -246,7 +246,7 @@ fn flash_write_stream(
     if block_res.is_none() {
         return Err(StorageError::InvalidBlockPointer);
     }
-    let block = block_res.unwrap();
+    let block = block_res.unwrap_lite();
     // Get the actual position of where to start writing
     let block_start_addr = match block.get_type() {
         BlockType::COMPONENT => block.get_base_address() + 8,
@@ -311,7 +311,7 @@ fn flash_read_stream(
     if block_res.is_none() {
         return Err(StorageError::InvalidBlockPointer);
     }
-    let block = block_res.unwrap();
+    let block = block_res.unwrap_lite();
     // Get the actual position of where to start reading
     let block_start_addr = match block.get_type() {
         BlockType::COMPONENT => block.get_base_address() + 8,
@@ -363,7 +363,7 @@ fn flash_finalize_block(base_address: u32) -> Result<(), StorageError> {
     if block_res.is_none() {
         return Err(StorageError::InvalidBlockPointer);
     }
-    let block = block_res.unwrap();
+    let block = block_res.unwrap_lite();
     // Launch finalization
     let result = flash_allocator::flash::utils::finalize_block::<
         FLASH_ALLOCATOR_START_ADDR,
@@ -392,7 +392,7 @@ fn flash_allocate(requested_size: u32, block_type: BlockType) -> Result<(u32, u3
     // Get the address
     let result = allocator.allocate(requested_size, block_type);
     if result.is_ok() {
-        let block = result.unwrap();
+        let block = result.unwrap_lite();
         Ok((block.get_base_address(), block.get_size()))
     } else {
         return Err(StorageError::OutOfFlash);
@@ -445,7 +445,7 @@ fn ram_allocate(
     // Get the address
     let result = allocator.allocate(component_base_address, requested_size);
     if result.is_ok() {
-        let block = result.unwrap();
+        let block = result.unwrap_lite();
         Ok((block.get_base_address(), block.get_size()))
     } else {
         let err = result.unwrap_err();

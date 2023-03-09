@@ -12,7 +12,7 @@ board_stm32l476rg = ["dep:stm32l476rg"]
 
 [dependencies]
 storage-api = {path = "../api"}
-userlib = {path = "../../../sys/userlib", features=["log-itm"]}
+userlib = {path = "../../../sys/userlib"}
 cortex-m = { version = "0.7", features = ["inline-asm"] }
 cfg-if = "1.0.0"
 cortex-m-semihosting =  { version = "0.5.0", optional=true}

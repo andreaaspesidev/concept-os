@@ -7,7 +7,7 @@ edition = "2021"
 board_stm32l476rg = []
 
 [dependencies]
-userlib = {path = "../../../sys/userlib", features=["log-itm"]}
+userlib = {path = "../../../sys/userlib"}
 zerocopy = "0.6.1"
 cortex-m = { version = "0.7", features = ["inline-asm"] }
 # Component dependencies

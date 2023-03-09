@@ -28,8 +28,6 @@ fn main() -> ! {
     // Listen for commands packet on serial
     let mut serial = uart_channel_api::UartChannel::new();
 
-    sys_log!("[CONTROLLERv1] Online!");
-
     // Main loop
     let mut in_buffer: [u8; 1] = [0; 1];
     loop {
@@ -140,11 +138,11 @@ fn main() -> ! {
                     continue;
                 }
                 let from_time = LayoutVerified::<_, TimeStructure>::new(&request_pkt[0..TIME_SIZE])
-                    .unwrap()
+                    .unwrap_lite()
                     .into_ref();
                 let to_time =
                     LayoutVerified::<_, TimeStructure>::new(&request_pkt[TIME_SIZE..2 * TIME_SIZE])
-                        .unwrap()
+                        .unwrap_lite()
                         .into_ref();
                 let ptr = 2 * TIME_SIZE;
                 let temperature_setpoint = f32::from_le_bytes([
@@ -163,8 +161,8 @@ fn main() -> ! {
                     *from_time,
                     *to_time,
                     temperature_setpoint,
-                    output.unwrap(),
-                    repeat.unwrap(),
+                    output.unwrap_lite(),
+                    repeat.unwrap_lite(),
                 );
                 if result.is_err() {
                     channel_write(&mut serial, &[CMD_SET_PROGRAM, 0x02]);

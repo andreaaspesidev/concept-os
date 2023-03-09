@@ -9,7 +9,7 @@
 // We have to do this if we don't otherwise use it to ensure its vector table
 // gets linked in.
 extern crate stm32l476rg;
-extern crate panic_itm;
+extern crate no_panics_whatsoever;
 
 mod clocks;
 
