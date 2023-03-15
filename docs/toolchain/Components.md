@@ -12,7 +12,7 @@ In particular, the information needed are:
 - (optional) `Regions`: list of memory regions required by the component
 - (optional) `Interrupts`: list of irq and masks required by the component
 
-### Regions
+## Regions
 For each region, the following values must be specified:
 - `Region Base Address`: Address of start of region. Must be a multiple of the Region Size due to limitations of the MPU (natural alignment).
 - `Region Size`: Size of region, in bytes (on ARMv7-M, it must be a power of two greater than 16: 2^5, 2^6, ...)
@@ -23,10 +23,17 @@ For each region, the following values must be specified:
     - `DEVICE`: Region contains memory mapped registers. This affects cache behavior on devices that include it, and discourages the kernel from using memcpy in the region.
     - `DMA`: Region can be used for DMA or communication with other processors. This heavily restricts how this memory can be cached and will hurt performance if overused. This is ignored for DEVICE memory, which is already not cached.
 
-### Interrupts
+## Interrupts
 For each interrupt, the following values must be specified:
 - `IRQ Number`: Interrupt number
 - `Notification Mask`: Interrupt notification to the component
+
+## Dependencies
+Each component dependency is inserted here to ensure the component will work in the target
+system. Three fields are specified:
+- `Component ID` is the identifier of the component
+- `Min Version` is the min version of the component (use 0 to disable)
+- `Max Version` is the max version of the component (use 0 to disable)
 
 ## Example
 ```toml
@@ -61,4 +68,26 @@ notification_mask = '0x00000001'
 irq = 2
 notification_mask = '0x00000002'
 
+```
+
+Note: a more advanced version can be used now for components, by using the peripheral keyword
+to make the component more board-independent and allow the support of multiple boards. 
+Here is an example:
+
+```toml
+[component]
+id = 3
+version = 1
+priority = 10
+flags = ['START_AT_BOOT']
+min_ram = 1024
+peripherals = ["usart2","gpioa","dma1"]
+interrupts = { "usart2.irq" = 1, "dma1.irq6" = 2 }
+
+
+# RCC
+[[dependencies]]
+component_id = 2
+min_version = 1
+max_version = 1
 ```

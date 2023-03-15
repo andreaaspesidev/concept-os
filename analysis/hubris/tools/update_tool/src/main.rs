@@ -1,9 +1,13 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 mod common_messages;
 mod crc;
 mod utils;
 mod flash_system;
 
-/*cfg_if::cfg_if! {
+cfg_if::cfg_if! {
     // Check the features are in mutual exclusion
     if #[cfg(all(feature = "uart", feature = "mqtt"))] {
         compile_error!("Both features cannot be enabled at the same time!");
@@ -11,7 +15,7 @@ mod flash_system;
     } else if #[cfg(not(feature = "mqtt"))] {
         compile_error!("At least one feature must be enabled!");
     }
-}*/
+}
 
 use std::{
     io::{self},
