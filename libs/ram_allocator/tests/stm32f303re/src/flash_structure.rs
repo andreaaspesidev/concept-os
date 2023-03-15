@@ -1,5 +1,11 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 use flash_allocator::flash::page::FlashPage;
 
+// There is of course a more intelligent way to to this.
+// It was easier than adapting the code.
 pub static FLASH_PAGES: [FlashPage; 256] = [
         FlashPage::new(0, 0x08000000, 2048),   // 0
         FlashPage::new(1, 0x08000800, 2048),   // 1

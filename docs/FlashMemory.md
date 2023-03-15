@@ -4,27 +4,26 @@ On STM32 boards, programs are stored in Flash Memory. They can be also directly 
 ## Flash Programming
 Flash memory differs from standard memory for what concerns writes. 
 
-In order to reprogram flash memory, an `in-application programming (IAP)` is needed: IAP allows the user to re-program the Flash memory while the application is running (*the CPU will likely stall during the operation*).
+In order to reprogram flash memory, a `in-application programming (IAP)` is needed: IAP allows the user to re-program the Flash memory while the application is running (*the CPU will likely stall during the operation*).
 
-Flash memory is divided into erase sectors, which can be in some cases also of different sizes and rather large (es. STMF4, STMF7, ...).
+Flash memory is divided into erase sectors, which can be in some cases also of different sizes and rather large (i.e. STMF4, STMF7, ...).
 
-- An erase sector is the minimum granularity for an erase operation. *Erasing a sector sets all bits in the sector to 1*.
+- An erase-sector is the minimum granularity for an erase operation. *Erasing a sector sets all bits in the sector to 1*.
 
-- Writes must be performed with the granularity of the specific Flash memory (in some cases can be modified using an apposite register for parallelism). Usually goes from a byte (*8 bits*) to a full word (*32 bits*).
+- Writes must be performed with the granularity of the specific Flash memory (in some cases can be modified using an apposite register for parallelism). Usually goes from a byte (*8 bits*) to a full word (*64 bits*).
 
 - When setting bits from 1 to 0 no erase is required, if the hardware supports it. But it's not possible to perform the opposite operation without erasing the whole sector first.
 
 ### STM32 Flash
-On some devices, STM adopted a more strict specification for the Flash controller: given the minimum write granularity, it's not possible to write twice to the same word (after an erase). The only exception is writing 0x0000, that is always accepted.
+On some devices, STM adopted a more strict specification for the Flash controller: given the minimum write granularity, it's not possible to write twice to the same word (after an erase). The only exception is writing a full word of 0x00, that is always accepted.
 
 *Example (F303RE): the minimum write granularity is half-word (16 bits). After the page is erased, all half-words are 0xFFFF. The following transition is accepted: 0xFFFF -> 0xXXXX -> 0x0000*
 
 *Example (F401RE): hardware supports the full specification. After the page is erased, all half-words are 0xFFFF. The following transition is accepted: 0xFFFF -> 0xFFFE -> 0xFFFC -> ... -> 0x0000*
 
-All these operations are possible by exploiting the memory-mapped registers of the IAP (`FLASH_SR`, `FLASH_CR`, ...). But first the flash must be unlocked using the ad-hoc key for `FLASH_KEYR`.
-By setting the `PG` flag (programming flag) in the register `FLASH_CR`, after the unlock procedure, it's possible to issue a write to the corresponding flash location, with the right granularity.
+All these operations are possible by exploiting the memory-mapped registers of the IAP (`FLASH_SR`, `FLASH_CR`, ...). But first the flash must be unlocked using the ad-hoc key for `FLASH_KEYR`. By setting the `PG` flag (programming flag) in the register `FLASH_CR`, after the unlock procedure, it's possible to issue a "write" to the corresponding flash location, with the right granularity.
 
-Some devices have ECC flash memory (8 additional bits every 64bits of CRC, although could vary). **In order to support these devices, each flag below must be set to the size of the data covered by a single ECC control word (in this case 64bits)**.
+Some devices have ECC flash memory (E additional bits every D bits of CRC, although it could vary). **In order to support these devices, each flag below must be set to the size of the data covered by a single ECC control word (D bits)**.
 
 ## Flash Layout
 The minimum erase granularity complicates the operations needed in order for the system to be updated.
@@ -47,20 +46,19 @@ For simplicity, we can start placing all the Kernel code at the beginning of the
 The Kernel can now start, but in order to have a functioning systems also Components must be loaded. Components are placed in Flash as `HBF` files (see `toolchain/HubrisBinaryFormat.md`).
 
 From a design perspective:
-- the kernel must be able to find these HBF binaries in flash. As the system can be updated, this information is not known a priori, and must be stored itself in flash.
-- as Memory Protection Unit (MPU) is adopted to increase reliability, HBF must be placed in a way to satisfy MPU strict requirements on *Base Address* and *Size*.
-- HBF must be placed in memory in a way to control fragmentation, or the system can rapidly become impossible to be updated.
+- The kernel must be able to find these HBF binaries in flash. As the system can be updated, this information is not known a priori, and must be stored itself in flash.
+- A Memory Protection Unit (MPU) is adopted to increase reliability, so HBF must be placed in a way to satisfy MPU strict requirements on *Base Address* and *Size*.
+- The HBF must be placed in memory in a way to control fragmentation, or the system can rapidly become impossible to be updated.
 
 ### MPU Requirements
-The MPU shipped on board of STM32 Cortex-M4 has quite strict requirements.
-Up to max 8 regions can be created. Each region can be then be split into 8 subregions (each can be enabled/disabled).
+The MPU shipped on board of STM32 Cortex-M4 has quite strict requirements. Up to max 8 regions can be created. Each region can be then be split into 8 subregions (each can be enabled/disabled).
 Each region:
 - has a start address that must be multiple of the MPU size (natural alignment).
 - has a size that must be 2^n x 32 bytes.
 
 The main problem for space allocation is the fact that as the size needed by a component increases, we start having less and less suitable base addresses.
 
-## Buddy Allocator
+# Buddy Allocator
 We consider a modified version of this simple allocator, as:
 
 - it allows compaction of memory with little overhead, at the same time showing a little [external fragmentation](https://en.wikipedia.org/wiki/Fragmentation_(computer)#External_fragmentation).
@@ -72,7 +70,7 @@ See `RAMMemory.md` for details.
 
 <img src="images/buddy_allocator.svg">
 
-### Storing metadata
+## Storing metadata
 One of the critical aspects of the allocator is the ability to reconstruct flash state after an hard reboot. Two different strategies can be used:
 - store the metadata about flash layout in a dedicated flash area.
 - store the metadata at the beginning of a block itself. As metadata changes always refer to the block we are working on, this avoids the need to have a complex filesystem. The drawback is consuming space of the block.
@@ -93,7 +91,7 @@ Offset| Size (bytes) | Field Name  | Possible Values |            Content       
 0x0A  |      2       | Block Type | 0x0000 to 0xFFFF | Flags representing the destination usage of this block
 
 In particular:
-- `Block Type`: is read to understand the content of the block. Bits are set low, (0 = on, 1 = off).
+- `Block Type` is read to understand the content of the block. Bits are set low, (0 = on, 1 = off).
     | 15 |...| 7 | 6 | 5 | 4 | 3 | 2 | 1 |     0     |
     |----|---|---|---|---|---|---|---|---|-----------|
     | R  | R | R | R | R | R | R | R | R | COMPONENT |
@@ -122,13 +120,13 @@ Size: 32 bytes
 
 <img src="images/allocator_metadata.svg">
 
-### Terminology
+## Terminology
 Let's define:
 - A `free_block` is a block that was erased, and that can be written in any location. It's not assigned yet. (`ALLOCATED = 0`, `DISMISSED = 0`)
 - An `allocated_block` is a block that was allocated, so we must presume it was written. It's locked and cannot be modified. (`ALLOCATED = 1`, `DISMISSED = 0`)
 - A `freed_block` is an `allocated_block` after deallocation for it is requested. We must presume it was written, so cannot be used before being erased again. (`ALLOCATED = 1`, `DISMISSED = 1`)
 
-### Reconstructing State from Metadata
+## Reconstructing State from Metadata
 It's always possible to retrieve the `free_list` from the flash memory upon start-up, using the following procedure:
 
 1. Start scanning from a fixed position (usually the first address available to the allocator).
@@ -139,7 +137,7 @@ It's always possible to retrieve the `free_list` from the flash memory upon star
 
 <img src="images/allocator_reconstruction.svg">
 
-### Constant Flash Page Size
+## Constant Flash Page Size
 Most devices and flash controllers offers small constant-size pages. For example, considering `STM32F303RE` (that can be found on the `NUCLEO-F303RE`), these blocks are 2Kb in size (see [here](https://www.st.com/resource/en/reference_manual/dm00043574-stm32f303xb-c-d-e-stm32f303x6-8-stm32f328x8-stm32f358xc-stm32f398xe-advanced-arm-based-mcus-stmicroelectronics.pdf)):
 
 | Address Range             | Size (bytes)  |  Name     |
@@ -218,9 +216,9 @@ The deallocation procedure works as follows:
 
     - The block overlaps with at least 2 pages. This means it will be at the end of the first (`#PS`), will cover entirely any intermediate page, and will end in the beginning portion of the last page (`#PE`).
         1. We start from page `#PE`. We launch the swap procedure on this page, with arguments:
-                - `SC.NUM <= #PE`
-                - `SC.START_TYPE <= 2` *(do not preserve)*
-                - `SC.START_SIZE <= ADDR[BH] + BH.SIZE - #PE.START_ADDR` *(where `BH.SIZE = ALLOCATOR.SIZE >> BH.LEVEL`)*
+            - `SC.NUM <= #PE`
+            - `SC.START_TYPE <= 2` *(do not preserve)*
+            - `SC.START_SIZE <= ADDR[BH] + BH.SIZE - #PE.START_ADDR` *(where `BH.SIZE = ALLOCATOR.SIZE >> BH.LEVEL`)*
         2. For each intermediate page (between `#PE` and `#PS`), we know that the whole area of these pages is a fragment of our block, so we can simply **erase** them (*no swapping needed*). When we reach page `#PS`, go to point *4*.
 
 4. We are now processing the page `#PS`, that contains the block header. We can scan the page by starting from `PREV_HEADER` (found at point *2*). We have two cases:
@@ -241,17 +239,17 @@ The deallocation procedure works as follows:
                 - `SC.START_TYPE <= 1` *(preserve)*
                 - `SC.START_SIZE <= ADDR[PREV_HEADER] + PREV_HEADER.SIZE - #PS.START_ADDR`
             - *The other case is not possible, as will be resolved at reboot*
-        - *The other case is not possible by construction*
+        - *The other case is not possible by construction: free space is occupied by `free_blocks`, so we always have something.*
 
-#### Swapping
+### Swapping
 Swapping must be supported at kernel level, in order to be able to swap the block of the Flash component itself during the operation.
 The system must also have the ability to recover from this operation if a fault (and reboot) occurs.
 
-**The kernel at start-up ensures the swap page is erased. If not enters recover procedure explained below.**
+**The kernel at start-up ensures the swap page is erased. If not, enters recover procedure explained below.**
 
 **System Call**  
 Three fields must be provided to this system call:
-- A 16bit number (`SC.NUM`) indicating the flash page to be processed. The maximum number of supported pages is *2^16 -2* = 65534 (0xFFFE) 
+- A 16bit number (`SC.NUM`) indicating the flash page to be processed. The value `0xFFFF` is reserved and cannot be used.
 - An additional 8bit number (`SC.START_TYPE`) indicating:
     - `0` whether this page starts with a valid header
     - `1` whether this page starts with data that must be preserved (in this case, its length must be indicated in the next integer)
@@ -318,7 +316,7 @@ At system start-up, the kernel:
 
 *Note: the process can be more erase-conservative if we avoid erasing the destination page a priori, and simply start to copy data back by comparing first each byte of the source (swap) and destination. This could actually perform no copy at all if the page was not yet erased, or behave exactly like now with more overhead. The only problem is a reboot that happened during a page erase operation, that could have brought the page into an unsafe state: it's better to erase everything to be sure.*
 
-#### Examples
+### Examples
 In order to clarify the process, let's start from the following base layout. In each run, we will restart from the layout and deallocate a different block.
 
 **Layout**  
@@ -334,8 +332,8 @@ In order to clarify the process, let's start from the following base layout. In 
 <img src="images/vfp_example_3.svg">
 
 
-### Kernel Flash Conflicts
-Also the Kernel need space (at the beginning of the Flash).
+## Kernel Flash Conflicts
+Also the Kernel needs space (at the beginning of the Flash).
 Two approaches are possible here, depending on the resources available:
 - the most naive solution, in case of a big Flash Memory, is to allocate only a subregion of Flash to the buddy allocator. **The main problem with this approach is that the base of this subregion must be naturally aligned with the size (or all the reasoning about MPU requirements will be void).** This dramatically reduces the Flash that will be available for the components (half the size of the Flash).
-- the other approach is to assign to the allocator all the available Flash, but then during initialization of the allocator, as first step, allocate the Flash needed by the kernel, by starting reading metadata at a fixed location. (**rounded up the the end of the last flash page of the kernel**) (hard-coded, or asked via a syscall).
+- the other approach is to assign to the allocator all the available Flash, but then during initialization of the allocator, as first step, allocate the Flash needed by the kernel, by starting reading metadata at a fixed location. (**rounded up the the end of the last flash page of the kernel**) (hard-coded, or asked via a syscall). **This is the approach we took when we developed code**.
