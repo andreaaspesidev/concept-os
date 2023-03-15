@@ -23,6 +23,6 @@ The message then will be sent in the channel as:
 ------------------------------------------------------------------------------
 ```
 Where:
+- `PREAMBLE` is 4 bytes of `0b10101010`. They are designed to help to identify the start of each packet. Alongside with the packet checksum `CRC-8` (*CRC-8-Dallas/Maxim*), reduces many times the possibility of mistake random data for packets.
 - `COMPONENT_ID` is a `16-bits` encoded unsigned integer (big endian).
 - `MSG_LEN` is a `16-bits` encoded unsigned integer (big endian).
-
