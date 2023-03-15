@@ -1,10 +1,6 @@
-//! A driver for the STM32F3/4 Reset and Clock Controller (RCC).
-//!
-//! This driver puts the system into a reasonable initial state, and then fields
-//! requests to alter settings on behalf of other drivers. This prevents us from
-//! needing to map the popular registers in the RCC into every driver task.
-//! 
-//! Adapted from Hubris/stm32fx-rcc
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #![no_std]
 

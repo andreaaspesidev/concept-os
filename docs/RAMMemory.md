@@ -10,12 +10,12 @@ In any case, only one main SRAM is considered here, as this is the common case.
 
 ## Challenges of SRAM allocation
 Allocating SRAM requires:
-1. satisfying the alignment constraint of the MPU: start address of each allocation must be naturally aligned (*i.e. multiple of*) with its size
-2. allocations for a component must be permanent, as some references could have been fixed in component flash (this should not be the case though). This can help also debugging, and avoid reallocation at every start-up but only when the system is changing. 
-3. the kernel still needs SRAM to execute, but this must no be deallocated in any case (and be allocated to a component).
+1. Satisfying the alignment constraint of the MPU: start address of each allocation must be naturally aligned (*i.e. multiple of*) with its size.
+2. Allocations for a component must be permanent, as some references could have been fixed in component flash (this should not be the case though). This can help also debugging, and avoid reallocation at every start-up but only when the system is changing. 
+3. The kernel still needs SRAM to execute, but this must not be deallocated in any case (and be allocated to a component).
 
-### Buddy Allocator
->This two sections below are based based on the clear [explanation/implementation](https://nfil.dev/kernel/rust/coding/rust-buddy-allocator/) of *Nikos Filippakis* for Rust OS.
+## Buddy Allocator
+>This two sections below are based on the clear [explanation/implementation](https://nfil.dev/kernel/rust/coding/rust-buddy-allocator/) of *Nikos Filippakis* for Rust OS. The algorithm was then redesigned to exploit a binary-tree.
 
 We consider this simple allocator, as:
 
@@ -58,7 +58,7 @@ The working principle is quite intuitive:
     |    32    |    xx    |         64         | (the two buddies have been merged)
     ```
 
-#### Buddy terminology
+### Buddy terminology
 The standard buddy implementations relies on a memory structure made of a list of lists:
 
 - A `block` is a contiguous block of memory. It is identified by its level in the buddy allocator and its index in that level. It can be split into two blocks of half the size (1 level below) or be united with its buddy block to make a block of double the size (1 level above).
@@ -93,4 +93,4 @@ In order to work correctly, buddy algorithm requires the `free_list` to be corre
 ## Kernel SRAM Conflicts
 Two approaches are possible here, depending on the resources available:
 - the most naive solution, in case of high resources or another SRAM available for the kernel (as the `CCM SRAM` in `STM32F303`), is to allocate only a subregion of SRAM to the buddy allocator. **The main problem with this approach is that the base of this subregion must be naturally aligned with the size (or all the reasoning about MPU requirements will be void).** This dramatically reduces the SRAM that will be available for the components if no additional SRAM can be used for the kernel (as for `CCM SRAM`).
-- the other approach is to assign to the allocator all the available SRAM, but then during initialization of the allocator, as first step, allocate the SRAM needed by the kernel (hard-coded, or asked via a syscall).
+- the other approach is to assign to the allocator all the available SRAM, but then during initialization of the allocator, as first step, allocate the SRAM needed by the kernel (hard-coded, or asked via a syscall). **We used this approach.**

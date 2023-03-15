@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 use stm32l4::stm32l4x6 as device;
 use userlib::{sys_irq_control, sys_recv_closed, TaskId, UnwrapLite};
 

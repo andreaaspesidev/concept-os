@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 #![no_std]
 #![no_main]
 
@@ -5,7 +9,6 @@ mod crc;
 mod messages;
 mod update;
 mod utils;
-// mod erase;
 mod consts;
 mod info;
 
@@ -14,7 +17,6 @@ use userlib::*;
 
 use messages::*;
 use update::component_add_update;
-// use erase::component_erase;
 use info::system_info;
 use utils::channel_write_single;
 

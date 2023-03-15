@@ -110,21 +110,24 @@ In this new edition, the read-only structures are distributed in the HBF of the 
 
 A big difference is that in the original version tasks are not identified by the kernel using their IDs, but using their index in the `HUBRIS_TASK_DESCS` table. This is needed to fast access them during the syscalls. Now, due to the volatile nature of components, even during their life, they can assume at least two IDs. 
 
-For this reason, we identify -from now on- components using their ID. To obtain still a fast access, an IndexMap (hash map) is used, with key the ID itself. A more simple solution where the ID is the index could still be used, implementing an ad-hoc structure now would be too time-consuming.
+For this reason, we identify -from now on- components using their ID. To obtain still a fast access, a hash map is used, with as key the ID itself. This map gives the index in the array of the tasks, allowing similar performance to Hubris.
 
-We then have two mutable structures:
-- `TASK_MAP`: given the component id as key, returns its structure `Task`.
-- `IRQ_TO_TASK`: given the irq number as key, returns its owner (component id + notification mask)
+We then have three mutable structures:
+- `TASK_TABLE`: an array of structure `Task`.
+- `TASK_MAP`: a hash-map `component_id` -> `task_index`.
+- `IRQ_TO_TASK`: a hash-map `irq_number` -> `irq_owner` (component id + notification mask)
 
 ## Component Identifiers
 Components need to identify themselves in order to correctly communicate. Currently, differently from the original Hubris implementation, IDs are fixed during system development and not resolved "dynamically". To ease the developer, the API of each component contains also the component ID.
 
 As in original Hubris, during runtime not all the 16-bits of the ID are used as they are. Currently, only the lower 10-bits are the original one, while the upper 6-bits identify the component generation.
 
+For a list of fixed component ids, see `ComponentIdentifiers.md`.
+
 ### Component Generation
 Each component starts with a generation number of 0. This number is incremented each time the component crashes, and it's restarted by the supervisor component.
 
-Generation is important to avoid dangling calls, where a caller is about to invoke a component that is actually crashed: some mutable state is lost, without that the caller can possibly know - without the generation number. Each of these calls is faulted, and the caller must explicitely issue a syscall to get the new generation number for that component.
+Generation is important to avoid dangling calls, where a caller is about to invoke a component that is actually crashed: some mutable state is lost, without that the caller can possibly know - without the generation number. Each of these calls is faulted, and the caller must explicitly issue a syscall to get the new generation number for that component.
 
 ### Component ID Evolution
 Mature components will always be identified by the ID contained in their HBF descriptor (called **Nominal ID**), but a young component, introduced when the system is still live, will obtain the fixed ID `1023`.
@@ -134,7 +137,7 @@ After the initial setup (state transfer), the nominal ID is assigned, after the 
 
 The start-up procedure works this way:
 - Flash memory is scanned searching for components
-- Each component HBF is used to populate the two structures.
+- Each component HBF is used to populate the three structures.
 - Those components are initialized as mature, so they get their nominal ID, with generation 0.
 
 When a new component is saved into the system, a kipc call `load_component` is invoked by the updater component pointing to that component's block:
@@ -148,7 +151,7 @@ When a new component is saved into the system, a kipc call `load_component` is i
 
 ### State Transfer
 In order to allow state transfer, two conditions must be satisfied:
-- The old component before the update should have registered a handler using the kipc `set_update_handler`. In this callback, it should perform a `send` syscall to ID `1023`.
+- The old component before the update should have registered a handler using the kipc `set_update_capability`. In this callback, it should perform a `send` syscall to ID `1023`.
 - The new component must put itself into `recv` syscall, and read state before calling kipc `activate`.
 
 The old component can refuse a state transfer by avoiding registering a handler, and the new component can just call immediately kipc `activate` if it's not interested in the old state.
