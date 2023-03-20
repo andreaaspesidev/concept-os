@@ -1,6 +1,6 @@
 [General]
 decode_signals=7
-meta_objs=0
+meta_objs=3
 views=1
 
 [D0]
@@ -376,8 +376,28 @@ name=IDLE
 
 [meta_obj0]
 assoc_view=0
-end_time=22 serialization::archive 18 0 0 0 0 134 15335466 66666723 1289509 5054807 34338928 0 0 0 6
-start_time=22 serialization::archive 18 0 0 0 0 134 13039399 99999954 57983459 34599637 83386832 0 0 0 6
+text=REBOOT_START
+time=22 serialization::archive 18 0 0 0 0 133 42967866 66666605 46979983 33722352 89730700 0 0 0 6
+type=time_marker
+
+[meta_obj1]
+assoc_view=0
+text=+49 ms
+time=22 serialization::archive 18 0 0 0 0 133 47889966 66666776 3643620 38671970 35823728 0 0 0 6
+type=time_marker
+
+[meta_obj2]
+assoc_view=0
+end_time=22 serialization::archive 18 0 0 0 0 133 47889966 66666776 3643620 38671970 35823728 0 0 0 6
+start_time=22 serialization::archive 18 0 0 0 0 133 42967866 66666605 46979983 33722352 89730700 0 0 0 6
+text=+49 ms
+time=22 serialization::archive 18 0 0 0 0 133 79153333 33333194 33222641 23708009 48433360 0 0 0 6
+type=selection
+
+[meta_obj3]
+assoc_view=0
+end_time=22 serialization::archive 18 0 0 0 0 133 79153333 33333194 33222641 23708009 48433360 0 0 0 6
+start_time=22 serialization::archive 18 0 0 0 0 133 74238533 33333454 42952122 53928184 32384460 0 0 0 6
 type=selection
 
 [view0]
@@ -389,9 +409,9 @@ D4\trace_height=34
 D5\trace_height=34
 D6\trace_height=34
 D7\trace_height=34
-offset=22 serialization::archive 18 0 0 0 0 11 23597491 7284740 94592441 16813891 87840112 0 0 0 6
-scale=0.00012380722951934963
-segment_display_mode=1
+offset=22 serialization::archive 18 0 0 0 0 133 38170582 18230899 85927527 70928968 72651340 0 0 0 6
+scale=8.396661731213708e-05
+segment_display_mode=3
 splitter_state=@ByteArray(\0\0\0\xff\0\0\0\x1\0\0\0\x2\0\0\0\xc0\0\0\x5K\x1\0\0\0\x1\x1\0\0\0\x1\0)
-v_offset=-44
+v_offset=-174
 zero_offset=22 serialization::archive 18 0 0 0 0 0 0 0 0 0 0 0 0 0 6

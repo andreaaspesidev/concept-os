@@ -25,8 +25,8 @@ fn main() -> ! {
         unsafe{p.vtor.write(0x08000000)};
     });
 
-    // Configure gpio for profiling
-    profiling::configure_gpio();
+    // Configure profiling
+    profiling::configure_profiling();
 
     // Boost clock frequency
     let rcc = crate::clocks::CFGR::new();
@@ -36,9 +36,6 @@ fn main() -> ! {
         .pll_source(clocks::PllSource::MSI)
         .sysclk(80_u32.MHz())
         .freeze();
-
-    // Configure profiling
-    profiling::configure_profiling();
 
     unsafe { kern::startup::start_kernel(CYCLES_PER_MS) }
 }

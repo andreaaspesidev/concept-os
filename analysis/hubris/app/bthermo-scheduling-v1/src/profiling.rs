@@ -33,7 +33,7 @@ static EVENT_TABLE: EventsTable = EventsTable {
     context_switch: context_switch,
 };
 
-pub fn configure_gpio() {
+pub fn configure_profiling() {
     // Turn on GPIO C
     let rcc = unsafe { &*device::RCC::ptr() };
     let pmask: u32 = 1 << 2; // GPIOC
@@ -98,43 +98,8 @@ pub fn configure_gpio() {
             .moder7()
             .output()
     });
-    long_pulse();
-}
-
-fn short_pulse() {
-    let gpioc = unsafe { &*device::GPIOC::PTR };
-    gpioc.odr.modify(|r, w| unsafe {w.bits(
-        r.bits() & (0b0000_0000_u32)
-    )});
-    cortex_m::asm::delay(10);
-    gpioc.odr.modify(|r, w| unsafe {w.bits(
-        (r.bits() & (0b0000_0000_u32)) | 0b1111_1111_u32
-    )});
-    cortex_m::asm::delay(10);
-    gpioc.odr.modify(|r, w| unsafe {w.bits(
-        r.bits() & (0b0000_0000_u32)
-    )});
-}
-
-fn long_pulse() {
-    let gpioc = unsafe { &*device::GPIOC::PTR };
-    gpioc.odr.modify(|r, w| unsafe {w.bits(
-        r.bits() & (0b0000_0000_u32)
-    )});
-    cortex_m::asm::delay(100);
-    gpioc.odr.modify(|r, w| unsafe {w.bits(
-        (r.bits() & (0b0000_0000_u32)) | 0b1111_1111_u32
-    )});
-    cortex_m::asm::delay(100);
-    gpioc.odr.modify(|r, w| unsafe {w.bits(
-        r.bits() & (0b0000_0000_u32)
-    )});
-}
-
-pub fn configure_profiling() {
     // Register the event table
     kern::profiling::configure_events_table(&EVENT_TABLE);
-    short_pulse();
 }
 
 fn syscall_enter_profile(_number: u32) {

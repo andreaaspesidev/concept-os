@@ -100,8 +100,6 @@ pub fn configure_profiling() {
     });
     // Register the event table
     kern::profiling::configure_events_table(&EVENT_TABLE);
-    // Set all low
-    gpioc.odr.modify(|_, w| unsafe {w.bits(0)});
 }
 
 fn syscall_enter_profile(_number: u32) {
