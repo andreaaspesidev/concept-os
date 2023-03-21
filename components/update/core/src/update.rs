@@ -5,10 +5,10 @@
 use crate::consts::*;
 use crate::messages::*;
 use crate::utils::u32_from_le_bytes;
-use crate::utils::wrap_hbf_error;
+use crate::utils::wrap_cbf_error;
 use crate::utils::FlashReader;
-use hbf_lite::HbfHeaderBase;
-use hbf_lite::{BufferReaderImpl, HbfFile};
+use cbf_lite::CbfHeaderBase;
+use cbf_lite::{BufferReaderImpl, CbfFile};
 use relocator::Relocator;
 use storage_api::*;
 use uart_channel_api::*;
@@ -117,14 +117,14 @@ impl ChecksumBuff {
     }
 }
 
-struct UpdateRelocator<'a, 'hbf, 'um> {
-    hbf: &'a HbfFile<'hbf>,
+struct UpdateRelocator<'a, 'cbf, 'um> {
+    cbf: &'a CbfFile<'cbf>,
     methods: &'a mut UpdateMethods<'um>,
     num_relocations: usize, // Cached here to simplify code
     checksum: &'a mut u32,
 }
 
-impl<'a, 'hbf, 'um> relocator::RelocatorMethods<ChecksumBuff> for UpdateRelocator<'a, 'hbf, 'um> {
+impl<'a, 'cbf, 'um> relocator::RelocatorMethods<ChecksumBuff> for UpdateRelocator<'a, 'cbf, 'um> {
     fn read_relocations(
         &self,
         start_index: usize,
@@ -137,7 +137,7 @@ impl<'a, 'hbf, 'um> relocator::RelocatorMethods<ChecksumBuff> for UpdateRelocato
         // Copy such relocations in the buffer
         for r in 0..dst.len() {
             let reloc = self
-                .hbf
+                .cbf
                 .relocation_nth((start_index + r) as u32)
                 .map_err(|_| ())?;
             dst[r] = reloc.value();
@@ -200,15 +200,15 @@ where
 /// Scans the system to verify if all the dependencies of this component
 /// are satisfied
 fn validate_component_version_and_dependencies(
-    hbf: &HbfFile,
+    cbf: &CbfFile,
     methods: &mut UpdateMethods,
     block_base_address: u32,
 ) -> Result<(), MessageError> {
     // Iterating for components is expensive, so must be ideally done once.
     // The number of dependencies is unknown at compile time, so we may exploit ordering
     // constraint.
-    let hbf_base = wrap_hbf_error(hbf.header_base())?;
-    let num_dependencies = hbf_base.num_dependencies();
+    let cbf_base = wrap_cbf_error(cbf.header_base())?;
+    let num_dependencies = cbf_base.num_dependencies();
     let mut solved_dependencies: u16 = 0;
     // Prepare for iterating over the blocks
     // Get block stats
@@ -222,18 +222,18 @@ fn validate_component_version_and_dependencies(
             continue;
         }
         if block.block_type == BlockType::COMPONENT {
-            // Read hbf header
-            let mut buff: [u8; hbf_lite::HBF_HEADER_MIN_SIZE] =
-                [0x00; hbf_lite::HBF_HEADER_MIN_SIZE];
+            // Read cbf header
+            let mut buff: [u8; cbf_lite::CBF_HEADER_MIN_SIZE] =
+                [0x00; cbf_lite::CBF_HEADER_MIN_SIZE];
             methods.storage_read_stream(block.block_base_address, 0, &mut buff)?;
             // Parse it
-            let reader = hbf_lite::BufferReaderImpl::from(&buff);
-            let comp_hbf = wrap_hbf_error(hbf_lite::HbfFile::from_reader(&reader))?;
-            let comp_data = wrap_hbf_error(comp_hbf.header_base())?;
+            let reader = cbf_lite::BufferReaderImpl::from(&buff);
+            let comp_cbf = wrap_cbf_error(cbf_lite::CbfFile::from_reader(&reader))?;
+            let comp_data = wrap_cbf_error(comp_cbf.header_base())?;
             // Check whether this component is an old version of ours
-            if comp_data.component_id() == hbf_base.component_id() {
+            if comp_data.component_id() == cbf_base.component_id() {
                 // Check constraint on greater version
-                if comp_data.component_version() >= hbf_base.component_version() {
+                if comp_data.component_version() >= cbf_base.component_version() {
                     return Err(MessageError::IllegalDowngrade);
                 }
             }
@@ -242,7 +242,7 @@ fn validate_component_version_and_dependencies(
             if solved_dependencies < num_dependencies {
                 // Only makes sense if we miss something
                 for dep_num in 0..num_dependencies {
-                    let dep = wrap_hbf_error(hbf.dependency_nth(dep_num))?;
+                    let dep = wrap_cbf_error(cbf.dependency_nth(dep_num))?;
                     // Check version
                     if dep.min_version() > 0 && comp_data.component_version() < dep.min_version() {
                         // Wrong version (lower bound)
@@ -271,7 +271,7 @@ fn add_update_core(
     methods: &mut UpdateMethods,
     allocation: &AllocateComponentResponse,
     checksum_offset: u32,
-    header_base: &HbfHeaderBase,
+    header_base: &CbfHeaderBase,
     fhm: &FixedHeaderMessage,
 ) -> Result<(), MessageError> {
     // NOTE: here we have to work with two checksums:
@@ -289,7 +289,7 @@ fn add_update_core(
     // Start computing the new checksum from the untouched bytes of the fixed header.
     update_checksum(
         &mut validation_checksum,
-        fhm.get_raw(), //&hbf_header_buff[0..hbf_header_buff.len() - 1],
+        fhm.get_raw(), //&cbf_header_buff[0..cbf_header_buff.len() - 1],
     );
 
     // ------------------------------------------------------------------------------
@@ -306,10 +306,10 @@ fn add_update_core(
     // -------------------------------------
     //    Step 3: Receive variable header
     // -------------------------------------
-    let mut to_read: usize = hbf_lite::REGION_SIZE * header_base.num_regions() as usize
-        + hbf_lite::INTERRUPT_SIZE * header_base.num_interrupts() as usize
-        + hbf_lite::RELOC_SIZE * header_base.num_relocations() as usize
-        + hbf_lite::DEPENDENCY_SIZE * header_base.num_dependencies() as usize
+    let mut to_read: usize = cbf_lite::REGION_SIZE * header_base.num_regions() as usize
+        + cbf_lite::INTERRUPT_SIZE * header_base.num_interrupts() as usize
+        + cbf_lite::RELOC_SIZE * header_base.num_relocations() as usize
+        + cbf_lite::DEPENDENCY_SIZE * header_base.num_dependencies() as usize
         + header_base.padding_bytes() as usize;
 
     methods.channel_write_single(ComponentUpdateCommand::SendComponentVariableHeader as u8)?;
@@ -328,7 +328,7 @@ fn add_update_core(
             Ok(())
         },
     )?;
-    // Force a flush, as now we must be able to read the whole HBF header
+    // Force a flush, as now we must be able to read the whole CBF header
     methods.storage_write_stream(curr_pos, &[], true)?;
 
     // --------------------------------------------------------------------------------
@@ -337,19 +337,19 @@ fn add_update_core(
     // --------------------------------------------------------------------------------
     let flash_reader = FlashReader::from(allocation.flash_base_address, allocation.flash_size); // TODO: remove the second mutable reference to Storage created here
 
-    sys_log!("Reading HBF from flash");
-    let flash_hbf = wrap_hbf_error(HbfFile::from_reader(&flash_reader))?;
+    sys_log!("Reading CBF from flash");
+    let flash_cbf = wrap_cbf_error(CbfFile::from_reader(&flash_reader))?;
 
     // Before reading the payload, validate the dependencies of this component
     sys_log!("Checking dependencies");
     validate_component_version_and_dependencies(
-        &flash_hbf,
+        &flash_cbf,
         methods,
         allocation.flash_base_address,
     )?;
 
     // ------------------------------------------------------------------------
-    //    Step 5: Receive the HBF payload, and apply the needed relocations.
+    //    Step 5: Receive the CBF payload, and apply the needed relocations.
     // ------------------------------------------------------------------------
 
     // From this point on, the validation and new checksum are different.
@@ -357,11 +357,11 @@ fn add_update_core(
     new_checksum = validation_checksum;
 
     // Now at the same way, read the payload
-    to_read = wrap_hbf_error(flash_hbf.payload_size())? as usize;
+    to_read = wrap_cbf_error(flash_cbf.payload_size())? as usize;
 
     // Prepare the relocator
-    let num_relocations = wrap_hbf_error(flash_hbf.header_base())?.num_relocations();
-    let payload_start_offset = wrap_hbf_error(flash_hbf.get_readonly_payload())?.get_offset();
+    let num_relocations = wrap_cbf_error(flash_cbf.header_base())?.num_relocations();
+    let payload_start_offset = wrap_cbf_error(flash_cbf.get_readonly_payload())?.get_offset();
     let new_flash_base_address: u32 = allocation.flash_base_address + 8 + payload_start_offset;
 
     let mut relocator =
@@ -384,7 +384,7 @@ fn add_update_core(
         to_read,
         &mut validation_checksum,
         &mut (
-            &flash_hbf,
+            &flash_cbf,
             num_relocations as usize,
             &mut relocator,
             &mut new_checksum,
@@ -392,9 +392,9 @@ fn add_update_core(
         ),
         |methods, data, aux_data| {
             // Create relocator methods
-            let (hbf, num_relocs, relocator, checksum, checksum_buff) = aux_data;
+            let (cbf, num_relocs, relocator, checksum, checksum_buff) = aux_data;
             let mut reloc_methods = UpdateRelocator {
-                hbf: *hbf,
+                cbf: *cbf,
                 methods: methods,
                 num_relocations: *num_relocs,
                 checksum: *checksum,
@@ -409,7 +409,7 @@ fn add_update_core(
 
     // Finish the relocator operations
     let mut reloc_methods = UpdateRelocator {
-        hbf: &flash_hbf,
+        cbf: &flash_cbf,
         methods: methods,
         num_relocations: num_relocations as usize,
         checksum: &mut new_checksum,
@@ -419,20 +419,20 @@ fn add_update_core(
         .map_err(|_| MessageError::FlashError)?;
 
     // -----------------------------------------------------------------
-    //    Step 6: Receive the HBF trailer, and validate total checksum
+    //    Step 6: Receive the CBF trailer, and validate total checksum
     // -----------------------------------------------------------------
-    static_assertions::const_assert_eq!(hbf_lite::HBF_TRAILER_SIZE, 4);
+    static_assertions::const_assert_eq!(cbf_lite::CBF_TRAILER_SIZE, 4);
 
-    let mut hbf_trailer_buff: [u8; 4] = [0x00; 4];
+    let mut cbf_trailer_buff: [u8; 4] = [0x00; 4];
     sys_log!("Waiting for trailer");
 
     methods.channel_ask(
         ComponentUpdateCommand::SendComponentTrailer as u8,
-        &mut hbf_trailer_buff,
+        &mut cbf_trailer_buff,
     )?;
 
     // Read the trailer (raw)
-    let original_checksum = u32::from_le_bytes(hbf_trailer_buff);
+    let original_checksum = u32::from_le_bytes(cbf_trailer_buff);
 
     // Validate checksum and write the new checksum in flash
     let new_checksum_bytes = new_checksum.to_le_bytes();
@@ -441,20 +441,20 @@ fn add_update_core(
             .storage_write_stream(
                 checksum_offset,
                 &new_checksum_bytes,
-                true, // !!--- important to flush, as later the validation will need the whole hbf stored
+                true, // !!--- important to flush, as later the validation will need the whole cbf stored
             )
             .is_err()
     {
-        return Err(MessageError::FailedHBFValidation);
+        return Err(MessageError::FailedCBFValidation);
     }
 
     // -----------------------------------------------------------------
     //    Step 7: Flush write buffer and validate using library
     // -----------------------------------------------------------------
 
-    // Validate the HBF (last one, to ensure the library reads it correctly)
-    if !wrap_hbf_error(flash_hbf.validate())? {
-        return Err(MessageError::FailedHBFValidation);
+    // Validate the CBF (last one, to ensure the library reads it correctly)
+    if !wrap_cbf_error(flash_cbf.validate())? {
+        return Err(MessageError::FailedCBFValidation);
     }
     Ok(())
 }
@@ -463,24 +463,24 @@ pub fn component_add_update(channel: &mut UartChannel) -> Result<(), MessageErro
     // -----------------------------
     //    Step 1: Fixed Header
     // -----------------------------
-    let mut hbf_header_buff: [u8; FixedHeaderMessage::get_size()] =
+    let mut cbf_header_buff: [u8; FixedHeaderMessage::get_size()] =
         [0; FixedHeaderMessage::get_size()];
     crate::utils::channel_ask(
         channel,
         ComponentUpdateCommand::SendComponentFixedHeader as u8,
-        &mut hbf_header_buff,
+        &mut cbf_header_buff,
     )?;
     // Validate header
-    let fhm = FixedHeaderMessage::from(&mut hbf_header_buff)?;
-    // Read hbf
-    let hbf_reader = BufferReaderImpl::from(fhm.get_raw());
-    let hbf = wrap_hbf_error(hbf_lite::HbfFile::from_reader(&hbf_reader))?;
+    let fhm = FixedHeaderMessage::from(&mut cbf_header_buff)?;
+    // Read cbf
+    let cbf_reader = BufferReaderImpl::from(fhm.get_raw());
+    let cbf = wrap_cbf_error(cbf_lite::CbfFile::from_reader(&cbf_reader))?;
     // Cache only the needed values
-    let header_base = wrap_hbf_error(hbf.header_base())?;
-    let needed_flash = wrap_hbf_error(hbf.header_base())?.total_size();
-    let needed_ram = wrap_hbf_error(hbf.header_main())?.component_min_ram();
-    let checksum_offset = wrap_hbf_error(hbf.checksum_offset())?; // safe call
-    drop(hbf); // Force ourselves not to use this object anymore
+    let header_base = wrap_cbf_error(cbf.header_base())?;
+    let needed_flash = wrap_cbf_error(cbf.header_base())?.total_size();
+    let needed_ram = wrap_cbf_error(cbf.header_main())?.component_min_ram();
+    let checksum_offset = wrap_cbf_error(cbf.checksum_offset())?; // safe call
+    drop(cbf); // Force ourselves not to use this object anymore
 
     // Request the allocation
     let (mut methods, allocation) =

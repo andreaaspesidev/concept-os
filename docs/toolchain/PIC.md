@@ -51,7 +51,7 @@ To fix MOV relocations, it’s necessary to reconstruct such an address from bot
 
 ## Relocation Points
 
-Currently, relocations are referred to the beginning of the HBF. 
+Currently, relocations are referred to the beginning of the CBF. 
 - At least one bit should be reserved to check for MOV/ABS FIELD. It’s possible to avoid this bit and check whether the pointed element is a valid MOV, still misinterpretations might occur.
 - Some relocations might be paired. This is the case for MOV, where we have the MOVW and MOVT. To relocate one of these, the other one should be accessed. Some bits are reserved to encode the offset of the pair, if any.
 
@@ -89,8 +89,8 @@ data = []
   - `1`: `MOVW` instruction
   - `2`: `MOVT` instruction
 - The second element is the paired instruction (0 = no paired). Will be encoded in 5-bit 2's complement.
-- The third is the offset from the start of the section. All these offsets will be relative to the start of the HBF.
+- The third is the offset from the start of the section. All these offsets will be relative to the start of the CBF.
 
-All these elements are then saved in the HBF apposite sections (see `HubrisBinaryFormat.md`) as 32bit numbers.
+All these elements are then saved in the CBF apposite sections (see `ConceptOSBinaryFormat.md`) as 32bit numbers.
 
 Then these points are parsed and given to the relocating algorithm presented above and shipped with the `UPDATE` component.

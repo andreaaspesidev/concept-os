@@ -25,8 +25,8 @@ bitflags::bitflags! {
     #[repr(transparent)]
     pub struct ComponentStatus: u16 {
         const NONE = 0;
-        /// The hbf of the component is intact
-        const HBF_VALID = 1 << 0;
+        /// The cbf of the component is intact
+        const CBF_VALID = 1 << 0;
     }
 }
 

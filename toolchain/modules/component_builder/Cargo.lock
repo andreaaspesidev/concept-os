@@ -84,6 +84,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cbf_rs"
+version = "0.0.2"
+dependencies = [
+ "bitflags",
+ "static_assertions",
+]
+
+[[package]]
 name = "clap"
 version = "3.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -128,9 +136,9 @@ version = "0.0.1"
 dependencies = [
  "board_config",
  "cargo_metadata",
+ "cbf_rs",
  "clap",
  "component_config",
- "hbf_rs",
  "regex",
  "serde",
  "toml",
@@ -150,14 +158,6 @@ name = "hashbrown"
 version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "607c8a29735385251a339424dd462993c0fed8fa09d378f259377df08c126022"
-
-[[package]]
-name = "hbf_rs"
-version = "0.0.2"
-dependencies = [
- "bitflags",
- "static_assertions",
-]
 
 [[package]]
 name = "heck"

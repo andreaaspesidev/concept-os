@@ -248,7 +248,6 @@ pub mod page {
 /// Utility to traverse a flash region as an iterator among allocated blocks.
 /// Useful for scanning the flash in the kernel or in the allocator component.
 pub mod walker {
-    use super::HEADER_SIZE;
     use super::{utils, FlashBlock, FlashMethods};
 
     // Currently rust does not support trait upcasting coercion when "dyn" is involved.

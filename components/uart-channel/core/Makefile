@@ -6,16 +6,16 @@ root_dir := $(shell dirname $(realpath ../../.))
 
 clean:
 	rm -rf build
-	rm $(COMPONENT_NAME).hbf
+	rm $(COMPONENT_NAME).cbf
 
 build-f303re:
-	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32f303re -f log-itm
+	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).cbf -b stm32f303re -f log-itm
 
 build-l432kc:
-	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32l432kc -f log-semihosting
+	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).cbf -b stm32l432kc -f log-semihosting
 
 build-l476rg:
-	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32l476rg -f log-itm
+	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).cbf -b stm32l476rg -f log-itm
 
 disassemble: build
 	arm-none-eabi-readelf -l build/image.elf > build/headers.disass
@@ -29,8 +29,8 @@ dump: build
 	arm-none-eabi-objcopy -O binary --only-section=.rodata build/image.elf build/image.rodata
 	arm-none-eabi-objcopy -O binary --only-section=.data build/image.elf build/image.data
 
-dump-hbf:
-	../../../libs/hbf_lite/tests/simple_read/target/release/hbf_simple_read $(current_dir)/$(COMPONENT_NAME).hbf
+dump-cbf:
+	../../../libs/cbf_lite/tests/simple_read/target/release/cbf_simple_read $(current_dir)/$(COMPONENT_NAME).cbf
 
 size: build
 	size -A build/image.elf

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use hbf_lite::HbfFile;
+use cbf_lite::CbfFile;
 use storage_api::*;
 use uart_channel_api::*;
 use userlib::flash::BlockType;
@@ -21,27 +21,27 @@ pub fn system_info(
         // Get block
         let block = storage.get_nth_block(block_num).unwrap();
         if block.block_type == BlockType::COMPONENT {
-            // Read hbf
+            // Read cbf
             let flash_reader = FlashReader::from(
                 block.block_base_address,
                 block.block_size,
             );
-            let hbf_res = HbfFile::from_reader(&flash_reader);
-            if hbf_res.is_ok() {
-                let hbf = hbf_res.unwrap();
+            let cbf_res = CbfFile::from_reader(&flash_reader);
+            if cbf_res.is_ok() {
+                let cbf = cbf_res.unwrap();
                 // Read needed fields
-                let hbf_base = wrap_hbf_error(hbf.header_base())?;
-                let hbf_main = wrap_hbf_error(hbf.header_main())?;
+                let cbf_base = wrap_cbf_error(cbf.header_base())?;
+                let cbf_main = wrap_cbf_error(cbf.header_main())?;
                 // Generate message
                 let mut component_status: ComponentStatus = ComponentStatus::NONE;
-                if wrap_hbf_error(hbf.validate())? {
-                    component_status |= ComponentStatus::HBF_VALID;
+                if wrap_cbf_error(cbf.validate())? {
+                    component_status |= ComponentStatus::CBF_VALID;
                 }
                 let msg = ComponentInfoMessage::new(
-                    hbf_base.component_id(),
-                    hbf_base.component_version(),
+                    cbf_base.component_id(),
+                    cbf_base.component_version(),
                     block.block_size,
-                    hbf_main.component_min_ram(),
+                    cbf_main.component_min_ram(),
                     component_status,
                 );
                 // Send message

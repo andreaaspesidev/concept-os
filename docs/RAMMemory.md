@@ -70,16 +70,16 @@ The standard buddy implementations relies on a memory structure made of a list o
 We keep an outer list of num_levels elements, called `free_list`, each corresponding to the level list of that index.
 
 ### Storing metadata
-In order to satisfy the second point (permanent assignments), we need to store the base address of the allocation for each component (the size is not needed as it will always be the size required by the component in the `HBF`).
+In order to satisfy the second point (permanent assignments), we need to store the base address of the allocation for each component (the size is not needed as it will always be the size required by the component in the `CBF`).
 
-This information can be efficiently stored inside the block allocated in flash for storing the `HBF` of this component, that can be organized in this way:
+This information can be efficiently stored inside the block allocated in flash for storing the `CBF` of this component, that can be organized in this way:
 
 ```
         | 12 bytes |  4 bytes  |  4 bytes  |... | ...        |
-    ... |  Header  | SRAM Base | SRAM Size |HBF | Free Space | ... 
+    ... |  Header  | SRAM Base | SRAM Size |CBF | Free Space | ... 
 ```
 
-This keeps the HBF start aligned to 4 bytes (requirement), and avoid using a complex filesystem in order to allocate new components.
+This keeps the CBF start aligned to 4 bytes (requirement), and avoid using a complex filesystem in order to allocate new components.
 
 #### Reconstructing structures from metadata
 In order to work correctly, buddy algorithm requires the `free_list` to be correctly populated. It's important to be able to reconstruct this list from the information stored in flash.

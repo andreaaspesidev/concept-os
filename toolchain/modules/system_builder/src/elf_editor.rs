@@ -4,7 +4,7 @@
 
 use flash_allocator::flash::{BlockType, FlashAllocatorImpl, FlashMethods};
 use goblin::{container::Container, elf64::program_header::PT_LOAD};
-use hbf_rs::HbfFile;
+use cbf_rs::CbfFile;
 use ram_allocator::{RAMAllocator, RAMAllocatorImpl};
 use relocator::RelocatorMethods;
 use std::fs::File;
@@ -177,19 +177,19 @@ impl<'a> ElfEditor<'a> {
         }
     }
 
-    pub fn add_component(&mut self, hbf_path: &PathBuf, verbose: bool) {
+    pub fn add_component(&mut self, cbf_path: &PathBuf, verbose: bool) {
         // Read bytes
-        let mut hbf_bytes =
-            std::fs::read(hbf_path).expect(&format!("Cannot read HBF at: {}", hbf_path.display()));
-        // Parse HBF
-        let hbf = hbf_rs::parse_hbf(&hbf_bytes).expect("Cannot parse HBF");
-        // First, check it's a valid HBF
-        if !hbf.validate() {
-            panic!("HBF not valid at: {}", hbf_path.display());
+        let mut cbf_bytes =
+            std::fs::read(cbf_path).expect(&format!("Cannot read CBF at: {}", cbf_path.display()));
+        // Parse CBF
+        let cbf = cbf_rs::parse_cbf(&cbf_bytes).expect("Cannot parse CBF");
+        // First, check it's a valid CBF
+        if !cbf.validate() {
+            panic!("CBF not valid at: {}", cbf_path.display());
         }
-        // Get the allocation for this HBF
-        let needed_flash = hbf.header_base().total_size();
-        let needed_ram = hbf.header_main().component_min_ram();
+        // Get the allocation for this CBF
+        let needed_flash = cbf.header_base().total_size();
+        let needed_ram = cbf.header_main().component_min_ram();
         // Create a big enough buffer
         let alloc_result = perform_allocation(
             self.board_name.clone(),
@@ -199,7 +199,7 @@ impl<'a> ElfEditor<'a> {
         );
         println!(
             "Allocated component {} at flash: {:#010x} [size: {}], ram: {:#010x} [size: {}]",
-            hbf.header_base().component_id(),
+            cbf.header_base().component_id(),
             alloc_result.flash_address,
             alloc_result.flash_size,
             alloc_result.sram_address,
@@ -210,10 +210,10 @@ impl<'a> ElfEditor<'a> {
         self.allocation_stats.entries.push(AllocStatEntry {
             name: format!(
                 "Component: {} [v {}]",
-                hbf.header_base().component_id(),
-                hbf.header_base().component_version()
+                cbf.header_base().component_id(),
+                cbf.header_base().component_version()
             ),
-            component_id: hbf.header_base().component_id(),
+            component_id: cbf.header_base().component_id(),
             flash_address: alloc_result.flash_address,
             flash_size: alloc_result.flash_size,
             flash_needed_size: needed_flash,
@@ -227,27 +227,27 @@ impl<'a> ElfEditor<'a> {
         let mut component_bytes: Vec<u8> = Vec::new();
         // Add block header bytes
         component_bytes.extend_from_slice(&alloc_result.data);
-        // Edit hbf and append
-        let relocs = extract_hbf_relocations(&hbf);
+        // Edit cbf and append
+        let relocs = extract_cbf_relocations(&cbf);
         let new_flash_base_address = block_base_addr
             + 8
-            + hbf.read_only_section().offset()
+            + cbf.read_only_section().offset()
             + flash_allocator::flash::HEADER_SIZE as u32;
         let new_sram_base_address = alloc_result.sram_address;
-        let checksum_offset = hbf.checksum_offset() as usize;
-        let mut out_hbf = String::from(self.dest_path.to_str().unwrap());
-        out_hbf += &format!("_component_{}.hbf", hbf.header_base().component_id());
-        drop(hbf);
-        relocate_hbf(
-            &out_hbf,
-            &mut hbf_bytes,
+        let checksum_offset = cbf.checksum_offset() as usize;
+        let mut out_cbf = String::from(self.dest_path.to_str().unwrap());
+        out_cbf += &format!("_component_{}.cbf", cbf.header_base().component_id());
+        drop(cbf);
+        relocate_cbf(
+            &out_cbf,
+            &mut cbf_bytes,
             new_flash_base_address,
             new_sram_base_address,
             &relocs,
             verbose
         );
-        fix_checksum_hbf(&mut hbf_bytes, checksum_offset);
-        component_bytes.extend_from_slice(&hbf_bytes);
+        fix_checksum_cbf(&mut cbf_bytes, checksum_offset);
+        component_bytes.extend_from_slice(&cbf_bytes);
         // Add section
         self.output_sections
             .insert(block_base_addr, component_bytes);
@@ -255,7 +255,7 @@ impl<'a> ElfEditor<'a> {
 
     fn write_srec(&mut self) -> String {
         // Generate SREC
-        let mut srec_out = vec![srec::Record::S0("hubris".to_string())];
+        let mut srec_out = vec![srec::Record::S0("conceptos".to_string())];
         for (&base, sec) in &self.output_sections {
             // SREC record size limit is 255 (0xFF). 32-bit addressed records
             // additionally contain a four-byte address and one-byte checksum, for a
@@ -340,9 +340,9 @@ fn objcopy_translate_to_binary(in_format: &str, src: &PathBuf, dest: &PathBuf) {
     }
 }
 
-fn extract_hbf_relocations(hbf: &dyn HbfFile) -> Vec<u32> {
+fn extract_cbf_relocations(cbf: &dyn CbfFile) -> Vec<u32> {
     let mut result: Vec<u32> = Vec::new();
-    for reloc in hbf.relocation_iter() {
+    for reloc in cbf.relocation_iter() {
         let r = reloc.value();
         result.push(r);
     }
@@ -377,9 +377,9 @@ impl<'a> RelocatorMethods<()> for FileRelocationMethods<'a> {
     }
 }
 
-fn relocate_hbf(
-    out_hbf_path: &String,
-    hbf_bytes: &mut [u8],
+fn relocate_cbf(
+    out_cbf_path: &String,
+    cbf_bytes: &mut [u8],
     flash_base_address: u32,
     sram_base_address: u32,
     relocs: &Vec<u32>,
@@ -393,52 +393,52 @@ fn relocate_hbf(
     >::new(flash_base_address, sram_base_address, 0, relocs.len());
 
     //let mut temp_vec: Vec<u8> = Vec::new();
-    //temp_vec.reserve(hbf_bytes.len());
-    //for _ in 0..hbf_bytes.len() {
+    //temp_vec.reserve(cbf_bytes.len());
+    //for _ in 0..cbf_bytes.len() {
     //    temp_vec.push(0x00);
     //}
 
     let mut curr_pos: usize = 0;
-    let total_length = hbf_bytes.len();
+    let total_length = cbf_bytes.len();
     while curr_pos < total_length {
         // Read a chunk of max 2048 bytes
         let mut buff: [u8; 2048] = [0x00; 2048];
         let to_read = core::cmp::min(total_length - curr_pos, buff.len());
         // Copy data in the buffer
         let (right, _) = buff.split_at_mut(to_read);
-        right.copy_from_slice(&hbf_bytes[curr_pos..curr_pos + to_read]);
+        right.copy_from_slice(&cbf_bytes[curr_pos..curr_pos + to_read]);
         curr_pos += to_read;
         // Create a temp object to supply methods to the relocator
         let mut relocator_methods = FileRelocationMethods {
             points: &relocs,
-            output_buff: hbf_bytes,
+            output_buff: cbf_bytes,
         };
         // Process the buffer
         relocator.consume_current_buffer(&mut buff[0..to_read], &mut relocator_methods, &mut ()).unwrap();
     }
     let mut relocator_methods = FileRelocationMethods {
         points: &relocs,
-        output_buff: hbf_bytes,
+        output_buff: cbf_bytes,
     };
     relocator.finish(&mut relocator_methods, &mut ()).unwrap();
-    // Rewrite HBF in output
+    // Rewrite CBF in output
     if verbose {
-        let mut dst = File::create(out_hbf_path).unwrap();
-        dst.write_all(hbf_bytes).unwrap();
+        let mut dst = File::create(out_cbf_path).unwrap();
+        dst.write_all(cbf_bytes).unwrap();
     }
     // Write back
-    //hbf_bytes.copy_from_slice(&temp_vec);
+    //cbf_bytes.copy_from_slice(&temp_vec);
 }
 
-fn fix_checksum_hbf(hbf_bytes: &mut [u8], checksum_offset: usize) {
+fn fix_checksum_cbf(cbf_bytes: &mut [u8], checksum_offset: usize) {
     let mut index: usize = 0;
     let mut checksum: u32 = 0;
     loop {
         let mut word: u32 = 0;
         let mut available: usize = 4;
         // Check if enough bytes are available
-        if hbf_bytes.len() <= index + 4 {
-            available = hbf_bytes.len() - index;
+        if cbf_bytes.len() <= index + 4 {
+            available = cbf_bytes.len() - index;
             if available == 0 {
                 break;
             }
@@ -449,7 +449,7 @@ fn fix_checksum_hbf(hbf_bytes: &mut [u8], checksum_offset: usize) {
         } else {
             // Convert the 4 bytes into a word
             let mut i = 0;
-            for c in &hbf_bytes[index..index + available] {
+            for c in &cbf_bytes[index..index + available] {
                 word |= u32::from(*c) << (8 * i);
                 i += 1;
             }
@@ -460,7 +460,7 @@ fn fix_checksum_hbf(hbf_bytes: &mut [u8], checksum_offset: usize) {
     // Write new checksum
     let checksum_bytes = checksum.to_le_bytes();
     for i in 0..4 {
-        hbf_bytes[checksum_offset + i] = checksum_bytes[i];
+        cbf_bytes[checksum_offset + i] = checksum_bytes[i];
     }
 }
 
@@ -503,7 +503,7 @@ fn perform_allocation(
             // Perform the allocation
             let flash_block = flash_alloc
                 .allocate(needed_flash + 8, BlockType::COMPONENT)
-                .expect("Failed to allocate space for HBF");
+                .expect("Failed to allocate space for CBF");
 
             drop(flash_alloc);
 
@@ -533,7 +533,7 @@ fn perform_allocation(
 
             let ram_block = ram_alloc
                 .allocate(flash_block.get_base_address(), needed_ram)
-                .expect("Cannot allocate memory for HBF");
+                .expect("Cannot allocate memory for CBF");
 
             drop(ram_alloc);
 
@@ -580,7 +580,7 @@ fn perform_allocation(
             // Perform the allocation
             let flash_block = flash_alloc
                 .allocate(needed_flash + 8, BlockType::COMPONENT)
-                .expect("Failed to allocate space for HBF");
+                .expect("Failed to allocate space for CBF");
 
             drop(flash_alloc);
 
@@ -610,7 +610,7 @@ fn perform_allocation(
 
             let ram_block = ram_alloc
                 .allocate(flash_block.get_base_address(), needed_ram)
-                .expect("Cannot allocate memory for HBF");
+                .expect("Cannot allocate memory for CBF");
 
             drop(ram_alloc);
 
@@ -657,7 +657,7 @@ fn perform_allocation(
             // Perform the allocation
             let flash_block = flash_alloc
                 .allocate(needed_flash + 8, BlockType::COMPONENT)
-                .expect("Failed to allocate space for HBF");
+                .expect("Failed to allocate space for CBF");
 
             drop(flash_alloc);
 
@@ -687,7 +687,7 @@ fn perform_allocation(
 
             let ram_block = ram_alloc
                 .allocate(flash_block.get_base_address(), needed_ram)
-                .expect("Cannot allocate memory for HBF");
+                .expect("Cannot allocate memory for CBF");
 
             drop(ram_alloc);
 

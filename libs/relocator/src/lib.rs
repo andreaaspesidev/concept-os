@@ -21,7 +21,7 @@ pub trait RelocatorMethods<T> {
 /// All the relocations are assumed to be accessible at any moment, even in random order.
 /// To improve performance, they are generally requested in blocks.
 ///
-/// The ELF/HBF instead is available only for the part stored in the buffer inside the structure,
+/// The ELF/CBF instead is available only for the part stored in the buffer inside the structure,
 /// and in particular it's assumed not possible to search/write both after or before this buffer.
 /// 
 /// NOTE: BUFF_SIZE and RELOC_BUFF_SIZE must be powers of two.

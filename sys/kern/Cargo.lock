@@ -8,7 +8,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "byteorder",
- "hbf_lite",
+ "cbf_lite",
  "serde",
  "unwrap-lite",
  "zerocopy",
@@ -172,7 +172,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "hbf_lite"
+name = "cbf_lite"
 version = "0.0.1"
 dependencies = [
  "bitflags",
@@ -204,7 +204,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-semihosting",
  "flash_allocator",
- "hbf_lite",
+ "cbf_lite",
  "heapless",
  "paste",
  "ron",

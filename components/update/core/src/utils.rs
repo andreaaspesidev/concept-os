@@ -4,7 +4,7 @@
 
 use crate::consts::*;
 use crate::messages::MessageError;
-use hbf_lite::BufferReader;
+use cbf_lite::BufferReader;
 use storage_api::*;
 use uart_channel_api::*;
 
@@ -26,15 +26,15 @@ impl FlashReader {
 }
 
 impl<'a> BufferReader<'a> for FlashReader {
-    fn read(&self, offset: u32, dest: &mut [u8]) -> Result<(), hbf_lite::HbfError> {
+    fn read(&self, offset: u32, dest: &mut [u8]) -> Result<(), cbf_lite::CbfError> {
         // Check offset
         if offset >= self.size {
-            return Err(hbf_lite::HbfError::ReadError);
+            return Err(cbf_lite::CbfError::ReadError);
         }
         // Ask to read to storage
         let storage = Storage::new();
         if storage.read_stream(self.base_addr, offset, dest).is_err() {
-            return Err(hbf_lite::HbfError::ReadError);
+            return Err(cbf_lite::CbfError::ReadError);
         }
         Ok(())
     }
@@ -109,8 +109,8 @@ pub fn u32_from_le_bytes(buff: &[u8]) -> u32 {
         | ((buff[3] as u32) << 24);
 }
 
-pub fn wrap_hbf_error<T>(r: Result<T, hbf_lite::HbfError>) -> Result<T, MessageError> {
+pub fn wrap_cbf_error<T>(r: Result<T, cbf_lite::CbfError>) -> Result<T, MessageError> {
     r.map_err(|_| {
-        return MessageError::CannotReadHBF;
+        return MessageError::CannotReadCBF;
     })
 }

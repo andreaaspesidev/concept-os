@@ -6,7 +6,7 @@ mod messages;
 
 use crossbeam_channel::Receiver;
 use crossbeam_channel::Sender;
-use hbf_rs::HbfFile;
+use cbf_rs::CbfFile;
 use pbr::ProgressBar;
 use std::{io::Stdout, path::PathBuf};
 
@@ -17,53 +17,53 @@ use crate::utils::*;
 pub fn flash_component(
     channel_in_consumer: Receiver<u8>,
     channel_out_producer: Sender<Vec<u8>>,
-    hbf_file: String,
+    cbf_file: String,
     verbose: bool,
 ) {
     if verbose {
         println!("---> Flashing Component");
     }
-    // First, check the hbf path
-    let hbf_path = PathBuf::from(hbf_file.clone());
-    if !hbf_path.exists() {
-        panic!("Cannot find the HBF at '{}'", hbf_file);
+    // First, check the cbf path
+    let cbf_path = PathBuf::from(cbf_file.clone());
+    if !cbf_path.exists() {
+        panic!("Cannot find the CBF at '{}'", cbf_file);
     }
-    // Read the whole hbf in memory (surely small for a PC)
-    let hbf_bytes =
-        std::fs::read(hbf_path).expect(&format!("Cannot open the HBF at '{}'", hbf_file));
-    // Parse the hbf
-    let hbf_result = hbf_rs::parse_hbf(&hbf_bytes);
-    if hbf_result.is_err() {
-        match hbf_result.unwrap_err() {
-            hbf_rs::Error::BufferTooShort | hbf_rs::Error::InvalidMagic => {
-                panic!("HBF file not valid!")
+    // Read the whole cbf in memory (surely small for a PC)
+    let cbf_bytes =
+        std::fs::read(cbf_path).expect(&format!("Cannot open the CBF at '{}'", cbf_file));
+    // Parse the cbf
+    let cbf_result = cbf_rs::parse_cbf(&cbf_bytes);
+    if cbf_result.is_err() {
+        match cbf_result.unwrap_err() {
+            cbf_rs::Error::BufferTooShort | cbf_rs::Error::InvalidMagic => {
+                panic!("CBF file not valid!")
             }
-            hbf_rs::Error::UnsupportedVersion => {
-                panic!("HBF version still not supported by the tool")
+            cbf_rs::Error::UnsupportedVersion => {
+                panic!("CBF version still not supported by the tool")
             }
         }
     }
-    let hbf = hbf_result.unwrap();
-    // Validate hbf
-    if !hbf.validate() {
-        panic!("HBF file integrity test failed!");
+    let cbf = cbf_result.unwrap();
+    // Validate cbf
+    if !cbf.validate() {
+        panic!("CBF file integrity test failed!");
     }
     // If verbose, print some info
     if verbose {
-        println!("\n\tComponent ID: {}", hbf.header_base().component_id());
+        println!("\n\tComponent ID: {}", cbf.header_base().component_id());
         println!(
             "\tComponent Version: {}",
-            hbf.header_base().component_version()
+            cbf.header_base().component_version()
         );
-        println!("\tRequired Flash Size: {}", hbf.header_base().total_size());
+        println!("\tRequired Flash Size: {}", cbf.header_base().total_size());
         println!(
             "\tRequired SRAM Size: {}",
-            hbf.header_main().component_min_ram()
+            cbf.header_main().component_min_ram()
         );
     }
     // Send hello
     println!("");
-    let mut progress = ProgressBar::new((hbf.header_base().total_size() + 4) as u64);
+    let mut progress = ProgressBar::new((cbf.header_base().total_size() + 4) as u64);
     progress.show_speed = false;
     progress.show_counter = false;
     progress.show_time_left = false;
@@ -71,7 +71,7 @@ pub fn flash_component(
     begin_communication(
         &channel_in_consumer,
         &channel_out_producer,
-        &hbf,
+        &cbf,
         &mut progress,
         verbose,
     );
@@ -80,7 +80,7 @@ pub fn flash_component(
 fn begin_communication(
     channel_in_consumer: &Receiver<u8>,
     channel_out_producer: &Sender<Vec<u8>>,
-    hbf: &dyn HbfFile,
+    cbf: &dyn CbfFile,
     progress: &mut ProgressBar<Stdout>,
     verbose: bool,
 ) {
@@ -113,13 +113,13 @@ fn begin_communication(
         );
         return;
     }
-    send_fixed_header(channel_in_consumer, channel_out_producer, hbf, progress, verbose);
+    send_fixed_header(channel_in_consumer, channel_out_producer, cbf, progress, verbose);
 }
 
 fn send_fixed_header(
     channel_in_consumer: &Receiver<u8>,
     channel_out_producer: &Sender<Vec<u8>>,
-    hbf: &dyn HbfFile,
+    cbf: &dyn CbfFile,
     progress: &mut ProgressBar<Stdout>,
     verbose: bool,
 ) {
@@ -128,8 +128,8 @@ fn send_fixed_header(
     }
     progress.inc();
     // Send fixed header
-    let base_header_raw = hbf.header_base().get_raw();
-    let main_header_raw = hbf.header_main().get_raw();
+    let base_header_raw = cbf.header_base().get_raw();
+    let main_header_raw = cbf.header_main().get_raw();
     // Combine in a single packet
     let mut out_buff = Vec::<u8>::new();
     out_buff.extend_from_slice(base_header_raw);
@@ -150,13 +150,13 @@ fn send_fixed_header(
         );
         return;
     }
-    send_variable_header(channel_in_consumer, channel_out_producer, hbf, progress, verbose);
+    send_variable_header(channel_in_consumer, channel_out_producer, cbf, progress, verbose);
 }
 
 fn send_variable_header(
     channel_in_consumer: &Receiver<u8>,
     channel_out_producer: &Sender<Vec<u8>>,
-    hbf: &dyn HbfFile,
+    cbf: &dyn CbfFile,
     progress: &mut ProgressBar<Stdout>,
     verbose: bool,
 ) {
@@ -165,7 +165,7 @@ fn send_variable_header(
     }
     progress.inc();
     // Generate bytes
-    let vhb = extract_variable_header(hbf);
+    let vhb = extract_variable_header(cbf);
     // Start sending
     let mut pkt = RawPacket::new(&vhb);
     loop {
@@ -199,13 +199,13 @@ fn send_variable_header(
         // Update progress
         progress.add((fragment_data.len() - 1) as u64);
     }
-    send_payload(channel_in_consumer, channel_out_producer, hbf, progress, verbose);
+    send_payload(channel_in_consumer, channel_out_producer, cbf, progress, verbose);
 }
 
 fn send_payload(
     channel_in_consumer: &Receiver<u8>,
     channel_out_producer: &Sender<Vec<u8>>,
-    hbf: &dyn HbfFile,
+    cbf: &dyn CbfFile,
     progress: &mut ProgressBar<Stdout>,
     verbose: bool,
 ) {
@@ -216,9 +216,9 @@ fn send_payload(
     // -------> Sending Payload
     // Get bytes
     let mut payload_bytes = Vec::<u8>::new();
-    payload_bytes.extend_from_slice(hbf.read_only_section().content());
-    if hbf.data_section().is_some() {
-        payload_bytes.extend_from_slice(hbf.data_section().unwrap().content());
+    payload_bytes.extend_from_slice(cbf.read_only_section().content());
+    if cbf.data_section().is_some() {
+        payload_bytes.extend_from_slice(cbf.data_section().unwrap().content());
     }
     // Generate packet
     let mut pkt = RawPacket::new(&payload_bytes);
@@ -253,13 +253,13 @@ fn send_payload(
         // Update progress
         progress.add((fragment_data.len() - 1) as u64);
     }
-    send_trailer(channel_in_consumer, channel_out_producer, hbf, progress, verbose);
+    send_trailer(channel_in_consumer, channel_out_producer, cbf, progress, verbose);
 }
 
 fn send_trailer(
     channel_in_consumer: &Receiver<u8>,
     channel_out_producer: &Sender<Vec<u8>>,
-    hbf: &dyn HbfFile,
+    cbf: &dyn CbfFile,
     progress: &mut ProgressBar<Stdout>,
     verbose: bool,
 ) {
@@ -270,7 +270,7 @@ fn send_trailer(
     // -------> Sending Payload
     // Get bytes
     let mut checksum_bytes = Vec::<u8>::new();
-    checksum_bytes.extend_from_slice(&hbf.trailer().checksum().to_le_bytes());
+    checksum_bytes.extend_from_slice(&cbf.trailer().checksum().to_le_bytes());
     // Send data
     progress.message("Checksum   ");
     channel_write(channel_out_producer, &checksum_bytes);
@@ -290,30 +290,30 @@ fn send_trailer(
     println!("\nSuccess!");
 }
 
-fn extract_variable_header(hbf: &dyn HbfFile) -> Vec<u8> {
+fn extract_variable_header(cbf: &dyn CbfFile) -> Vec<u8> {
     let mut buffer = Vec::<u8>::new();
     // Start with regions
-    for r in hbf.region_iter() {
+    for r in cbf.region_iter() {
         let raw_data = r.get_raw();
         buffer.extend_from_slice(raw_data);
     }
     // Next append interrupts
-    for i in hbf.interrupt_iter() {
+    for i in cbf.interrupt_iter() {
         let raw_data = i.get_raw();
         buffer.extend_from_slice(raw_data);
     }
     // Next append relocations
-    for r in hbf.relocation_iter() {
+    for r in cbf.relocation_iter() {
         let raw_data = r.get_raw();
         buffer.extend_from_slice(raw_data);
     }
     // Next append dependencies
-    for d in hbf.dependency_iter() {
+    for d in cbf.dependency_iter() {
         let raw_data = d.get_raw();
         buffer.extend_from_slice(raw_data);
     }
     // Then append padding bytes
-    for _ in 0..hbf.header_base().padding_bytes() {
+    for _ in 0..cbf.header_base().padding_bytes() {
         buffer.extend([0xFF]);
     }
     buffer

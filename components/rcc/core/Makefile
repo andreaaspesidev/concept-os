@@ -6,13 +6,13 @@ root_dir := $(shell dirname $(realpath ../../.))
 
 clean:
 	rm -rf build
-	rm $(COMPONENT_NAME).hbf
+	rm $(COMPONENT_NAME).cbf
 
 build:
-	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32f303re
+	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).cbf -b stm32f303re
 
 build-verbose:
-	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).hbf -b stm32f303re -v
+	ROOT_DIR=$(root_dir) ../../../toolchain/modules/component_builder/component_builder -s $(current_dir) -o $(current_dir)/$(COMPONENT_NAME).cbf -b stm32f303re -v
 
 
 disassemble: build
@@ -27,8 +27,8 @@ dump: build
 	arm-none-eabi-objcopy -O binary --only-section=.rodata build/image.elf build/image.rodata
 	arm-none-eabi-objcopy -O binary --only-section=.data build/image.elf build/image.data
 
-dump-hbf: build
-	../../../libs/hbf_lite/tests/simple_read/target/release/hbf_simple_read $(current_dir)/$(COMPONENT_NAME).hbf
+dump-cbf: build
+	../../../libs/cbf_lite/tests/simple_read/target/release/cbf_simple_read $(current_dir)/$(COMPONENT_NAME).cbf
 
 size: build
 	size -A build/image.elf

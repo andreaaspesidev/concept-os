@@ -10,4 +10,4 @@ for use in task programs.
 
 - Stripped panic handlers. On panic, the task will simply execute an invalid instruction
   in order to return to the supervisor. This is because panic info contains lots of absolute
-  addresses that must be fixed for ROPI/RWPI, increasing the size of the HBF.
+  addresses that must be fixed for ROPI/RWPI, increasing the size of the CBF.

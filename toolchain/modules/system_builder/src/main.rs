@@ -76,7 +76,7 @@ fn build_system(app_config_path: String, output_path: String, verbose: bool) {
     elf_edit.add_kernel(&kern_elf);
     // For each component, build and add
     for (component_name, component_config) in &app_config.components {
-        let hbf_path = build_component(
+        let cbf_path = build_component(
             &root_path,
             &app_config,
             &component_config.features,
@@ -84,7 +84,7 @@ fn build_system(app_config_path: String, output_path: String, verbose: bool) {
             &board_config,
             &component_name,
         );
-        elf_edit.add_component(&hbf_path, verbose);
+        elf_edit.add_component(&cbf_path, verbose);
     }
     // Generate ELF
     visualize_stats::visualize(elf_edit.finish(), &app_root);
@@ -249,7 +249,7 @@ fn build_component(
     }
     // Output dir
     let mut out_file = PathBuf::from(&component_root);
-    out_file.push(component_name.to_owned() + &String::from(".hbf"));
+    out_file.push(component_name.to_owned() + &String::from(".cbf"));
     // Launch build
     if component_builder::build_process(
         String::from(component_root.to_str().unwrap()),

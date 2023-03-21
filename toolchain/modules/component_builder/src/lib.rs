@@ -101,7 +101,7 @@ fn compute_relocations(
     Ok(reloc_path)
 }
 
-fn assemble_hbf(
+fn assemble_cbf(
     root_path: &Path,
     config_path: &PathBuf,
     output_artifact_path: &PathBuf,
@@ -109,12 +109,12 @@ fn assemble_hbf(
     component_path: &PathBuf,
     relocations_path: &PathBuf,
 ) -> Result<(), ()> {
-    println!("Generating hbf for '{}'", component_path.display());
+    println!("Generating cbf for '{}'", component_path.display());
     let mut module_path = PathBuf::from(root_path);
     module_path.push("toolchain");
     module_path.push("modules");
-    module_path.push("elf2hbf");
-    module_path.push("elf2hbf");
+    module_path.push("elf2cbf");
+    module_path.push("elf2cbf");
     let mut cmd = Command::new(module_path);
     if !config_path.exists() {
         panic!("Cannot find the generated component descriptor 'Component.toml'");
@@ -233,7 +233,7 @@ fn process_component_config(
 
 pub fn build_process(
     component_path: String,
-    hbf_output_path: String,
+    cbf_output_path: String,
     target_board: String,
     features: &Vec<String>,
     verbose: bool,
@@ -330,9 +330,9 @@ MEMORY
     // Compute relocations
     let relocations_path =
         compute_relocations(&component_build_path, root_path, &artifact_path, verbose)?;
-    // Launch elf2hbf
-    let output_path = PathBuf::from(hbf_output_path);
-    assemble_hbf(
+    // Launch elf2cbf
+    let output_path = PathBuf::from(cbf_output_path);
+    assemble_cbf(
         root_path,
         &config_path,
         &output_path,
@@ -372,7 +372,7 @@ mod test {
         // Launch build
         build_process(
             get_test_file_path("component1"),
-            get_test_file_path("component1/component1.hbf"),
+            get_test_file_path("component1/component1.cbf"),
             "stm32l432kc".to_string(),
             &Vec::<String>::new(),
             false,

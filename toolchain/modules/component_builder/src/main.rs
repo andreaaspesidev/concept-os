@@ -12,7 +12,7 @@ struct Arguments {
     component_source_dir: String,
     #[clap(short, long)]
     #[clap(short = 'o')]
-    hbf_output_path: String,
+    cbf_output_path: String,
     #[clap(short, long)]
     #[clap(short = 'b')]
     target_board: String,
@@ -35,12 +35,12 @@ fn process_args() -> i32 {
     // Print arguments
     println!(
         "\n--------------------\nSource dir: {}\nOutput Path: {}\nTarget Board: {}\nFeatures: {}\nVerbose: {}\nClean-up: {}\n--------------------\n",
-        args.component_source_dir, args.hbf_output_path, args.target_board, args.features.join(", "), args.verbose, args.clean_up
+        args.component_source_dir, args.cbf_output_path, args.target_board, args.features.join(", "), args.verbose, args.clean_up
     );
     // Launch build process
     if component_builder::build_process(
         args.component_source_dir,
-        args.hbf_output_path,
+        args.cbf_output_path,
         args.target_board,
         &args.features,
         args.verbose,

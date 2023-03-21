@@ -122,7 +122,7 @@ enum Commands {
         serial_port: String,
         #[clap(short, long, value_parser)]
         #[clap(short = 'f')]
-        hbf_file: String,
+        cbf_file: String,
     },
 }
 
@@ -139,7 +139,7 @@ fn main() -> Result<(), io::Error> {
         if #[cfg(feature = "uart")] {
             let port = match args.cmd {
                 Commands::Info { ref serial_port} => Some(serial_port.clone()),
-                Commands::FlashComponent { ref serial_port, hbf_file:_ } => Some(serial_port.clone()),
+                Commands::FlashComponent { ref serial_port, cbf_file:_ } => Some(serial_port.clone()),
                 _ => None
             };
             if let Some(serial_port) = port {
@@ -163,8 +163,8 @@ fn main() -> Result<(), io::Error> {
     // Execute command
     match args.cmd {
         Commands::Info {#[cfg(feature = "uart")] serial_port: _} => info(channel_in_consumer, channel_out_producer, verbose),
-        Commands::FlashComponent { #[cfg(feature = "uart")] serial_port: _, hbf_file } => {
-            flash_component(channel_in_consumer, channel_out_producer, hbf_file, verbose)
+        Commands::FlashComponent { #[cfg(feature = "uart")] serial_port: _, cbf_file } => {
+            flash_component(channel_in_consumer, channel_out_producer, cbf_file, verbose)
         }
         #[cfg(feature = "uart")]
         Commands::FlashSystem {

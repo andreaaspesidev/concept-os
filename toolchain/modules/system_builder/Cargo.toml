@@ -11,7 +11,7 @@ toml = "0.5.9"
 serde = {version = "1.0.137", features=["derive"]}
 goblin = "0.5"
 srec = "0.2.0"
-hbf_rs = {path = "../../../libs/hbf_rs"}
+cbf_rs = {path = "../../../libs/cbf_rs"}
 relocator = {path = "../../../libs/relocator"}
 component_builder = {path = "../component_builder"}
 board_config = {path = "../../libs/board_config"}

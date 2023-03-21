@@ -3,7 +3,7 @@
 debug/
 target/
 build/
-*.hbf
+*.cbf
 *.bin
 *.elf
 *.ihex

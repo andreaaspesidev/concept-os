@@ -15,7 +15,7 @@ use abi::{
     HUBRIS_MAX_SUPPORTED_TASKS, REGIONS_PER_TASK,
 };
 use flash_allocator::flash::FlashBlock;
-use hbf_lite::{BufferReaderImpl, HbfFile};
+use cbf_lite::{BufferReaderImpl, CbfFile};
 use unwrap_lite::UnwrapLite;
 
 /**
@@ -546,7 +546,7 @@ pub fn populate_kernel_structures(
 ) {
     // Get an iterator for the flash
     let flash_walker = crate::arch::get_flash_walker();
-    // Iterate, to find HBFs
+    // Iterate, to find CBFs
     for b in flash_walker {
         if !b.is_finalized() {
             sys_log!("Not finalized block found at: {}", b.get_base_address());
@@ -576,7 +576,7 @@ pub fn populate_kernel_structures(
 pub enum LoadError {
     InvalidBlockPointer,
     InvalidBlock,
-    MalformedHBF,
+    MalformedCBF,
     TooManyIRQs,
     TooManyTasks,
 }
@@ -600,31 +600,31 @@ fn get_task_from_block(
         )
     };
     let block_reader = BufferReaderImpl::from(raw_block_bytes);
-    // Let's read the hbf
-    let hbf_parse = hbf_lite::HbfFile::from_reader(&block_reader);
-    if hbf_parse.is_err() {
-        sys_log!("Malformed HBF at {:#010x}", block.get_base_address());
-        return Err(LoadError::MalformedHBF);
+    // Let's read the cbf
+    let cbf_parse = cbf_lite::CbfFile::from_reader(&block_reader);
+    if cbf_parse.is_err() {
+        sys_log!("Malformed CBF at {:#010x}", block.get_base_address());
+        return Err(LoadError::MalformedCBF);
     }
-    let hbf = hbf_parse.unwrap_lite();
+    let cbf = cbf_parse.unwrap_lite();
     if validate {
-        // Validate this hbf
-        let hbf_valid = hbf.validate().unwrap_or(false);
-        if !hbf_valid {
-            sys_log!("Malformed HBF at {:#010x}", block.get_base_address());
-            return Err(LoadError::MalformedHBF);
+        // Validate this cbf
+        let cbf_valid = cbf.validate().unwrap_or(false);
+        if !cbf_valid {
+            sys_log!("Malformed CBF at {:#010x}", block.get_base_address());
+            return Err(LoadError::MalformedCBF);
         }
     }
-    Ok(process_hbf(
-        &hbf,
+    Ok(process_cbf(
+        &cbf,
         block.get_nominal_base_address(),
         block.get_base_address(),
         block.get_nominal_size(),
     ))
 }
 
-fn process_hbf(
-    hbf: &HbfFile,
+fn process_cbf(
+    cbf: &CbfFile,
     block_nominal_base_address: u32,
     block_base_address: u32,
     block_nominal_size: u32,
@@ -634,7 +634,7 @@ fn process_hbf(
     &'static [u8],
 ) {
     // Create a new instance of Task
-    let task_desc = TaskDescriptor::new(block_base_address, block_nominal_size); // Nominal size is actually bigger than needed. It's only used for hbf reading so here it's okay
+    let task_desc = TaskDescriptor::new(block_base_address, block_nominal_size); // Nominal size is actually bigger than needed. It's only used for cbf reading so here it's okay
     let mut regions: KVec<RegionDescriptor, REGIONS_PER_TASK> = KVec::new();
     // Create a region for the SRAM
     let sram_base: u32 = unsafe { u32_from_le_bytes_raw(block_base_address) };
@@ -657,12 +657,12 @@ fn process_hbf(
             | RegionAttributes::EXECUTE,
     };
     regions.push(flash_region).unwrap_lite();
-    let hbf_base = hbf.header_base().unwrap_lite();
+    let cbf_base = cbf.header_base().unwrap_lite();
     // Append all the other regions
-    for region_num in 0..hbf_base.num_regions() {
+    for region_num in 0..cbf_base.num_regions() {
         // TODO: check regions alignment, or we will have an hard fault in the kernel
         // when setting the MPU
-        let region = hbf.region_nth(region_num).unwrap_lite();
+        let region = cbf.region_nth(region_num).unwrap_lite();
         regions
             .push(RegionDescriptor {
                 base: region.base_address(),
@@ -676,7 +676,7 @@ fn process_hbf(
             .unwrap_lite();
     }
     // Extract the data section
-    let data_section = hbf.get_data_payload().unwrap_lite();
+    let data_section = cbf.get_data_payload().unwrap_lite();
     let mut data_section_slice: &'static [u8] = &[];
     if data_section.is_some() {
         let ds = data_section.unwrap_lite();

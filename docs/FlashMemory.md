@@ -43,12 +43,12 @@ For simplicity, we can start placing all the Kernel code at the beginning of the
 +--------------+------+------....
 ```
 
-The Kernel can now start, but in order to have a functioning systems also Components must be loaded. Components are placed in Flash as `HBF` files (see `toolchain/HubrisBinaryFormat.md`).
+The Kernel can now start, but in order to have a functioning systems also Components must be loaded. Components are placed in Flash as `CBF` files (see `toolchain/ConceptOSBinaryFormat.md`).
 
 From a design perspective:
-- The kernel must be able to find these HBF binaries in flash. As the system can be updated, this information is not known a priori, and must be stored itself in flash.
-- A Memory Protection Unit (MPU) is adopted to increase reliability, so HBF must be placed in a way to satisfy MPU strict requirements on *Base Address* and *Size*.
-- The HBF must be placed in memory in a way to control fragmentation, or the system can rapidly become impossible to be updated.
+- The kernel must be able to find these CBF binaries in flash. As the system can be updated, this information is not known a priori, and must be stored itself in flash.
+- A Memory Protection Unit (MPU) is adopted to increase reliability, so CBF must be placed in a way to satisfy MPU strict requirements on *Base Address* and *Size*.
+- The CBF must be placed in memory in a way to control fragmentation, or the system can rapidly become impossible to be updated.
 
 ### MPU Requirements
 The MPU shipped on board of STM32 Cortex-M4 has quite strict requirements. Up to max 8 regions can be created. Each region can be then be split into 8 subregions (each can be enabled/disabled).
@@ -97,7 +97,7 @@ In particular:
     | R  | R | R | R | R | R | R | R | R | COMPONENT |
     
     where:
-    - `COMPONENT` means this block contains the code of a component, so an Allocated RAM Base + HBF is expected after the header.
+    - `COMPONENT` means this block contains the code of a component, so an Allocated RAM Base + CBF is expected after the header.
 
 Total size: 12* bytes
 
@@ -261,7 +261,7 @@ Three fields must be provided to this system call:
 <img src="images/vfp_swap_cfg.svg">
 
 The procedure involves the following steps:
-1. *If context switches are allowed during this procedure, the kernel scans the list of active components, determining for each if their code actually intersect with this page (by using the address of their HBF + their size). Any involved component is temporarily put on hold (will not be scheduled in a context switch).*
+1. *If context switches are allowed during this procedure, the kernel scans the list of active components, determining for each if their code actually intersect with this page (by using the address of their CBF + their size). Any involved component is temporarily put on hold (will not be scheduled in a context switch).*
 2. Begin scanning the page. The first fragment can be deduced from the arguments of the system call, the other fragments are detected by reading the block headers.
     1.  Read the arguments of the system call, and perform the steps below. 
         - If `SC.START_TYPE = 0`, then follow the normal procedure (go to point *2.2*) with `PG.POS <= 0`. 

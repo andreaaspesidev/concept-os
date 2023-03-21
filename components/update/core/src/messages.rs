@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use hbf_lite::{BufferReaderImpl, HbfFile};
+use cbf_lite::{BufferReaderImpl, CbfFile};
 
 use crate::{crc::crc8_update};
 
@@ -15,11 +15,11 @@ pub enum MessageError {
     InvalidSize = 0xE1,
     InvalidCRC = 0xE2,
     InvalidOperation = 0xE3,
-    CannotReadHBF = 0xE4,
+    CannotReadCBF = 0xE4,
     NotEnoughSpace = 0xE5,
     FlashError = 0xE6,
     TimeoutError = 0xE7,
-    FailedHBFValidation = 0xE8,
+    FailedCBFValidation = 0xE8,
     DependencyError = 0xE9,
     MissingDependency = 0xEA,
     IllegalDowngrade = 0xEB,
@@ -175,7 +175,7 @@ impl<'a> FixedHeaderMessage<'a> {
         Ok(Self { buffer: buffer })
     }
     pub const fn get_size() -> usize {
-        hbf_lite::FIXED_HEADER_SIZE + 1
+        cbf_lite::FIXED_HEADER_SIZE + 1
     }
     pub fn get_raw(&self) -> &'a [u8] {
         &self.buffer[0..self.buffer.len() - 1]
@@ -195,9 +195,9 @@ impl<'a> FixedHeaderMessage<'a> {
         }
         // Check header
         let buff_reader = BufferReaderImpl::from(&buffer[0..buffer.len() - 1]);
-        let hbf = HbfFile::from_reader(&buff_reader);
-        if hbf.is_err() {
-            return Err(MessageError::CannotReadHBF);
+        let cbf = CbfFile::from_reader(&buff_reader);
+        if cbf.is_err() {
+            return Err(MessageError::CannotReadCBF);
         }
         // Return
         Ok(())
@@ -271,8 +271,8 @@ bitflags::bitflags! {
     #[repr(transparent)]
     pub struct ComponentStatus: u16 {
         const NONE = 0;
-        /// The hbf of the component is intact
-        const HBF_VALID = 1 << 0;
+        /// The cbf of the component is intact
+        const CBF_VALID = 1 << 0;
     }
 }
 

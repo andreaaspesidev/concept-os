@@ -21,7 +21,7 @@ We have a bunch of arrays involved in the process:
     - `index`: Index in the task table of this task. Used to check by the kernel. (**will be removed**)
     - `regions`: Array of 8 indexes pointing to another structure where regions are defined.
 
-    Regarding the available data, we can currently deduce from the HBF/Allocation all the fields, except for index.
+    Regarding the available data, we can currently deduce from the CBF/Allocation all the fields, except for index.
 
     ```rust
         static HUBRIS_TASK_DESCS: [abi::TaskDesc; HUBRIS_TASK_COUNT] = [
@@ -51,7 +51,7 @@ We have a bunch of arrays involved in the process:
     - `size`: Size of region, in bytes. The platform likely has alignment requirements for this; it must meet them. (For example, on ARMv7-M, it must be a power of two greater than 16.)
     - `attributes`: Flags describing what can be done with this region.
 
-    This array can be virtually constructed iterating over the HBFs. Fortunately, is not the one actually
+    This array can be virtually constructed iterating over the CBFs. Fortunately, is not the one actually
     stored and used in sRAM.
 
     ```rust
@@ -102,11 +102,11 @@ We have two structures:
 - `HUBRIS_REGION_TABLE_SPACE`: an array of `HUBRIS_TASK_COUNT` elements. Each of these elements is another array of 8 elements, containing pointers to `RegionDesc`, presumably in flash memory.
 
 ## New Structures
-In this new edition, the read-only structures are distributed in the HBF of the various components, and we can find only the necessary data:
+In this new edition, the read-only structures are distributed in the CBF of the various components, and we can find only the necessary data:
 - `HUBRIS_TASK_DESCS` as it is, but now we must pre-allocate all the space, putting a maximum number of components the system could have in its lifetime. This datum is fixed in the ABI. This number will be called `HUBRIS_MAX_SUPPORTED_TASKS`.
-- `HUBRIS_REGION_DESCS` theoretically, but it's not wise as we would introduce a further upper limit. As regions comes with HBF descriptors, we can work around all original usages of this old structure.
-- `HUBRIS_TASK_IRQ_LOOKUP`: can be derived from HBF, but it's no use in practice, as in the IRQ handle the following is used.
-- `HUBRIS_IRQ_TASK_LOOKUP`: we know the IRQs with the associated masks for each component, in the HBFs. Also in this case we have to pre-allocate memory, but in this case we even know the maximum limit on the IRQs of the system (an IRQ can be managed by a single component currently). As it could be wise to lower this limit, another ABI constraint is set: `HUBRIS_MAX_IRQS`.
+- `HUBRIS_REGION_DESCS` theoretically, but it's not wise as we would introduce a further upper limit. As regions comes with CBF descriptors, we can work around all original usages of this old structure.
+- `HUBRIS_TASK_IRQ_LOOKUP`: can be derived from CBF, but it's no use in practice, as in the IRQ handle the following is used.
+- `HUBRIS_IRQ_TASK_LOOKUP`: we know the IRQs with the associated masks for each component, in the CBFs. Also in this case we have to pre-allocate memory, but in this case we even know the maximum limit on the IRQs of the system (an IRQ can be managed by a single component currently). As it could be wise to lower this limit, another ABI constraint is set: `HUBRIS_MAX_IRQS`.
 
 A big difference is that in the original version tasks are not identified by the kernel using their IDs, but using their index in the `HUBRIS_TASK_DESCS` table. This is needed to fast access them during the syscalls. Now, due to the volatile nature of components, even during their life, they can assume at least two IDs. 
 
@@ -130,14 +130,14 @@ Each component starts with a generation number of 0. This number is incremented 
 Generation is important to avoid dangling calls, where a caller is about to invoke a component that is actually crashed: some mutable state is lost, without that the caller can possibly know - without the generation number. Each of these calls is faulted, and the caller must explicitly issue a syscall to get the new generation number for that component.
 
 ### Component ID Evolution
-Mature components will always be identified by the ID contained in their HBF descriptor (called **Nominal ID**), but a young component, introduced when the system is still live, will obtain the fixed ID `1023`.
+Mature components will always be identified by the ID contained in their CBF descriptor (called **Nominal ID**), but a young component, introduced when the system is still live, will obtain the fixed ID `1023`.
 *With `1024` the maximum theoretically supported number of components of the system (2^10-1).*
 
 After the initial setup (state transfer), the nominal ID is assigned, after the other eventual component active with that ID is terminated.
 
 The start-up procedure works this way:
 - Flash memory is scanned searching for components
-- Each component HBF is used to populate the three structures.
+- Each component CBF is used to populate the three structures.
 - Those components are initialized as mature, so they get their nominal ID, with generation 0.
 
 When a new component is saved into the system, a kipc call `load_component` is invoked by the updater component pointing to that component's block:

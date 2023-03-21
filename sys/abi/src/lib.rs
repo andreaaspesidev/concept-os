@@ -9,7 +9,7 @@
 
 pub mod flash;
 
-use hbf_lite::{BufferReaderImpl, HbfHeaderBase, HbfHeaderInterrupt, HbfHeaderMain};
+use cbf_lite::{BufferReaderImpl, CbfHeaderBase, CbfHeaderInterrupt, CbfHeaderMain};
 use serde::{Deserialize, Serialize};
 use unwrap_lite::UnwrapLite;
 use zerocopy::{AsBytes, FromBytes};
@@ -142,7 +142,7 @@ impl TaskDescriptor {
             block_size: block_size,
         }
     }
-    fn get_hbf_base(&self) -> HbfHeaderBase {
+    fn get_cbf_base(&self) -> CbfHeaderBase {
         let raw_block_bytes = unsafe {
             core::slice::from_raw_parts(
                 (self.block_start_address + 8) as *const u8,
@@ -150,11 +150,11 @@ impl TaskDescriptor {
             )
         };
         let block_reader = BufferReaderImpl::from(raw_block_bytes);
-        // Let's read the hbf
-        let hbf = hbf_lite::HbfFile::from_reader(&block_reader).unwrap_lite();
-        hbf.header_base().unwrap_lite()
+        // Let's read the cbf
+        let cbf = cbf_lite::CbfFile::from_reader(&block_reader).unwrap_lite();
+        cbf.header_base().unwrap_lite()
     }
-    fn get_hbf_main(&self) -> HbfHeaderMain {
+    fn get_cbf_main(&self) -> CbfHeaderMain {
         let raw_block_bytes = unsafe {
             core::slice::from_raw_parts(
                 (self.block_start_address + 8) as *const u8,
@@ -162,11 +162,11 @@ impl TaskDescriptor {
             )
         };
         let block_reader = BufferReaderImpl::from(raw_block_bytes);
-        // Let's read the hbf
-        let hbf = hbf_lite::HbfFile::from_reader(&block_reader).unwrap_lite();
-        hbf.header_main().unwrap_lite()
+        // Let's read the cbf
+        let cbf = cbf_lite::CbfFile::from_reader(&block_reader).unwrap_lite();
+        cbf.header_main().unwrap_lite()
     }
-    fn get_hbf_interrupt_nth(&self, interrupt_num: u16) -> HbfHeaderInterrupt {
+    fn get_cbf_interrupt_nth(&self, interrupt_num: u16) -> CbfHeaderInterrupt {
         let raw_block_bytes = unsafe {
             core::slice::from_raw_parts(
                 (self.block_start_address + 8) as *const u8,
@@ -174,21 +174,21 @@ impl TaskDescriptor {
             )
         };
         let block_reader = BufferReaderImpl::from(raw_block_bytes);
-        // Let's read the hbf
-        let hbf = hbf_lite::HbfFile::from_reader(&block_reader).unwrap_lite();
-        hbf.interrupt_nth(interrupt_num).unwrap_lite()
+        // Let's read the cbf
+        let cbf = cbf_lite::CbfFile::from_reader(&block_reader).unwrap_lite();
+        cbf.interrupt_nth(interrupt_num).unwrap_lite()
     }
     pub fn get_descriptor_block(&self) -> u32 {
         self.block_start_address
     }
     pub fn component_id(&self) -> u16 {
-        self.get_hbf_base().component_id()
+        self.get_cbf_base().component_id()
     }
     pub fn component_version(&self) -> u32 {
-        self.get_hbf_base().component_version()
+        self.get_cbf_base().component_version()
     }
     pub fn entry_point(&self) -> u32 {
-        let offset = self.get_hbf_main().entry_point_offset();
+        let offset = self.get_cbf_main().entry_point_offset();
         return self.block_start_address + 8 + offset;
     }
     pub fn initial_stack(&self) -> u32 {
@@ -197,20 +197,20 @@ impl TaskDescriptor {
         sram_base + sram_size - 8 // Keep some margin from the top, to avoid alignment problems
     }
     pub fn priority(&self) -> u16 {
-        self.get_hbf_main().component_priority()
+        self.get_cbf_main().component_priority()
     }
     pub fn flags(&self) -> TaskFlags {
         unsafe {
             return TaskFlags::from_bits_unchecked(
-                self.get_hbf_main().component_flags().bits() as u32
+                self.get_cbf_main().component_flags().bits() as u32
             );
         }
     }
     pub fn num_interrupts(&self) -> u16 {
-        self.get_hbf_base().num_interrupts()
+        self.get_cbf_base().num_interrupts()
     }
     pub fn interrupt_nth(&self, interrupt_num: u16) -> InterruptDescriptor {
-        let interrupt = self.get_hbf_interrupt_nth(interrupt_num);
+        let interrupt = self.get_cbf_interrupt_nth(interrupt_num);
         InterruptDescriptor {
             irq_num: interrupt.irq_number(),
             notification: interrupt.notification_mask(),
@@ -227,7 +227,7 @@ bitflags::bitflags! {
     }
 }
 
-// This structure cannot be simply pointing to the HBF,
+// This structure cannot be simply pointing to the CBF,
 // as in this case we have to append also the SRAM region
 // of the component, and we will save only a few bytes with a more
 // complex structure

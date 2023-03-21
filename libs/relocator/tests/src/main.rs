@@ -41,21 +41,22 @@ mod tests {
         output_buff: &'a mut Vec<u8>
     }
 
-    impl<'a> RelocatorMethods for FileRelocationMethods<'a> {
-        fn read_relocations(&self, start_index: usize, dst: &mut [u32]) -> usize {
+    impl<'a> RelocatorMethods<()> for FileRelocationMethods<'a> {
+        fn read_relocations(&self, start_index: usize, dst: &mut [u32], _args: &mut ()) -> Result<usize,()> {
             // Simulate latency
             thread::sleep(Duration::from_millis(5));
             for i in 0..dst.len() {
                 dst[i] = self.points[start_index + i];
             }
-            return dst.len();
+            return Ok(dst.len());
         }
 
-        fn flush(&mut self, position: usize, src: &[u8]) {
+        fn flush(&mut self, position: usize, src: &[u8], _args: &mut ()) -> Result<(),()> {
             // Simulate latency
             thread::sleep(Duration::from_micros(91* src.len() as u64 / 64));
             assert!(position >= self.output_buff.len());
             self.output_buff.extend_from_slice(src);
+            Ok(())
         }
     }
 
@@ -66,7 +67,7 @@ mod tests {
         let total_relocs_available = points.len();
         // Copy file in another location
         let mut src_elf_file = File::open(get_test_file_path("example1/image.elf")).unwrap();
-        let mut dst_elf_file = File::create(get_test_file_path("example1/image_relocated.elf")).unwrap();
+        let mut _dst_elf_file = File::create(get_test_file_path("example1/image_relocated.elf")).unwrap();
         
         let mut output_buff: Vec<u8> = vec![];
 
@@ -92,17 +93,17 @@ mod tests {
                 points: &points,
                 output_buff: &mut output_buff,
             };
-            relocator.consume_current_buffer(&mut buff[0..to_read], &mut relocator_methods);
+            relocator.consume_current_buffer(&mut buff[0..to_read], &mut relocator_methods, &mut ()).unwrap();
         }
         let mut relocator_methods = FileRelocationMethods {
             points: &points,
             output_buff: &mut output_buff,
         };
-        relocator.finish(&mut relocator_methods);
+        relocator.finish(&mut relocator_methods, &mut ()).unwrap();
 
-        // println!("Written {} bytes", output_buff.len());
+        println!("Written {} bytes", output_buff.len());
         // Write all to dest file
-        dst_elf_file.write(&output_buff).unwrap();
+        // dst_elf_file.write(&output_buff).unwrap();
     }
 
     #[bench]

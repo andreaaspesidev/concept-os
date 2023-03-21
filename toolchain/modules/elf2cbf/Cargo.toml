@@ -1,0 +1,16 @@
+[package]
+name = "elf2cbf"
+version = "0.0.2"
+edition = "2021"
+description = "A tool to generate CBF binaries for ConceptOS Components starting from ELF and some configuration files"
+
+[dependencies]
+elf_rs = "0.2.0"
+bitflags = "1.3.2"
+toml = "0.5.9"
+serde = {version = "1.0.137", features=["derive"]}
+clap = {version = "3.1.18", features = ["derive"]}
+component_config = {path = "../../libs/component_config"}
+
+[dev-dependencies]
+cbf_rs = {path = "../../../libs/cbf_rs"}
