@@ -17,17 +17,14 @@
 ## You should have received a copy of the GNU General Public License
 ## along with this program; if not, see <http://www.gnu.org/licenses/>.
 ##
-from pathlib import Path
-from tempfile import gettempdir
-import numpy as np
+
 from numpy import packbits
 import sigrokdecode as srd
 from collections import deque
 import os
+import math
 
 MAX_CHANNELS = 8
-
-
 
 class DecoderError(Exception):
     pass
@@ -146,35 +143,36 @@ class RunningStats:
 
 class Decoder(srd.Decoder):
     api_version = 3
-    id = 'syscall_analyzer'
-    name = 'Syscall Analyzer'
-    longname = 'Syscall Analyzer for ConceptOS'
-    desc = 'Calculate statistics on syscalls.'
+    id = 'performance_analyzer'
+    name = 'Performance Analyzer'
+    longname = 'Performance Analyzer for ConceptOS components'
+    desc = 'Calculate statistics on components.'
     license = 'gplv2+'
     inputs = ['logic']
     outputs = []
     tags = ['Clock/timing', 'Util']
-    channels = (
-        {'id': 'syscall_timing', 'name': 'Syscall Timing Line', 'desc': 'Syscall Timing Line'},
-    )
     optional_channels = _channel_decl(MAX_CHANNELS)
     annotations = (
-        ('syscall_number', 'SyscallNumber'),
-        ('syscall_time', 'SyscallTime'),
-        ('syscall_max_time', 'SyscallMaxTime'),
-        ('syscall_avg_time', 'SyscallAvgTime'),
-        ('syscall_min_time', 'SyscallMinTime'),
-        ('syscall_avg_intervals', 'SyscallAvgIntervals'),
+        ('component_id', 'ComponentID'),
+        ('process_time', 'ProcessTime'),
+        ('process_max', 'ProcessMax'),
+        ('process_avg', 'ProcessAvg'),
+        ('process_min', 'ProcessMin'),
+        ('process_delta', 'ProcessDelta95'),
     )
     annotation_rows = (
-        ('syscall_number', 'SyscallNumber', (0,)),
-        ('syscall_time', 'SyscallTime', (1,)),
-        ('syscall_max_time', 'SyscallMaxTime', (2,)),
-        ('syscall_avg_time', 'SyscallAvgTime', (3,)),
-        ('syscall_min_time', 'SyscallMinTime', (4,)),
-        ('syscall_avg_intervals', 'SyscallAvgIntervals', (5,)),
+        ('component_id', 'ComponentID', (0,)),
+        ('process_time', 'ProcessTime', (1,)),
+        ('process_max', 'ProcessMax', (2,)),
+        ('process_avg', 'ProcessAvg', (3,)),
+        ('process_min', 'ProcessMin', (4,)),
+        ('process_delta', 'ProcessDelta95', (5,)),
     )
     options = (
+        { 'id': 'component_id', 'desc': 'Component ID', 'default': 0 },
+        { 'id': 'start_time', 'desc': 'Start Time (ms)', 'default': 0 },
+        { 'id': 'end_time', 'desc': 'End Time (ms)', 'default': 10000 },
+        { 'id': 'delta', 'desc': 'Delta value to distinguish values (us)', 'default': 5 },
         { 'id': 'stream_fifo_enable', 'desc': 'Stream on fifo', 'default': 'no', 'values': ('yes', 'no')},
         { 'id': 'stream_fifo', 'desc': 'Fifo path', 'default': ''},
     )
@@ -189,8 +187,8 @@ class Decoder(srd.Decoder):
         self.chunks = 0
         self.level_changed = False
         self.last_t = None
-        self.value_map = dict() # an entry for each syscall number
-        
+        self.value_map = {}
+
     def metadata(self, key, value):
         if key == srd.SRD_CONF_SAMPLERATE:
             self.samplerate = value
@@ -198,37 +196,60 @@ class Decoder(srd.Decoder):
     def start(self):
         self.out_ann = self.register(srd.OUTPUT_ANN)
 
-    def _get_number(self, pin_levels) -> int:
+    def _get_current_id(self, pins) -> int:
+        pin_levels = [b if b in (0, 1) else 0 for b in pins]   
         return int(packbits(pin_levels, bitorder='little')[0])
+    
+    def _is_present(self, value):
+        # Under the assumption such values are a few, here we iterate. 
+        # More advanced methods (btrees, ...) are advised
+        delta = self.options['delta'] / 1000000
+        for n_val in self.value_map.keys():
+            if value > n_val - delta and value < n_val + delta:
+                return n_val
+        return None
 
     # Using Knuth's method for computing the running average and variance
     # http://www.johndcook.com/blog/2008/09/26/comparing-three-methods-of-computing-standard-deviation/
-    def _add_stat_for(self, syscall_number, t_syscall):
-        if syscall_number not in self.value_map:
+    def _add_stat_for(self, nominal_time, processing_time):
+        if nominal_time not in self.value_map:
             stat = RunningStats()
-            stat.push(t_syscall)
-            self.value_map[syscall_number] = stat
+            stat.push(processing_time)
+            self.value_map[nominal_time] = stat
         else:
-            self.value_map[syscall_number].push(t_syscall)
+            self.value_map[nominal_time].push(processing_time)
 
-    def _get_avg_with_confidence(self, syscall_num):
-        # Get stats
-        stats: RunningStats = self.value_map[syscall_num]
+    def _compute_stat(self, processing_time):
+        # Check if already present
+        n_val = self._is_present(processing_time)
+        
+        if n_val is None:
+            n_val = processing_time
+        
+        # Compute data
+        self._add_stat_for(n_val, processing_time)
+
+        # Retrieve some values
+        stats: RunningStats = self.value_map[n_val]
+        min = stats.min()
+        max = stats.max()
         avg = stats.mean()
-        num_data = stats.num_values()
-        var = stats.variance()
-        # Under the assumtion of having enough data, the mean
-        # value is distributed as a gaussian
+        count = stats.num_values()
+        delta95 = self._delta_95(stats)
+
+        # Return
+        return (max, avg, min, delta95, count)
+
+    def _delta_95(self, stats: RunningStats):
         d = 1.96    # Confidence 0.95
-        lower_bound = avg - d*np.sqrt(var / num_data)
-        upper_bound = avg + d*np.sqrt(var / num_data)
-        return (lower_bound, upper_bound)
+        return d*math.sqrt(stats.variance() / stats.num_values())
 
-    def _visualize_with_confidence(self, syscall_num) -> str:
-        lower_bound, upper_bound = self._get_avg_with_confidence(syscall_num)
-        return f"[{normalize_total_time(lower_bound)},{normalize_total_time(upper_bound)}]"
+    def _get_avg_with_confidence(self, stats: RunningStats):
+        lower_bound = stats.mean() - self._delta_95(stats)
+        upper_bound = stats.mean() + self._delta_95(stats)
+        return lower_bound, upper_bound
 
-    def _log_to_file(self, _time):
+    def _log_to_file(self):
         # We put only the most up-to-date values for each syscall
         # Write intestation
         intestation = ";"
@@ -237,17 +258,23 @@ class Decoder(srd.Decoder):
         min_times = "MIN;"
         conf_max = "AVG_CONF_MAX;"
         conf_min = "AVG_CONF_MIN;"
-        for syscall_num in sorted(self.value_map.keys()):
-            # Get stats
-            stats: RunningStats = self.value_map[syscall_num]
-            intestation += f"SYSCALL_{syscall_num};"
-            max_times += f"{stats.max()};"
-            avg_times += f"{stats.mean()};"
-            min_times += f"{stats.min()};"
-            lower_bound,upper_bound = self._get_avg_with_confidence(syscall_num)
-            conf_max += f"{upper_bound};"
-            conf_min += f"{lower_bound};"
-
+        count_times = "COUNT;"
+        for n_val in sorted(self.value_map.keys()):
+            # Retrieve some values
+            stats: RunningStats = self.value_map[n_val]
+            min = stats.min()
+            max = stats.max()
+            avg = stats.mean()
+            count = stats.num_values()
+            lower, upper = self._get_avg_with_confidence(stats)
+            
+            intestation += f"{normalize_total_time(n_val)};"
+            max_times += f"{max};"
+            avg_times += f"{avg};"
+            min_times += f"{min};"
+            conf_max += f"{upper};"
+            conf_min += f"{lower};"
+            count_times += f"{count};"
         # Open pipe truncate and write
         with open(self.options['stream_fifo'], 'a') as f:
             f.write(f"{intestation}\n")
@@ -256,70 +283,56 @@ class Decoder(srd.Decoder):
             f.write(f"{min_times}\n")
             f.write(f"{conf_max}\n")
             f.write(f"{conf_min}\n")
+            f.write(f"{count_times}\n")
             f.write(f"SAMPLE_RATE;{self.samplerate}\n")
 
     def decode(self):
         if not self.samplerate:
             raise DecoderError('Cannot decode without samplerate.')
         # Get the configured channels
-        channels = [ch for ch in range(0, MAX_CHANNELS+1) if self.has_channel(ch)]
+        channels = [ch for ch in range(0, MAX_CHANNELS) if self.has_channel(ch)]
         # Setup wait condition
         wait_cond = [{ch: 'e'} for ch in channels] # Look for channel change (edge)
-        # Initialize
-        active_syscall_number = None
-        start_syscall_sample = None
-        last_syscall_number_change_sample = None
-        last_syscall_number = None
-        last_active = 0
+
         # Setup fifo if requested
         if self.options['stream_fifo_enable'] == 'yes':
             if not os.path.exists(self.options['stream_fifo']):
                 os.mkfifo(self.options['stream_fifo'])
-        
+
+        # Initialize
+        component_id = self._get_current_id(self.wait())
+        last_samplenum = self.samplenum
+
         while True:
             # Convert signals to number
             pins = self.wait(wait_cond)
-            pin_levels = [b if b in (0, 1) else 0 for b in pins]   
+            next_component_id = self._get_current_id(pins)
+            if next_component_id == component_id:
+                continue  # Ignore
+            # Output the component id
+            self.put(last_samplenum, self.samplenum, self.out_ann, [0, [f"{component_id}"]])
+            # Check wheter to output time
             
-            syscall_active = pin_levels[0]
-            syscall_number = self._get_number(pin_levels[1:])
-            if active_syscall_number is None:
-                active_syscall_number = syscall_number
-                last_syscall_number_change_sample = self.samplenum
-                last_syscall_number = syscall_number
-                continue # Ignore
-            
-            # Only on logic change compute
-            if syscall_active != last_active:
-                # Rising edge or falling edge
-                if syscall_active > last_active:
-                    # Rising edge, syscall started. Mark it
-                    active_syscall_number = syscall_number
-                    start_syscall_sample = self.samplenum
-                else:
-                    # Falling edge, syscall ended. Compute
-                    if syscall_number != active_syscall_number:
-                        #raise DecoderError("Increase resolution, possible missing syscall")
-                        # Use the last number as syscall
-                        start_syscall_sample = last_syscall_number_change_sample
+            # Compute processing time of that component
+            if component_id == self.options['component_id']:
+                t_processing = (self.samplenum - last_samplenum) / self.samplerate
 
-                    t_syscall = (self.samplenum - start_syscall_sample) / self.samplerate
-                    self.put(start_syscall_sample, self.samplenum, self.out_ann, [0, [f"{syscall_number}"]])    
-                    self.put(start_syscall_sample, self.samplenum, self.out_ann, [1, [normalize_time(t_syscall)]])  
-                    
-                    # Update stats
-                    self._add_stat_for(syscall_number, t_syscall)
-                    stats: RunningStats = self.value_map[syscall_number]
-                    self.put(start_syscall_sample, self.samplenum, self.out_ann, [2, [normalize_time(stats.max())]]) 
-                    self.put(start_syscall_sample, self.samplenum, self.out_ann, [3, [normalize_time(stats.mean())]])     
-                    self.put(start_syscall_sample, self.samplenum, self.out_ann, [4, [normalize_time(stats.min())]]) 
-                    self.put(start_syscall_sample, self.samplenum, self.out_ann, [5, [self._visualize_with_confidence(syscall_number)]])   
-
+                current_time = self.samplenum / self.samplerate
+                t_start = self.options['start_time'] / 1000
+                t_end = self.options['end_time'] / 1000
+                if current_time > t_start and current_time < t_end:
+                    # Identify different types of processing time using a simple method: variation
+                    max, avg, min, delta95, count = self._compute_stat(t_processing)
+                    # Add to graph
+                    self.put(last_samplenum, self.samplenum, self.out_ann, [1, [normalize_total_time(t_processing)]])
+                    self.put(last_samplenum, self.samplenum, self.out_ann, [2, [f"{normalize_total_time(max)} ({count} elements)"]])
+                    self.put(last_samplenum, self.samplenum, self.out_ann, [3, [f"{normalize_total_time(avg)} ({count} elements)"]])
+                    self.put(last_samplenum, self.samplenum, self.out_ann, [4, [f"{normalize_total_time(min)} ({count} elements)"]])
+                    self.put(last_samplenum, self.samplenum, self.out_ann, [5, [f"{normalize_total_time(delta95)} ({count} elements)"]])
+                    # Log
                     if self.options['stream_fifo_enable'] == 'yes':
-                        self._log_to_file(t_syscall)
-
-            # Prepare for next cycle
-            if last_syscall_number != syscall_number:
-                last_syscall_number_change_sample = self.samplenum
-                last_syscall_number = syscall_number
-            last_active = syscall_active
+                        self._log_to_file()
+            
+            # Load data for the next round
+            last_samplenum = self.samplenum
+            component_id = next_component_id
