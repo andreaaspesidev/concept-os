@@ -17,8 +17,11 @@ hubris <- read.csv("data/hubris-component-sizes.csv",header=TRUE, sep= ",", row.
 conceptos <- read.csv("data/conceptos-component-sizes.csv",header=TRUE, sep= ",", row.names = 1)
 
 # Remove components/data not useful for the comparison
-conceptos <- conceptos %>% select(-c("STORAGE","Unused"))
+# conceptos <- conceptos %>% select(-c("STORAGE","Unused"))
+conceptos <- conceptos %>% select(-c("Unused"))
 hubris <- hubris %>% select(-c("Unused"))
+# Add a fictitious STORAGE in hubris for the graph to show correctly
+hubris['STORAGE'] = c(0,0)
 
 # Compute fragmentation
 conceptos[nrow(conceptos) + 1,] = diff(as.matrix(conceptos))
@@ -123,7 +126,7 @@ frag_graph <- ggplot(data = frag_resources, aes(x = forcats::fct_rev(component),
   coord_flip() +
   scale_fill_grey() +
   theme_bw() +
-  labs(y ="Unused flash (fragmentation)", x = "") +
+  labs(y ="Unused flash\n(fragmentation)", x = "") +
   theme(
     legend.title = element_blank(),
     legend.box = "horizontal"
@@ -139,6 +142,6 @@ ggsave(
   "output/component-sizes.pdf",
   plot = plot,
   scale = 1,
-  width = 1920, height = 1200, units = "px",
+  width = 1920, height = 1400, units = "px",
   dpi = 300,
 )
