@@ -136,10 +136,12 @@ ggsave(
 # Create a composed graph
 plot <- ggarrange(max_graph, avg_graph, labels = c("A","B"), nrow = 2, common.legend = TRUE, legend="bottom")
 
+plot
+
 ggsave(
   "output/syscall_recap.pdf",
   plot = plot,
   scale = 1,
-  width = 1920, height = 1300, units = "px",
+  width = 1920, height = 1600, units = "px",
   dpi = 300,
 )
